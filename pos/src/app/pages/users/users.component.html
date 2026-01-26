@@ -1,0 +1,61 @@
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>Usuarios</h1>
+          <p class="muted">Control de acceso: Admin, Manager, Cashier.</p>
+        </div>
+        <div class="actions">
+          <button class="btn primary" (click)="toggleNew()">{{ showNew() ? 'Cerrar' : 'Nuevo usuario' }}</button>
+          <button class="btn" (click)="reload()">Actualizar</button>
+        </div>
+      </div>
+
+      <div class="card" *ngIf="showNew()">
+        <h2>Crear usuario</h2>
+        <div class="form">
+          <label>
+            <span>Email</span>
+            <input [(ngModel)]="email" placeholder="usuario@empresa.com" />
+          </label>
+          <label>
+            <span>Contraseña</span>
+            <input [(ngModel)]="password" type="password" />
+          </label>
+          <label>
+            <span>Rol</span>
+            <select [(ngModel)]="role">
+              <option value="ADMIN">ADMIN</option>
+              <option value="MANAGER">MANAGER</option>
+              <option value="CASHIER">CASHIER</option>
+            </select>
+          </label>
+          <div class="row wide">
+            <button class="btn primary" (click)="create()" [disabled]="busy() || !email || !password">Crear</button>
+            <span class="muted" *ngIf="busy()">Guardando…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted" *ngIf="error()">Backend pendiente: <code>/api/users</code></div>
+
+        <div class="table">
+          <div class="th">
+            <div>Email</div>
+            <div>Rol</div>
+            <div class="r">Activo</div>
+          </div>
+          <div class="tr" *ngFor="let u of users()">
+            <div class="name">{{ u.email }}</div>
+            <div><code>{{ u.role }}</code></div>
+            <div class="r">{{ u.active === false ? 'No' : 'Sí' }}</div>
+          </div>
+
+          <div class="empty" *ngIf="users().length===0 && !busy()">Sin usuarios.</div>
+        </div>
+
+        <div class="note mt">
+          CEO move: <b>mínimo privilegio</b>. A la caja dale CASHIER, no ADMIN.
+        </div>
+      </div>
+    </div>

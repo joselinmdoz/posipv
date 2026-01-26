@@ -1,0 +1,26 @@
+<div class="card">
+  <h1>POS</h1>
+  <p class="muted">Inicia sesión para seleccionar caja y vender.</p>
+
+  <div class="grid">
+    <label>
+      <span>Email</span>
+      <input [(ngModel)]="email" autocomplete="username" placeholder="admin@pos.local" />
+    </label>
+    <label>
+      <span>Contraseña</span>
+      <input [(ngModel)]="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+    </label>
+  </div>
+
+  <button class="btn" (click)="login()" [disabled]="loading()">
+    {{ loading() ? 'Entrando…' : 'Entrar' }}
+  </button>
+
+  <p class="err" *ngIf="error()">{{ error() }}</p>
+
+  <details class="hint">
+    <summary>Credenciales de prueba (seed)</summary>
+    <code>admin@pos.local</code> / <code>Admin123!</code>
+  </details>
+</div>

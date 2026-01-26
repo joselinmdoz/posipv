@@ -1,0 +1,100 @@
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>Movimientos de Inventario</h1>
+          <p class="muted">Entradas, salidas y transferencias entre almacenes, con motivo.</p>
+        </div>
+        <button class="btn" (click)="reload()">Actualizar</button>
+      </div>
+
+      <div class="card">
+        <h2>Nuevo movimiento</h2>
+        <div class="form">
+          <label>
+            <span>Tipo</span>
+            <select [(ngModel)]="type">
+              <option value="IN">Entrada</option>
+              <option value="OUT">Salida</option>
+              <option value="TRANSFER">Transferencia</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Producto</span>
+            <select [(ngModel)]="productId">
+              <option [ngValue]="''">— Seleccionar —</option>
+              <option *ngFor="let p of products()" [ngValue]="p.id">{{ p.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Cantidad</span>
+            <input [(ngModel)]="qty" type="number" min="1" step="1" />
+          </label>
+
+          <label *ngIf="type !== 'IN'">
+            <span>Desde</span>
+            <select [(ngModel)]="fromWarehouseId">
+              <option [ngValue]="''">—</option>
+              <option *ngFor="let w of warehouses()" [ngValue]="w.id">{{ w.name }}</option>
+            </select>
+          </label>
+
+          <label *ngIf="type !== 'OUT'">
+            <span>Hacia</span>
+            <select [(ngModel)]="toWarehouseId">
+              <option [ngValue]="''">—</option>
+              <option *ngFor="let w of warehouses()" [ngValue]="w.id">{{ w.name }}</option>
+            </select>
+          </label>
+
+          <label class="wide">
+            <span>Motivo</span>
+            <input [(ngModel)]="reason" placeholder="Ej: Ajuste, merma, reposición, transferencia a TPV..." />
+          </label>
+
+          <div class="row wide">
+            <button class="btn primary" (click)="create()" [disabled]="busy() || !canCreate()">Guardar</button>
+            <span class="muted" *ngIf="busy()">Procesando…</span>
+            <span class="muted" *ngIf="error()">Backend pendiente: <code>/api/stock-movements</code></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <h2>Historial</h2>
+          <div class="filters">
+            <label>
+              <span class="muted">Almacén</span>
+              <select [(ngModel)]="filterWarehouseId" (ngModelChange)="reload()">
+                <option [ngValue]="''">Todos</option>
+                <option *ngFor="let w of warehouses()" [ngValue]="w.id">{{ w.name }}</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="table">
+          <div class="th">
+            <div>Fecha</div>
+            <div>Tipo</div>
+            <div>Producto</div>
+            <div class="r">Cantidad</div>
+            <div>Ruta</div>
+            <div>Motivo</div>
+          </div>
+
+          <div class="tr" *ngFor="let m of movements()">
+            <div>{{ m.createdAt | date:'short' }}</div>
+            <div><span class="pill" [class]="m.type">{{ label(m.type) }}</span></div>
+            <div class="name">{{ m.productName || m.productId }}</div>
+            <div class="r">{{ m.qty }}</div>
+            <div class="muted">{{ route(m) }}</div>
+            <div class="muted">{{ m.reason || '—' }}</div>
+          </div>
+
+          <div class="empty" *ngIf="movements().length === 0 && !busyList()">Sin movimientos.</div>
+        </div>
+      </div>
+    </div>

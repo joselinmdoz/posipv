@@ -1,0 +1,86 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Almacenes</h1>
+      <p class="muted">Centrales y TPV: stock en tiempo real y distribución de productos.</p>
+    </div>
+    <div class="actions">
+      <button class="btn primary" (click)="toggleNew()">{{ showNew() ? 'Cerrar' : 'Nuevo almacén' }}</button>
+      <button class="btn" (click)="reload()">Actualizar</button>
+    </div>
+  </div>
+
+  <div class="card" *ngIf="showNew()">
+    <h2>Crear almacén</h2>
+    <div class="form">
+      <label>
+        <span>Nombre</span>
+        <input [(ngModel)]="newName" placeholder="Ej: Central Tampa" />
+      </label>
+      <label>
+        <span>Código</span>
+        <input [(ngModel)]="newCode" placeholder="Ej: CENTRAL" />
+      </label>
+      <label>
+        <span>Tipo</span>
+        <select [(ngModel)]="newType">
+          <option value="CENTRAL">CENTRAL</option>
+          <option value="TPV">TPV</option>
+        </select>
+      </label>
+
+      <div class="row">
+        <button class="btn primary" (click)="create()" [disabled]="busy() || !newName || !newCode">Guardar</button>
+        <span class="muted" *ngIf="busy()">Guardando…</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <div class="row">
+        <div class="muted">Lista de almacenes</div>
+        <div class="muted" *ngIf="error()">Backend pendiente: <code>/api/warehouses</code></div>
+      </div>
+
+      <div class="list">
+        <button class="item" *ngFor="let w of warehouses()" (click)="select(w)" [class.active]="w.id===selected()?.id">
+          <div class="title">{{ w.name }}</div>
+          <div class="sub">
+            <code>{{ w.code }}</code>
+            <span class="pill">{{ w.type || '—' }}</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <h2>Stock</h2>
+          <p class="muted" *ngIf="selected() as s">Almacén: <b>{{ s.name }}</b></p>
+          <p class="muted" *ngIf="!selected()">Selecciona un almacén para ver su stock.</p>
+        </div>
+        <button class="btn" (click)="loadStock()" [disabled]="!selected()">Ver stock</button>
+      </div>
+
+      <div class="table" *ngIf="selected()">
+        <div class="th">
+          <div>Producto</div>
+          <div>SKU</div>
+          <div class="r">Cantidad</div>
+        </div>
+        <div class="tr" *ngFor="let l of stock()">
+          <div class="name">{{ l.name }}</div>
+          <div><code *ngIf="l.sku">{{ l.sku }}</code><span class="muted" *ngIf="!l.sku">—</span></div>
+          <div class="r">{{ l.qty }}</div>
+        </div>
+        <div class="empty" *ngIf="!busyStock() && stock().length===0">Sin datos.</div>
+      </div>
+
+      <div class="hint">
+        Tip: Las transferencias y ajustes se hacen en <b>Inventario → Movimientos</b>.
+      </div>
+    </div>
+  </div>
+</div>

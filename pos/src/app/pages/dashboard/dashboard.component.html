@@ -1,0 +1,83 @@
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="muted">Visión rápida del negocio y atajos para operar.</p>
+        </div>
+        <div class="actions">
+          <a class="btn primary" routerLink="/pos">Ir a TPV</a>
+          <a class="btn" routerLink="/register">Abrir / Cambiar Caja</a>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="k">Ventas hoy</div>
+          <div class="v">{{ money(summary()?.salesToday) }}</div>
+          <div class="s">Transacciones: <b>{{ summary()?.transactionsToday ?? '—' }}</b></div>
+        </div>
+
+        <div class="card">
+          <div class="k">Sesiones abiertas</div>
+          <div class="v">{{ summary()?.openSessions ?? '—' }}</div>
+          <div class="s">Cajas activas ahora mismo</div>
+        </div>
+
+        <div class="card">
+          <div class="k">Stock bajo</div>
+          <div class="v">{{ summary()?.lowStock ?? '—' }}</div>
+          <div class="s">Productos por debajo del mínimo</div>
+        </div>
+
+        <div class="card">
+          <div class="k">Última venta</div>
+          <div class="v small">{{ summary()?.lastSaleAt ? (summary()?.lastSaleAt | date:'short') : '—' }}</div>
+          <div class="s">Hora estimada del último ticket</div>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Operación</h2>
+            <p class="muted">Acciones comunes durante el día.</p>
+          </div>
+          <div class="tiles">
+            <a class="tile" routerLink="/pos">
+              <div class="t">Vender</div>
+              <div class="d muted">Crear tickets y cobrar</div>
+            </a>
+            <a class="tile" routerLink="/cash">
+              <div class="t">Caja</div>
+              <div class="d muted">Entradas / salidas y cierre</div>
+            </a>
+            <a class="tile" routerLink="/stock-movements">
+              <div class="t">Inventario</div>
+              <div class="d muted">Entradas, salidas y transferencias</div>
+            </a>
+            <a class="tile" routerLink="/reports/sales">
+              <div class="t">Reportes</div>
+              <div class="d muted">Ventas e IPV</div>
+            </a>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Estado del sistema</h2>
+            <p class="muted">Mensajes y recordatorios.</p>
+          </div>
+
+          <div class="note" *ngIf="error()">
+            <div class="b">Sin datos todavía</div>
+            <div class="muted">Conecta el backend a <code>/api/dashboard/summary</code> para llenar el dashboard.</div>
+          </div>
+
+          <ul class="check">
+            <li>Usa una <b>Caja</b> por turno: apertura, ventas, movimientos de caja y cierre.</li>
+            <li>Los cambios de inventario deben pasar por <b>entradas/salidas</b> con motivo.</li>
+            <li>El <b>IPV</b> te cuadra el día: inicio + entradas - salidas - vendido = final.</li>
+          </ul>
+        </div>
+      </div>
+    </div>

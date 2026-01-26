@@ -1,0 +1,140 @@
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>Productos</h1>
+          <p class="muted">Catálogo central: nombre, SKU, código de barras y precios.</p>
+        </div>
+        <div class="actions">
+          <button class="btn primary" (click)="toggleNew()">{{ showNew() ? 'Cerrar' : 'Nuevo producto' }}</button>
+          <button class="btn" (click)="reload()">Actualizar</button>
+        </div>
+      </div>
+
+      <div class="card" *ngIf="showNew()">
+        <h2>{{ editingId ? 'Editar producto' : 'Crear producto' }}</h2>
+        <div class="form-container">
+          <div class="form-left">
+            <label>
+              <span>Nombre</span>
+              <input [(ngModel)]="newName" placeholder="Ej: Coca Cola 355ml" />
+            </label>
+            <label>
+              <span>Precio de venta</span>
+              <input [(ngModel)]="newPrice" type="number" step="0.01" placeholder="0.00" />
+            </label>
+            <label>
+              <span>Precio de costo</span>
+              <input [(ngModel)]="newCost" type="number" step="0.01" placeholder="Opcional" />
+            </label>
+            <label>
+              <span>Unidad de medida</span>
+              <input [(ngModel)]="newUnit" placeholder="Ej: Unidad, Kg, Litro" />
+            </label>
+          </div>
+          <div class="form-right">
+            <div class="image-upload">
+              <label>
+                <span>Imagen del producto</span>
+                <div class="image-dropzone" (click)="openFileSelector()">
+                  <div *ngIf="!newImagePreview" class="image-placeholder">
+                    <span>Haz clic para seleccionar imagen</span>
+                  </div>
+                  <img *ngIf="newImagePreview" [src]="newImagePreview" alt="Preview" class="image-preview-large" />
+                </div>
+                <input #imageInput type="file" accept="image/*" (change)="onFileSelected($event)" style="display: none;" />
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn primary" (click)="create()" [disabled]="busy() || !newName || !newPrice">
+            {{ editingId ? 'Actualizar' : 'Guardar' }}
+          </button>
+          <button *ngIf="editingId" class="btn" (click)="cancelEdit()">Cancelar</button>
+          <span class="muted" *ngIf="busy()">Guardando…</span>
+        </div>
+      </div>
+
+      <div class="card">
+         <div class="row">
+           <label class="search">
+             <span class="muted">Buscar</span>
+             <input [(ngModel)]="q" placeholder="Nombre / SKU / barcode" />
+           </label>
+           <div class="view-toggle">
+             <button
+               class="btn small"
+               [class.primary]="viewMode === 'table'"
+               (click)="viewMode = 'table'">
+               Tabla
+             </button>
+             <button
+               class="btn small"
+               [class.primary]="viewMode === 'cards'"
+               (click)="viewMode = 'cards'">
+               Tarjetas
+             </button>
+           </div>
+           <div class="muted" *ngIf="error()">Backend pendiente: <code>/api/products</code></div>
+         </div>
+
+        <!-- Vista de Tabla -->
+        <div class="table" *ngIf="viewMode === 'table'">
+           <div class="th">
+             <div>Imagen</div>
+             <div>Nombre</div>
+             <div>SKU</div>
+             <div>Barcode</div>
+             <div>Unidad</div>
+             <div class="r">Costo</div>
+             <div class="r">Precio</div>
+             <div>Acciones</div>
+           </div>
+
+           <div class="tr" *ngFor="let p of filtered()">
+             <div class="image-cell">
+               <img *ngIf="p.image" [src]="p.image" alt="Producto" class="product-image" />
+               <span class="muted" *ngIf="!p.image">—</span>
+             </div>
+             <div class="name">{{ p.name }}</div>
+             <div><code *ngIf="p.sku">{{ p.sku }}</code><span class="muted" *ngIf="!p.sku">—</span></div>
+             <div><code *ngIf="p.barcode">{{ p.barcode }}</code><span class="muted" *ngIf="!p.barcode">—</span></div>
+             <div>{{ p.unit || '—' }}</div>
+             <div class="r">{{ p.cost ? money(p.cost) : '—' }}</div>
+             <div class="r">{{ money(p.price) }}</div>
+             <div class="actions">
+               <button class="btn small" (click)="editProduct(p)">Editar</button>
+             </div>
+           </div>
+         </div>
+
+        <!-- Vista de Tarjetas -->
+        <div class="cards" *ngIf="viewMode === 'cards'">
+           <div class="product-card" *ngFor="let p of filtered()">
+             <div class="card-image">
+               <img *ngIf="p.image" [src]="p.image" alt="Producto" class="card-product-image" />
+               <div class="no-image" *ngIf="!p.image">
+                 <span>Sin imagen</span>
+               </div>
+             </div>
+             <div class="card-content">
+               <h3 class="card-title">{{ p.name }}</h3>
+               <div class="card-details">
+                 <div *ngIf="p.sku" class="detail"><strong>SKU:</strong> <code>{{ p.sku }}</code></div>
+                 <div *ngIf="p.barcode" class="detail"><strong>Barcode:</strong> <code>{{ p.barcode }}</code></div>
+                 <div *ngIf="p.unit" class="detail"><strong>Unidad:</strong> {{ p.unit }}</div>
+                 <div class="detail"><strong>Precio:</strong> {{ money(p.price) }}</div>
+                 <div *ngIf="p.cost" class="detail"><strong>Costo:</strong> {{ money(p.cost) }}</div>
+               </div>
+               <div class="card-actions">
+                 <button class="btn small" (click)="editProduct(p)">Editar</button>
+               </div>
+             </div>
+           </div>
+         </div>
+
+         <div class="empty" *ngIf="!busy() && filtered().length === 0">
+           No hay productos para mostrar.
+         </div>
+      </div>
+    </div>

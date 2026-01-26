@@ -1,0 +1,35 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Denominaciones</h1>
+      <p class="muted">Plantilla para conteo rápido en el cierre de caja.</p>
+    </div>
+    <div class="actions">
+      <a class="btn" routerLink="/settings">Volver</a>
+      <button class="btn primary" (click)="add()">Añadir</button>
+      <button class="btn primary" (click)="save()" [disabled]="busy()">Guardar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="muted" *ngIf="error()">Backend pendiente: <code>/api/settings/denominations</code></div>
+
+    <div class="table">
+      <div class="th">
+        <div>Valor</div>
+        <div class="r">Activo</div>
+        <div class="r">Acciones</div>
+      </div>
+
+      <div class="tr" *ngFor="let d of denoms(); let i = index">
+        <div><input type="number" step="0.01" [(ngModel)]="denoms()[i].value" /></div>
+        <div class="r"><input type="checkbox" [(ngModel)]="denoms()[i].enabled" /></div>
+        <div class="r"><button class="link" (click)="remove(i)">Eliminar</button></div>
+      </div>
+    </div>
+
+    <div class="note mt">
+      Mantén denominaciones realistas. Si no existe el billete… no lo inventes: eso es contabilidad creativa, no contabilidad.
+    </div>
+  </div>
+</div>

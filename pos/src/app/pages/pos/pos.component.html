@@ -1,0 +1,85 @@
+    <div class="wrap">
+      <div class="bar">
+        <h2>POS</h2>
+        <a class="link" routerLink="/register">Cambiar caja</a>
+      </div>
+
+      <div class="status" *ngIf="registerId() as rid">
+        <div>
+          <div class="muted">Caja seleccionada</div>
+          <code>{{ rid }}</code>
+        </div>
+        <div>
+          <div class="muted">Sesión</div>
+          <span *ngIf="session(); else noSession">✅ Abierta</span>
+          <ng-template #noSession>⚠️ Sin sesión</ng-template>
+        </div>
+      </div>
+
+      <div class="panel" *ngIf="!session()">
+        <p>Esta caja no tiene sesión abierta. Abre la caja para poder vender.</p>
+        <div class="grid">
+          <label>
+            <span>Monto inicial</span>
+            <input type="number" step="0.01" [(ngModel)]="opening" />
+          </label>
+          <label>
+            <span>Nota</span>
+            <input [(ngModel)]="note" placeholder="Ej: Cambio inicial" />
+          </label>
+        </div>
+        <button class="btn primary" (click)="openSession()" [disabled]="busy()">{{ busy() ? 'Abriendo…' : 'Abrir caja' }}</button>
+        <p class="err" *ngIf="err()">{{ err() }}</p>
+      </div>
+
+      <div class="layout" *ngIf="session()">
+        <section class="card">
+          <div class="cardHead">
+            <h3>Productos</h3>
+            <button class="btn" (click)="createDemo()">+ Demo</button>
+          </div>
+
+          <input class="search" [(ngModel)]="q" placeholder="Buscar…" />
+
+          <div class="list">
+            <button class="product" *ngFor="let p of filtered()" (click)="add(p)">
+              <div class="name">{{ p.name }}</div>
+              <div class="price">$ {{ toMoney(p.price) }}</div>
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardHead">
+            <h3>Carrito</h3>
+            <div class="muted">{{ cart().length }} líneas</div>
+          </div>
+
+          <div class="cart" *ngIf="cart().length; else empty">
+            <div class="line" *ngFor="let c of cart()">
+              <div>
+                <div class="name">{{ c.name }}</div>
+                <div class="muted">$ {{ c.price.toFixed(2) }} x {{ c.qty }}</div>
+              </div>
+              <div class="qty">
+                <button class="mini" (click)="dec(c)">−</button>
+                <span>{{ c.qty }}</span>
+                <button class="mini" (click)="inc(c)">+</button>
+              </div>
+              <div class="lineTotal">$ {{ (c.price * c.qty).toFixed(2) }}</div>
+            </div>
+
+            <div class="totals">
+              <div class="row"><span>Total</span><b>$ {{ total().toFixed(2) }}</b></div>
+              <button class="btn primary" (click)="payCash()" [disabled]="paying()">{{ paying() ? 'Procesando…' : 'Cobrar CASH' }}</button>
+              <p class="ok" *ngIf="ok()">{{ ok() }}</p>
+              <p class="err" *ngIf="err()">{{ err() }}</p>
+            </div>
+          </div>
+
+          <ng-template #empty>
+            <div class="muted">Agrega productos para comenzar una venta.</div>
+          </ng-template>
+        </section>
+      </div>
+    </div>
