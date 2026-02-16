@@ -1,7 +1,0 @@
-<div class="toasts" aria-live="polite" aria-relevant="additions">
-  <div *ngFor="let t of toast.toasts()" [ngClass]="['toast', t.kind]">
-    <div class="title" *ngIf="t.title">{{ t.title }}</div>
-    <div class="msg">{{ t.message }}</div>
-    <button class="x" (click)="toast.dismiss(t.id)" aria-label="Cerrar">✕</button>
-  </div>
-</div>
