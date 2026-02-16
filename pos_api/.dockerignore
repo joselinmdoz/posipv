@@ -1,0 +1,50 @@
+# =============================================================================
+# .dockerignore - Backend NestJS
+# =============================================================================
+
+# Node.js
+node_modules
+npm-debug.log
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# TypeScript
+*.tsbuildinfo
+dist/
+build/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+.nyc_output/
+
+# Documentación
+README.md
+*.md
+
+# Entorno
+.env
+.env.local
+.env.*.local
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker/
+
+# Varios
+*.log
+tmp/
+temp/
+.DS_Store

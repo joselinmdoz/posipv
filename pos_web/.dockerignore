@@ -1,0 +1,57 @@
+# =============================================================================
+# .dockerignore - Frontend Angular
+# =============================================================================
+
+# Node.js
+node_modules
+npm-debug.log
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# Angular
+.angular/
+dist/
+.NX/
+build/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+.nyc_output/
+e2e/
+
+# Documentación
+README.md
+*.md
+
+# Entorno
+.env
+.env.local
+.env.*.local
+
+# Docker
+Dockerfile
+Dockerfile.prod
+docker-compose*.yml
+.docker/
+
+# Varios
+*.log
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+
+# Demo images (no necesarias en producción)
+public/demo/

@@ -1,0 +1,112 @@
+# =============================================================================
+# Docker Compose - PRODUCCIÓN
+# Configuración completa para POS (Backend + Frontend + PostgreSQL)
+# =============================================================================
+# Uso: docker compose -f docker-compose.prod.yml up -d --build
+# Puertos:
+#   - PostgreSQL: 5421 (interno, no expuesto)
+#   - Backend API: 3021
+#   - Frontend: 80 (nginx)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Base de datos PostgreSQL 16
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: pos_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: pos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos123}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    # En producción, el puerto 5432 solo es accesible dentro de la red
+    # Para acceder desde fuera, usar otro puerto si es necesario
+    ports:
+      - "5421:5432"
+    volumes:
+      - pos_pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos -d pos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pos_network
+
+  # ---------------------------------------------------------------------------
+  # Backend NestJS (API) - Production Build
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ./pos_api
+      dockerfile: Dockerfile
+      target: production
+    container_name: pos_api_prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://pos:${POSTGRES_PASSWORD:-pos123}@postgres:5432/pos?schema=public"
+      JWT_SECRET: ${JWT_SECRET:-CAMBIA_ESTO_POR_ALGO_LARGO_Y_SERIO_EN_PRODUCCION}
+      PORT: 3021
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+    ports:
+      - "3021:3021"
+    volumes:
+      - pos_uploads_prod:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pos_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Frontend Angular - Production Build con Nginx
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ./pos_web
+      dockerfile: Dockerfile.prod
+    container_name: pos_web_prod
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - pos_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+# -------------------------------------------------------------------------------
+# Redes
+# -------------------------------------------------------------------------------
+networks:
+  pos_network:
+    driver: bridge
+
+# -------------------------------------------------------------------------------
+# Volúmenes persistentes
+# -------------------------------------------------------------------------------
+volumes:
+  pos_pgdata_prod:
+    name: pos_pgdata_prod
+  pos_uploads_prod:
+    name: pos_uploads_prod
