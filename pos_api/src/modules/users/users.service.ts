@@ -44,4 +44,15 @@ export class UsersService {
       data: { passwordHash },
     });
   }
+
+  findOne(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, active: true, createdAt: true },
+    });
+  }
+
+  delete(id: string) {
+    return this.prisma.user.delete({ where: { id } });
+  }
 }

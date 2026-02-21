@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { WarehousesService } from "./warehouses.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { IsOptional, IsString, MinLength } from "class-validator";
@@ -27,5 +27,20 @@ export class WarehousesController {
   @Get(":id/stock")
   getStock(@Param("id") warehouseId: string) {
     return this.service.getStock(warehouseId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() dto: { name?: string; code?: string; type?: 'CENTRAL' | 'TPV'; active?: boolean }) {
+    return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string) {
+    return this.service.delete(id);
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { UsersService } from "./users.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
@@ -45,5 +45,15 @@ export class UsersController {
   @Post(":id/reset-password")
   resetPassword(@Param("id") id: string, @Body() dto: ResetPasswordDto) {
     return this.service.resetPassword(id, dto);
+  }
+
+  @Get(":id")
+  findOne(@Param("id") id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Delete(":id")
+  delete(@Param("id") id: string) {
+    return this.service.delete(id);
   }
 }

@@ -33,4 +33,25 @@ export class WarehousesService {
       orderBy: { product: { name: 'asc' } },
     });
   }
+
+  findOne(id: string) {
+    return this.prisma.warehouse.findUnique({
+      where: { id },
+    });
+  }
+
+  update(id: string, dto: { name?: string; code?: string; type?: 'CENTRAL' | 'TPV'; active?: boolean }) {
+    return this.prisma.warehouse.update({
+      where: { id },
+      data: dto as any,
+    });
+  }
+
+  delete(id: string) {
+    // Soft delete
+    return this.prisma.warehouse.update({
+      where: { id },
+      data: { active: false },
+    });
+  }
 }

@@ -42,4 +42,18 @@ export class ProductsService {
       },
     });
   }
+
+  findOne(id: string) {
+    return this.prisma.product.findUnique({
+      where: { id },
+    });
+  }
+
+  delete(id: string) {
+    // Soft delete - solo desactivamos el producto
+    return this.prisma.product.update({
+      where: { id },
+      data: { active: false },
+    });
+  }
 }
