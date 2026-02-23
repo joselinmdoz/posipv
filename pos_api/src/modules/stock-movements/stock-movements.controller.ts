@@ -1,14 +1,14 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { StockMovementsService } from "./stock-movements.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsEnum, IsNumber, IsOptional, IsString } from "class-validator";
 
 class CreateStockMovementDto {
   @IsEnum(['IN', 'OUT', 'TRANSFER']) type!: 'IN' | 'OUT' | 'TRANSFER';
-  @IsUUID() productId!: string;
+  @IsString() productId!: string;
   @IsNumber() qty!: number;
-  @IsOptional() @IsUUID() fromWarehouseId?: string | null;
-  @IsOptional() @IsUUID() toWarehouseId?: string | null;
+  @IsOptional() @IsString() fromWarehouseId?: string | null;
+  @IsOptional() @IsString() toWarehouseId?: string | null;
   @IsOptional() @IsString() reason?: string | null;
 }
 

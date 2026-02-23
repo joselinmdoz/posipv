@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseGuards, UseInterceptors, Req } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProductsService } from "./products.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -8,12 +8,14 @@ import { extname } from "path";
 
 class CreateProductDto {
   @IsString() @MinLength(2) name!: string;
-  @IsOptional() @IsString() sku?: string;
+  @IsOptional() @IsString() codigo?: string;
   @IsOptional() @IsString() barcode?: string;
   @IsNumberString() price!: string;
   @IsOptional() @IsNumberString() cost?: string;
-  @IsOptional() @IsString() unit?: string;
   @IsOptional() @IsString() image?: string;
+  @IsOptional() @IsString() productTypeId?: string;
+  @IsOptional() @IsString() productCategoryId?: string;
+  @IsOptional() @IsString() measurementUnitId?: string;
 }
 
 @Controller("products")
@@ -36,7 +38,17 @@ export class ProductsController {
       },
     }),
   }))
-  create(@Body() dto: CreateProductDto, @UploadedFile() file?: Express.Multer.File) {
+  create(@Req() req: any, @UploadedFile() file?: Express.Multer.File) {
+    const dto: CreateProductDto = {
+      name: req.body.name,
+      price: req.body.price,
+      codigo: req.body.codigo,
+      barcode: req.body.barcode,
+      cost: req.body.cost,
+      productTypeId: req.body.productTypeId,
+      productCategoryId: req.body.productCategoryId,
+      measurementUnitId: req.body.measurementUnitId,
+    };
     if (file) {
       dto.image = `/uploads/${file.filename}`;
     }
@@ -53,13 +65,26 @@ export class ProductsController {
       },
     }),
   }))
-  update(@Param('id') id: string, @Body() dto: Partial<CreateProductDto & { active?: boolean; existingImage?: string }>, @UploadedFile() file?: Express.Multer.File) {
+  update(@Param('id') id: string, @Req() req: any, @UploadedFile() file?: Express.Multer.File) {
+    const dto: Partial<CreateProductDto & { active?: boolean; existingImage?: string }> = {
+      name: req.body.name,
+      price: req.body.price,
+      codigo: req.body.codigo,
+      barcode: req.body.barcode,
+      cost: req.body.cost,
+      productTypeId: req.body.productTypeId,
+      productCategoryId: req.body.productCategoryId,
+      measurementUnitId: req.body.measurementUnitId,
+    };
+    
+    if (req.body.active !== undefined) {
+      dto.active = req.body.active === 'true';
+    }
+    
     if (file) {
       dto.image = `/uploads/${file.filename}`;
-    } else if (dto.existingImage) {
-      // Mantener la imagen existente si no se subió una nueva
-      dto.image = dto.existingImage;
-      delete dto.existingImage;
+    } else if (req.body.existingImage) {
+      dto.image = req.body.existingImage;
     }
     return this.service.update(id, dto);
   }

@@ -2,38 +2,69 @@ import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export interface ProductType {
+  id: string;
+  name: string;
+  description?: string;
+  active: boolean;
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  description?: string;
+  active: boolean;
+}
+
+export interface MeasurementUnit {
+  id: string;
+  name: string;
+  symbol: string;
+  active: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
-  sku?: string;
+  codigo?: string;
   barcode?: string;
   price: number;
+  qtyAvailable?: number;
   cost?: number;
-  unit?: string;
   image?: string;
   active: boolean;
   createdAt: Date;
+  productType?: ProductType;
+  productTypeId?: string;
+  productCategory?: ProductCategory;
+  productCategoryId?: string;
+  measurementUnit?: MeasurementUnit;
+  measurementUnitId?: string;
 }
 
 export interface CreateProductDto {
   name: string;
-  sku?: string;
+  codigo?: string;
   barcode?: string;
   price: string;
   cost?: string;
-  unit?: string;
   image?: string;
+  productTypeId?: string;
+  productCategoryId?: string;
+  measurementUnitId?: string;
 }
 
 export interface UpdateProductDto {
   name?: string;
-  sku?: string;
+  codigo?: string;
   barcode?: string;
   price?: string;
   cost?: string;
-  unit?: string;
   image?: string;
   active?: boolean;
+  productTypeId?: string;
+  productCategoryId?: string;
+  measurementUnitId?: string;
 }
 
 @Injectable({
@@ -69,5 +100,15 @@ export class ProductsService {
     const formData = new FormData();
     formData.append('image', file);
     return this.http.post<{ path: string }>(`${this.API_URL}/upload`, formData);
+  }
+
+  // Create product with form data (including image)
+  createWithFormData(formData: FormData): Observable<Product> {
+    return this.http.post<Product>(this.API_URL, formData);
+  }
+
+  // Update product with form data (including image)
+  updateWithFormData(id: string, formData: FormData): Observable<Product> {
+    return this.http.put<Product>(`${this.API_URL}/${id}`, formData);
   }
 }

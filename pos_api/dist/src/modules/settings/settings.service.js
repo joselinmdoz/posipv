@@ -78,17 +78,20 @@ let SettingsService = class SettingsService {
                 })),
             });
         }
-        if (payload.denominations) {
+        if (payload.denominations !== undefined) {
+            const denominations = this.normalizeDenominations(payload.denominations);
             await this.prisma.denomination.deleteMany({
                 where: { registerSettingsId: settings.id },
             });
-            await this.prisma.denomination.createMany({
-                data: payload.denominations.map(value => ({
-                    registerSettingsId: settings.id,
-                    value: (0, decimal_1.dec)(value.toString()),
-                    enabled: true,
-                })),
-            });
+            if (denominations.length > 0) {
+                await this.prisma.denomination.createMany({
+                    data: denominations.map((d) => ({
+                        registerSettingsId: settings.id,
+                        value: (0, decimal_1.dec)(d.value.toString()),
+                        enabled: d.enabled,
+                    })),
+                });
+            }
         }
         return this.prisma.registerSettings.findUnique({
             where: { registerId },
@@ -139,6 +142,22 @@ let SettingsService = class SettingsService {
                 denominations: true,
             },
         });
+    }
+    normalizeDenominations(input) {
+        const map = new Map();
+        for (const item of input) {
+            const rawValue = typeof item === "number" ? item : Number(item.value);
+            const enabled = typeof item === "number" ? true : item.enabled !== false;
+            if (!Number.isFinite(rawValue)) {
+                throw new common_1.BadRequestException("Denominación inválida.");
+            }
+            const value = Number(rawValue.toFixed(2));
+            if (value <= 0) {
+                throw new common_1.BadRequestException("Las denominaciones deben ser mayores a 0.");
+            }
+            map.set(value, { value, enabled });
+        }
+        return Array.from(map.values()).sort((a, b) => a.value - b.value);
     }
 };
 exports.SettingsService = SettingsService;

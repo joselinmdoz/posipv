@@ -1,193 +1,97 @@
 # Rutas del Frontend
 
-## Estructura de Rutas
-
-El proyecto utiliza Angular Router con **lazy loading** para cargar los módulos de forma perezosa y mejorar el rendimiento.
-
-### Archivo Principal de Rutas
+## Estructura real de rutas (`pos_web/src/app.routes.ts`)
 
 ```typescript
-// pos_web/src/app.routes.ts
 export const appRoutes: Routes = [
-    {
-        path: 'auth',
-        loadChildren: () => import('./app/pages/auth/auth.routes')
-    },
-    {
-        path: '',
-        component: AppLayout,
-        canActivate: [authGuard],
-        children: [
-            { path: '', component: Dashboard },
-            { path: 'uikit', loadChildren: () => import('./app/pages/uikit/uikit.routes') },
-            { path: 'documentation', component: Documentation },
-            { path: 'pages', loadChildren: () => import('./app/pages/pages.routes') }
-        ]
-    },
-    { path: 'landing', component: Landing },
-    { path: 'notfound', component: Notfound },
-    { path: '**', redirectTo: '/notfound' }
+  { path: 'auth', loadChildren: () => import('./app/pages/auth/auth.routes') },
+  {
+    path: '',
+    component: AppLayout,
+    canActivate: [authGuard],
+    children: [
+      { path: '', component: Dashboard },
+      { path: 'users', component: Users },
+      { path: 'products', component: Products },
+      { path: 'product-types', component: ProductTypes },
+      { path: 'product-categories', component: ProductCategories },
+      { path: 'measurement-units', component: MeasurementUnits },
+      { path: 'warehouses', component: Warehouses },
+      { path: 'tpv-management', component: TpvManagement },
+      { path: 'tpv', component: Tpv },
+      { path: 'settings', component: Settings },
+      { path: 'denominations', component: Denominations },
+      { path: 'reports', component: Reports },
+      { path: 'inventory-reports', component: InventoryReportsComponent },
+      { path: 'uikit', loadChildren: () => import('./app/pages/uikit/uikit.routes') },
+      { path: 'documentation', component: Documentation },
+      { path: 'pages', loadChildren: () => import('./app/pages/pages.routes') }
+    ]
+  },
+  { path: 'landing', component: Landing },
+  { path: 'notfound', component: Notfound },
+  { path: '**', redirectTo: '/notfound' }
 ];
 ```
 
 ---
 
-## Rutas Públicas
+## Rutas publicas
 
-### /auth/login
-- **Componente:** Login
-- **Descripción:** Página de inicio de sesión
-- **Acceso:** Público (sin autenticación)
-
-### /auth/access
-- **Componente:** Access
-- **Descripción:** Página de acceso denegado
-
-### /auth/error
-- **Componente:** Error
-- **Descripción:** Página de error
+- `/auth/login`: inicio de sesion.
+- `/auth/access`: acceso denegado.
+- `/auth/error`: pagina de error.
+- `/landing`: landing publica.
+- `/notfound`: pagina 404.
 
 ---
 
-## Rutas Protegidas
+## Rutas protegidas (requieren JWT)
 
-Todas las rutas dentro del `AppLayout` requieren autenticación.
-
-### /
-- **Componente:** Dashboard
-- **Descripción:** Panel principal
-- **Requiere:** Autenticación
-
-### /uikit
-- **Carga:** Lazy loading
-- **Descripción:** Componentes UI de PrimeNG
-- **Requiere:** Autenticación
-
-### /documentation
-- **Componente:** Documentation
-- **Descripción:** Documentación de la aplicación
-- **Requiere:** Autenticación
-
-### /pages
-- **Carga:** Lazy loading
-- **Descripción:** Páginas adicionales
-- **Requiere:** Autenticación
+- `/`: dashboard principal.
+- `/tpv-management`: administracion de TPV y acceso a sesion.
+- `/tpv`: punto de venta activo.
+- `/inventory-reports`: consulta de IPV por sesion.
+- `/products`, `/warehouses`, `/settings`, `/reports`, etc.
 
 ---
 
-## Rutas Especiales
+## Flujos nuevos de navegacion (2026-02-23)
 
-### /landing
-- **Componente:** Landing
-- **Descripción:** Página de landing pública
-- **Acceso:** Público
+### 1) Apertura directa de sesion desde TPV management
 
-### /notfound
-- **Componente:** Notfound
-- **Descripción:** Página 404
-- **Acceso:** Público
+Desde `/tpv-management`, el boton `Abrir sesion`:
 
-### /**
-- **Comportamiento:** Redirige a /notfound
+1. valida estado del TPV,
+2. intenta abrir sesion con el fondo por defecto configurado,
+3. navega a `/tpv?action=continue&registerId=<id>`.
 
----
+Si el TPV ya tenia sesion abierta, navega directo a `/tpv` con `action=continue`.
 
-## Guard de Autenticación
+### 2) Parametros de entrada a `/tpv`
 
-### Implementación
+- `registerId`: TPV a cargar.
+- `action=open`: abrir modal de apertura.
+- `action=continue`: intentar continuar sesion existente.
 
-```typescript
-// pos_web/src/app.routes.ts
-const authGuard = () => {
-    const authService = inject(AuthService);
-    const router = inject(Router);
-    
-    if (authService.isAuthenticated()) {
-        return true;
-    }
-    
-    return router.createUrlTree(['/auth/login']);
-};
-```
+### 3) Salida al cerrar sesion de caja
 
-### Funcionamiento
+Al cerrar sesion desde `/tpv`, la aplicacion redirige automaticamente a:
 
-1. Cuando el usuario intenta acceder a una ruta protegida
-2. El guard verifica si hay un token en localStorage
-3. Si existe token y es válido, permite el acceso
-4. Si no existe, redirige a /auth/login
+- `/tpv-management`
+
+### 4) Reporte IPV por sesion
+
+Desde `/tpv` y desde `/inventory-reports` se abre el mismo esquema de detalle IPV:
+
+- resumen de ventas/entradas/salidas,
+- totales por metodo de pago,
+- tabla de lineas,
+- pie con solo `Total Importe`.
 
 ---
 
-## Lazy Loading
+## Guard de autenticacion
 
-El proyecto utiliza lazy loading para optimizar el rendimiento:
-
-```typescript
-{ path: 'auth', loadChildren: () => import('./app/pages/auth/auth.routes') }
-{ path: 'uikit', loadChildren: () => import('./app/pages/uikit/uikit.routes') }
-{ path: 'pages', loadChildren: () => import('./app/pages/pages.routes') }
-```
-
----
-
-## Navegación
-
-### Desde el Template
-
-```html
-<!-- RouterLink sin reload -->
-<a routerLink="/">Inicio</a>
-
-<!-- RouterLink con parámetros -->
-<a [routerLink]="['/product', product.id]">Ver producto</a>
-
-<!-- Redirección programática -->
-<button (click)="goToDashboard()">Dashboard</button>
-```
-
-### Desde TypeScript
-
-```typescript
-import { Router } from '@angular/router';
-
-constructor(private router: Router) {}
-
-navigateToDashboard() {
-    this.router.navigate(['/']);
-}
-
-navigateToProduct(id: string) {
-    this.router.navigate(['/product', id]);
-}
-```
-
----
-
-## Rutas Hijas (Auth)
-
-```typescript
-// pos_web/src/app/pages/auth/auth.routes.ts
-export default [
-    { path: 'access', component: Access },
-    { path: 'error', component: Error },
-    { path: 'login', component: Login }
-] as Routes;
-```
-
----
-
-## Ejemplos de curl
-
-### Proteger ruta con token
-
-```bash
-curl http://localhost:4200/ \
-  -H "Authorization: Bearer <tu_token_jwt>"
-```
-
-### Acceder a ruta de login
-
-```bash
-curl http://localhost:4200/auth/login
-```
+El `authGuard` valida `authService.isAuthenticated()`.  
+Sin token valido, redirige a `/auth/login`.

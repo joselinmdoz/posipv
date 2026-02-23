@@ -38,6 +38,20 @@
 
 ---
 
+## Novedades 2026-02-23
+
+- Flujo TPV/IPV actualizado a **un IPV por sesion**.
+- Documentado detalle IPV en TPV e Inventory Reports (resumen + metodos de pago + total importe).
+- Documentados endpoints nuevos de sesiones:
+  - `GET /api/cash-sessions`
+  - `GET /api/cash-sessions/:id`
+- Documentado flujo de:
+  - apertura directa de sesion desde `/tpv-management`,
+  - retorno a `/tpv-management` al cerrar caja,
+  - movimientos de inventario IN/OUT desde TPV.
+
+---
+
 ## Inicio Rápido
 
 ### Ejecutar el Proyecto

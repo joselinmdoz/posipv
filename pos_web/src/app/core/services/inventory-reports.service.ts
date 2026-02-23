@@ -8,7 +8,7 @@ export interface InventoryReportItem {
   product: {
     id: string;
     name: string;
-    sku?: string;
+    codigo?: string;
     barcode?: string;
     price: number;
     unit?: string;
@@ -34,12 +34,60 @@ export interface InventoryReport {
   items: InventoryReportItem[];
 }
 
+export interface SessionIvpLine {
+  productId: string;
+  name: string;
+  codigo?: string | null;
+  initial: number;
+  entries: number;
+  outs: number;
+  sales: number;
+  total: number;
+  final: number;
+  price: number;
+  amount: number;
+}
+
+export interface SessionIvpReport {
+  cashSessionId: string;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: string;
+  closedAt?: string | null;
+  register: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  warehouse: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  lines: SessionIvpLine[];
+  totals: {
+    initial: number;
+    entries: number;
+    outs: number;
+    sales: number;
+    total: number;
+    final: number;
+    amount: number;
+  };
+  paymentTotals: {
+    CASH: number;
+    CARD: number;
+    TRANSFER: number;
+    OTHER: number;
+  };
+  closed: boolean;
+}
+
 @Injectable({
   providedIn: 'root',
 })
 export class InventoryReportsService {
   private http = inject(HttpClient);
-  private baseUrl = '/api/inventory-reports';
+  private readonly baseUrl = 'http://localhost:3021/api/inventory-reports';
 
   createInitial(cashSessionId: string, warehouseId: string): Observable<InventoryReport> {
     return this.http.post<InventoryReport>(`${this.baseUrl}/initial`, {
@@ -57,6 +105,10 @@ export class InventoryReportsService {
 
   findBySession(cashSessionId: string): Observable<InventoryReport[]> {
     return this.http.get<InventoryReport[]>(`${this.baseUrl}/session/${cashSessionId}`);
+  }
+
+  getSessionIpv(cashSessionId: string): Observable<SessionIvpReport> {
+    return this.http.get<SessionIvpReport>(`${this.baseUrl}/session/${cashSessionId}/ipv`);
   }
 
   getLatestBySession(cashSessionId: string, type?: 'INITIAL' | 'FINAL'): Observable<InventoryReport | null> {

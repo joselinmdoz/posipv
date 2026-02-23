@@ -1241,6 +1241,7 @@ git submodule update --init --recursive
 
 | Fecha | Versión | Cambios | Responsable |
 |-------|---------|---------|-------------|
+| 2026-02-23 | 1.1.0 | Actualizacion de flujo TPV/IPV: un IPV por sesion, detalle IPV alineado entre TPV e inventory-reports, exportacion XLSX/PDF, entrada/salida desde TPV, apertura directa de sesion y retorno a TPV Management al cerrar caja; documentados endpoints `GET /cash-sessions` y `GET /cash-sessions/:id` | Equipo POS |
 | 2026-02-16 | 1.0.0 | Documentación inicial | Sistema |
 
 ### 8.2 Plantilla para Nuevos Cambios

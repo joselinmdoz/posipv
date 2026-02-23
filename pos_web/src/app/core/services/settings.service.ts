@@ -42,7 +42,7 @@ export class SettingsService {
     currency?: string;
     warehouseId?: string;
     paymentMethods?: string[];
-    denominations?: number[];
+    denominations?: Array<{ value: number; enabled: boolean }>;
   }): Observable<RegisterSettings> {
     return this.http.put<RegisterSettings>(`${this.API_URL}/register/${registerId}`, data);
   }

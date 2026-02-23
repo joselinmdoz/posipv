@@ -86,6 +86,15 @@ El dashboard es la pantalla principal después de iniciar sesión. Muestra:
 
 ## Punto de Venta (POS)
 
+### Gestion desde TPV Management
+
+1. Ve a la vista de TPV Management.
+2. En el TPV deseado, haz clic en **Abrir sesion**.
+3. Si no hay sesion abierta:
+   - el sistema abre la sesion con el fondo por defecto configurado,
+   - y entra directo a la vista `/tpv`.
+4. Si ya existe sesion abierta, entra directo en modo **Continuar sesion**.
+
 ### Realizar una Venta
 
 1. Abre una caja registradora
@@ -109,6 +118,37 @@ El dashboard es la pantalla principal después de iniciar sesión. Muestra:
 3. Ingresa el monto final
 4. Agrega notas si es necesario
 5. Confirma el cierre
+6. Al cerrar correctamente, el sistema regresa automaticamente a `/tpv-management`
+
+### Entradas y salidas de inventario desde TPV
+
+Con una sesion abierta:
+
+1. Haz clic en **Entrada / Salida**.
+2. Selecciona tipo de movimiento:
+   - **Entrada** para incrementar stock del almacen del TPV.
+   - **Salida** para disminuir stock del almacen del TPV.
+3. Selecciona producto y cantidad.
+4. En salidas, valida que la cantidad no supere el stock disponible.
+5. Guarda el movimiento.
+
+### IPV de la sesion desde TPV
+
+Con una sesion abierta:
+
+1. Haz clic en **IPV Sesion**.
+2. El modal muestra:
+   - total de ventas,
+   - total de entradas,
+   - total de salidas,
+   - total por metodo de pago.
+3. En la barra superior del reporte se muestran:
+   - nombre del TPV,
+   - fecha y hora de apertura.
+4. Puedes:
+   - actualizar el reporte,
+   - exportar a **.xlsx** o **.pdf**.
+5. En el pie de tabla solo se muestra **Total Importe**.
 
 ---
 
@@ -127,6 +167,22 @@ Para registrar movimientos de inventario:
 4. Ingresa la cantidad
 5. Indica el motivo
 6. Confirma el movimiento
+
+### Reportes IPV por sesion
+
+En `/inventory-reports`:
+
+1. Aplica filtros por:
+   - estado de sesion (abierta/cerrada),
+   - almacen,
+   - ID de sesion,
+   - texto libre (TPV/almacen),
+   - rango de fecha de apertura.
+2. Presiona **Buscar**.
+3. Visualiza resultados por sesion (un IPV por sesion).
+4. En detalle se muestra el mismo reporte IPV que en TPV.
+
+> Nota operativa: ya no se maneja IPV inicial/final para uso funcional de reporteria; el reporte es unico por sesion.
 
 ---
 

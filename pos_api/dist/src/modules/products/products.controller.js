@@ -31,7 +31,7 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateProductDto.prototype, "sku", void 0);
+], CreateProductDto.prototype, "codigo", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -50,12 +50,22 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateProductDto.prototype, "unit", void 0);
+], CreateProductDto.prototype, "image", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateProductDto.prototype, "image", void 0);
+], CreateProductDto.prototype, "productTypeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "productCategoryId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "measurementUnitId", void 0);
 let ProductsController = class ProductsController {
     constructor(service) {
         this.service = service;
@@ -63,21 +73,49 @@ let ProductsController = class ProductsController {
     list() {
         return this.service.list();
     }
-    create(dto, file) {
+    create(req, file) {
+        const dto = {
+            name: req.body.name,
+            price: req.body.price,
+            codigo: req.body.codigo,
+            barcode: req.body.barcode,
+            cost: req.body.cost,
+            productTypeId: req.body.productTypeId,
+            productCategoryId: req.body.productCategoryId,
+            measurementUnitId: req.body.measurementUnitId,
+        };
         if (file) {
             dto.image = `/uploads/${file.filename}`;
         }
         return this.service.create(dto);
     }
-    update(id, dto, file) {
+    update(id, req, file) {
+        const dto = {
+            name: req.body.name,
+            price: req.body.price,
+            codigo: req.body.codigo,
+            barcode: req.body.barcode,
+            cost: req.body.cost,
+            productTypeId: req.body.productTypeId,
+            productCategoryId: req.body.productCategoryId,
+            measurementUnitId: req.body.measurementUnitId,
+        };
+        if (req.body.active !== undefined) {
+            dto.active = req.body.active === 'true';
+        }
         if (file) {
             dto.image = `/uploads/${file.filename}`;
         }
-        else if (dto.existingImage) {
-            dto.image = dto.existingImage;
-            delete dto.existingImage;
+        else if (req.body.existingImage) {
+            dto.image = req.body.existingImage;
         }
         return this.service.update(id, dto);
+    }
+    findOne(id) {
+        return this.service.findOne(id);
+    }
+    delete(id) {
+        return this.service.delete(id);
     }
 };
 exports.ProductsController = ProductsController;
@@ -98,10 +136,10 @@ __decorate([
             },
         }),
     })),
-    __param(0, (0, common_1.Body)()),
+    __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [CreateProductDto, Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], ProductsController.prototype, "create", null);
 __decorate([
@@ -116,12 +154,26 @@ __decorate([
         }),
     })),
     __param(0, (0, common_1.Param)('id')),
-    __param(1, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
     __param(2, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", void 0)
 ], ProductsController.prototype, "update", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ProductsController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ProductsController.prototype, "delete", null);
 exports.ProductsController = ProductsController = __decorate([
     (0, common_1.Controller)("products"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

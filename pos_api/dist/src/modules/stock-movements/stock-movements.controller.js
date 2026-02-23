@@ -24,7 +24,7 @@ __decorate([
     __metadata("design:type", String)
 ], CreateStockMovementDto.prototype, "type", void 0);
 __decorate([
-    (0, class_validator_1.IsUUID)(),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateStockMovementDto.prototype, "productId", void 0);
 __decorate([
@@ -33,12 +33,12 @@ __decorate([
 ], CreateStockMovementDto.prototype, "qty", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUUID)(),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", Object)
 ], CreateStockMovementDto.prototype, "fromWarehouseId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUUID)(),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", Object)
 ], CreateStockMovementDto.prototype, "toWarehouseId", void 0);
 __decorate([

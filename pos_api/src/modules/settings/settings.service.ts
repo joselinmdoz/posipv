@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec } from "../../common/decimal";
 
@@ -35,7 +35,7 @@ export class SettingsService {
     currency: string;
     warehouseId: string;
     paymentMethods: string[];
-    denominations: number[];
+    denominations: Array<number | { value: number; enabled?: boolean }>;
   }>) {
     const data: any = {};
     if (payload.defaultOpeningFloat !== undefined) {
@@ -81,17 +81,20 @@ export class SettingsService {
     }
 
     // Update denominations
-    if (payload.denominations) {
+    if (payload.denominations !== undefined) {
+      const denominations = this.normalizeDenominations(payload.denominations);
       await this.prisma.denomination.deleteMany({
         where: { registerSettingsId: settings.id },
       });
-      await this.prisma.denomination.createMany({
-        data: payload.denominations.map(value => ({
-          registerSettingsId: settings.id,
-          value: dec(value.toString()),
-          enabled: true,
-        })),
-      });
+      if (denominations.length > 0) {
+        await this.prisma.denomination.createMany({
+          data: denominations.map((d) => ({
+            registerSettingsId: settings.id,
+            value: dec(d.value.toString()),
+            enabled: d.enabled,
+          })),
+        });
+      }
     }
 
     return this.prisma.registerSettings.findUnique({
@@ -151,5 +154,27 @@ export class SettingsService {
         denominations: true,
       },
     });
+  }
+
+  private normalizeDenominations(input: Array<number | { value: number; enabled?: boolean }>) {
+    const map = new Map<number, { value: number; enabled: boolean }>();
+
+    for (const item of input) {
+      const rawValue = typeof item === "number" ? item : Number(item.value);
+      const enabled = typeof item === "number" ? true : item.enabled !== false;
+
+      if (!Number.isFinite(rawValue)) {
+        throw new BadRequestException("Denominación inválida.");
+      }
+
+      const value = Number(rawValue.toFixed(2));
+      if (value <= 0) {
+        throw new BadRequestException("Las denominaciones deben ser mayores a 0.");
+      }
+
+      map.set(value, { value, enabled });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.value - b.value);
   }
 }

@@ -47,6 +47,15 @@ let WarehousesController = class WarehousesController {
     getStock(warehouseId) {
         return this.service.getStock(warehouseId);
     }
+    findOne(id) {
+        return this.service.findOne(id);
+    }
+    update(id, dto) {
+        return this.service.update(id, dto);
+    }
+    delete(id) {
+        return this.service.delete(id);
+    }
 };
 exports.WarehousesController = WarehousesController;
 __decorate([
@@ -69,6 +78,28 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], WarehousesController.prototype, "getStock", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Put)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "update", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "delete", null);
 exports.WarehousesController = WarehousesController = __decorate([
     (0, common_1.Controller)("warehouses"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

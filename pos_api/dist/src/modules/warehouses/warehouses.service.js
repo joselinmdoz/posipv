@@ -36,10 +36,27 @@ let WarehousesService = class WarehousesService {
             where: { warehouseId },
             include: {
                 product: {
-                    select: { id: true, name: true, sku: true },
+                    select: { id: true, name: true, codigo: true },
                 },
             },
             orderBy: { product: { name: 'asc' } },
+        });
+    }
+    findOne(id) {
+        return this.prisma.warehouse.findUnique({
+            where: { id },
+        });
+    }
+    update(id, dto) {
+        return this.prisma.warehouse.update({
+            where: { id },
+            data: dto,
+        });
+    }
+    delete(id) {
+        return this.prisma.warehouse.update({
+            where: { id },
+            data: { active: false },
         });
     }
 };

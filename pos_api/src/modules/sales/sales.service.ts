@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CashSessionStatus } from "@prisma/client";
+import { CashSessionStatus, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
 import { Prisma } from "@prisma/client";
 
@@ -8,25 +8,100 @@ import { Prisma } from "@prisma/client";
 export class SalesService {
   constructor(private prisma: PrismaService) {}
 
+  async listSessionProducts(cashSessionId: string) {
+    const session = await this.prisma.cashSession.findUnique({
+      where: { id: cashSessionId },
+      include: {
+        register: {
+          include: {
+            warehouse: true,
+          },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException("Sesión de caja no existe.");
+    if (session.status !== CashSessionStatus.OPEN) throw new BadRequestException("La sesión no está abierta.");
+    if (!session.register.warehouse?.id) {
+      throw new BadRequestException("El TPV no tiene almacén asociado.");
+    }
+
+    const stock = await this.prisma.stock.findMany({
+      where: {
+        warehouseId: session.register.warehouse.id,
+        qty: { gt: 0 },
+        product: { active: true },
+      },
+      include: {
+        product: {
+          include: {
+            productType: true,
+            productCategory: true,
+            measurementUnit: true,
+          },
+        },
+      },
+      orderBy: { product: { name: "asc" } },
+    });
+
+    return stock.map((item) => ({
+      ...item.product,
+      qtyAvailable: item.qty,
+    }));
+  }
+
   async createSale(cashierId: string, dto: any) {
     const session = await this.prisma.cashSession.findUnique({
       where: { id: dto.cashSessionId },
-      include: { register: true },
+      include: {
+        register: {
+          include: {
+            warehouse: true,
+          },
+        },
+      },
     });
     if (!session) throw new NotFoundException("Sesión de caja no existe.");
     if (session.status !== CashSessionStatus.OPEN) throw new BadRequestException("La sesión no está abierta.");
+    if (!session.register.warehouse?.id) {
+      throw new BadRequestException("El TPV no tiene almacén asociado.");
+    }
+    const tpvWarehouseId = session.register.warehouse.id;
 
     if (!dto.items?.length) throw new BadRequestException("Sin items.");
     if (!dto.payments?.length) throw new BadRequestException("Sin pagos.");
 
-    const productIds = dto.items.map((i: any) => i.productId);
-    const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds }, active: true },
+    const qtyByProduct = new Map<string, number>();
+    for (const item of dto.items) {
+      const currentQty = qtyByProduct.get(item.productId) || 0;
+      qtyByProduct.set(item.productId, currentQty + item.qty);
+    }
+    const productIds = Array.from(qtyByProduct.keys());
+
+    const stockRows = await this.prisma.stock.findMany({
+      where: {
+        warehouseId: tpvWarehouseId,
+        productId: { in: productIds },
+        product: { active: true },
+      },
+      include: {
+        product: true,
+      },
     });
 
-    if (products.length !== productIds.length) throw new BadRequestException("Producto inválido o inactivo.");
+    if (stockRows.length !== productIds.length) {
+      throw new BadRequestException("Hay productos inválidos, inactivos o sin stock en el TPV.");
+    }
 
-    const priceMap = new Map(products.map((p) => [p.id, p.price]));
+    const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
+    for (const [productId, requestedQty] of qtyByProduct.entries()) {
+      const stock = stockByProduct.get(productId);
+      if (!stock || stock.qty < requestedQty) {
+        throw new BadRequestException("Stock insuficiente para completar la venta.");
+      }
+    }
+
+    const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
 
     let total = new Prisma.Decimal(0);
 
@@ -60,6 +135,33 @@ export class SalesService {
         },
         include: { items: true, payments: true },
       });
+
+      for (const [productId, requestedQty] of qtyByProduct.entries()) {
+        const updated = await tx.stock.updateMany({
+          where: {
+            warehouseId: tpvWarehouseId,
+            productId,
+            qty: { gte: requestedQty },
+          },
+          data: {
+            qty: { decrement: requestedQty },
+          },
+        });
+
+        if (updated.count === 0) {
+          throw new BadRequestException("Stock insuficiente al confirmar la venta.");
+        }
+
+        await tx.stockMovement.create({
+          data: {
+            type: StockMovementType.OUT,
+            productId,
+            qty: requestedQty,
+            fromWarehouseId: tpvWarehouseId,
+            reason: "VENTA",
+          },
+        });
+      }
 
       return sale;
     });

@@ -21,18 +21,25 @@ let ProductsService = class ProductsService {
         return this.prisma.product.findMany({
             where: { active: true },
             orderBy: { createdAt: "desc" },
+            include: {
+                productType: true,
+                productCategory: true,
+                measurementUnit: true,
+            },
         });
     }
     create(dto) {
         return this.prisma.product.create({
             data: {
                 name: dto.name,
-                sku: dto.sku,
+                codigo: dto.codigo,
                 barcode: dto.barcode,
                 price: (0, decimal_1.dec)(dto.price),
                 cost: dto.cost ? (0, decimal_1.dec)(dto.cost) : undefined,
-                unit: dto.unit,
                 image: dto.image,
+                productTypeId: dto.productTypeId,
+                productCategoryId: dto.productCategoryId,
+                measurementUnitId: dto.measurementUnitId,
             },
         });
     }
@@ -41,14 +48,32 @@ let ProductsService = class ProductsService {
             where: { id },
             data: {
                 name: dto.name,
-                sku: dto.sku,
+                codigo: dto.codigo,
                 barcode: dto.barcode,
                 price: dto.price ? (0, decimal_1.dec)(dto.price) : undefined,
                 cost: dto.cost ? (0, decimal_1.dec)(dto.cost) : undefined,
-                unit: dto.unit,
                 image: dto.image,
                 active: dto.active,
+                productTypeId: dto.productTypeId,
+                productCategoryId: dto.productCategoryId,
+                measurementUnitId: dto.measurementUnitId,
             },
+        });
+    }
+    findOne(id) {
+        return this.prisma.product.findUnique({
+            where: { id },
+            include: {
+                productType: true,
+                productCategory: true,
+                measurementUnit: true,
+            },
+        });
+    }
+    delete(id) {
+        return this.prisma.product.update({
+            where: { id },
+            data: { active: false },
         });
     }
 };

@@ -20,6 +20,7 @@ import {
     StockItem, 
     StockMovement 
 } from '@/app/core/services/warehouses.service';
+import { ProductsService, Product } from '@/app/core/services/products.service';
 
 @Component({
     selector: 'app-warehouses',
@@ -189,7 +190,7 @@ import {
                 <ng-template #body let-item>
                     <tr>
                         <td>{{ item.product.name }}</td>
-                        <td>{{ item.product.sku || '-' }}</td>
+                        <td>{{ item.product.codigo || '-' }}</td>
                         <td>{{ item.qty }}</td>
                     </tr>
                 </ng-template>
@@ -205,6 +206,10 @@ import {
                 <div class="flex flex-col gap-2">
                     <label>Tipo de Movimiento</label>
                     <p-select [options]="movementTypeOptions" [(ngModel)]="movement.type" optionLabel="label" optionValue="value" />
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label>Producto *</label>
+                    <p-select [options]="productOptions" [(ngModel)]="movement.productId" optionLabel="label" optionValue="value" placeholder="Seleccione un producto" />
                 </div>
                 <div class="flex flex-col gap-2">
                     <label>Cantidad *</label>
@@ -265,9 +270,11 @@ export class Warehouses implements OnInit {
     ];
 
     warehouseOptions: any[] = [];
+    productOptions: any[] = [];
 
     constructor(
         private warehousesService: WarehousesService,
+        private productsService: ProductsService,
         private messageService: MessageService,
         private confirmationService: ConfirmationService
     ) {}
@@ -275,6 +282,7 @@ export class Warehouses implements OnInit {
     ngOnInit() {
         this.loadWarehouses();
         this.loadMovements();
+        this.loadProductsForMovements();
     }
 
     loadWarehouses() {
@@ -291,6 +299,18 @@ export class Warehouses implements OnInit {
         this.warehousesService.listMovements({ warehouseId: this.selectedWarehouseFilter || undefined }).subscribe({
             next: (movements) => this.movements.set(movements),
             error: () => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar movimientos' })
+        });
+    }
+
+    loadProductsForMovements() {
+        this.productsService.list().subscribe({
+            next: (products) => {
+                this.productOptions = products.map((p: Product) => ({
+                    label: p.codigo ? `${p.name} (${p.codigo})` : p.name,
+                    value: p.id
+                }));
+            },
+            error: () => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos' })
         });
     }
 
@@ -370,6 +390,11 @@ export class Warehouses implements OnInit {
     }
 
     saveMovement() {
+        if (!this.movement.productId) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Seleccione un producto' });
+            return;
+        }
+
         if (!this.movement.qty) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Ingrese la cantidad' });
             return;
@@ -385,13 +410,26 @@ export class Warehouses implements OnInit {
             return;
         }
 
-        this.warehousesService.createMovement(this.movement).subscribe({
+        const payload = {
+            type: this.movement.type as 'IN' | 'OUT' | 'TRANSFER',
+            productId: this.movement.productId,
+            qty: Number(this.movement.qty),
+            fromWarehouseId: this.movement.fromWarehouseId || undefined,
+            toWarehouseId: this.movement.toWarehouseId || undefined,
+            reason: this.movement.reason?.trim() || undefined
+        };
+
+        this.warehousesService.createMovement(payload).subscribe({
             next: () => {
                 this.messageService.add({ severity: 'success', summary: 'Éxito', detail: 'Movimiento registrado' });
                 this.loadMovements();
                 this.hideMovementDialog();
             },
-            error: () => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al registrar movimiento' })
+            error: (err) => this.messageService.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: err?.error?.message || 'Error al registrar movimiento'
+            })
         });
     }
 

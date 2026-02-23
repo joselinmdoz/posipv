@@ -19,26 +19,96 @@ let SalesService = class SalesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async createSale(cashierId, dto) {
+    async listSessionProducts(cashSessionId) {
         const session = await this.prisma.cashSession.findUnique({
-            where: { id: dto.cashSessionId },
-            include: { register: true },
+            where: { id: cashSessionId },
+            include: {
+                register: {
+                    include: {
+                        warehouse: true,
+                    },
+                },
+            },
         });
         if (!session)
             throw new common_1.NotFoundException("Sesión de caja no existe.");
         if (session.status !== client_1.CashSessionStatus.OPEN)
             throw new common_1.BadRequestException("La sesión no está abierta.");
+        if (!session.register.warehouse?.id) {
+            throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
+        }
+        const stock = await this.prisma.stock.findMany({
+            where: {
+                warehouseId: session.register.warehouse.id,
+                qty: { gt: 0 },
+                product: { active: true },
+            },
+            include: {
+                product: {
+                    include: {
+                        productType: true,
+                        productCategory: true,
+                        measurementUnit: true,
+                    },
+                },
+            },
+            orderBy: { product: { name: "asc" } },
+        });
+        return stock.map((item) => ({
+            ...item.product,
+            qtyAvailable: item.qty,
+        }));
+    }
+    async createSale(cashierId, dto) {
+        const session = await this.prisma.cashSession.findUnique({
+            where: { id: dto.cashSessionId },
+            include: {
+                register: {
+                    include: {
+                        warehouse: true,
+                    },
+                },
+            },
+        });
+        if (!session)
+            throw new common_1.NotFoundException("Sesión de caja no existe.");
+        if (session.status !== client_1.CashSessionStatus.OPEN)
+            throw new common_1.BadRequestException("La sesión no está abierta.");
+        if (!session.register.warehouse?.id) {
+            throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
+        }
+        const tpvWarehouseId = session.register.warehouse.id;
         if (!dto.items?.length)
             throw new common_1.BadRequestException("Sin items.");
         if (!dto.payments?.length)
             throw new common_1.BadRequestException("Sin pagos.");
-        const productIds = dto.items.map((i) => i.productId);
-        const products = await this.prisma.product.findMany({
-            where: { id: { in: productIds }, active: true },
+        const qtyByProduct = new Map();
+        for (const item of dto.items) {
+            const currentQty = qtyByProduct.get(item.productId) || 0;
+            qtyByProduct.set(item.productId, currentQty + item.qty);
+        }
+        const productIds = Array.from(qtyByProduct.keys());
+        const stockRows = await this.prisma.stock.findMany({
+            where: {
+                warehouseId: tpvWarehouseId,
+                productId: { in: productIds },
+                product: { active: true },
+            },
+            include: {
+                product: true,
+            },
         });
-        if (products.length !== productIds.length)
-            throw new common_1.BadRequestException("Producto inválido o inactivo.");
-        const priceMap = new Map(products.map((p) => [p.id, p.price]));
+        if (stockRows.length !== productIds.length) {
+            throw new common_1.BadRequestException("Hay productos inválidos, inactivos o sin stock en el TPV.");
+        }
+        const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
+        for (const [productId, requestedQty] of qtyByProduct.entries()) {
+            const stock = stockByProduct.get(productId);
+            if (!stock || stock.qty < requestedQty) {
+                throw new common_1.BadRequestException("Stock insuficiente para completar la venta.");
+            }
+        }
+        const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
         let total = new client_2.Prisma.Decimal(0);
         const itemsData = dto.items.map((i) => {
             const price = priceMap.get(i.productId);
@@ -67,6 +137,30 @@ let SalesService = class SalesService {
                 },
                 include: { items: true, payments: true },
             });
+            for (const [productId, requestedQty] of qtyByProduct.entries()) {
+                const updated = await tx.stock.updateMany({
+                    where: {
+                        warehouseId: tpvWarehouseId,
+                        productId,
+                        qty: { gte: requestedQty },
+                    },
+                    data: {
+                        qty: { decrement: requestedQty },
+                    },
+                });
+                if (updated.count === 0) {
+                    throw new common_1.BadRequestException("Stock insuficiente al confirmar la venta.");
+                }
+                await tx.stockMovement.create({
+                    data: {
+                        type: client_1.StockMovementType.OUT,
+                        productId,
+                        qty: requestedQty,
+                        fromWarehouseId: tpvWarehouseId,
+                        reason: "VENTA",
+                    },
+                });
+            }
             return sale;
         });
     }

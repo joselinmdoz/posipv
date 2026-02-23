@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SalesService } from "./sales.service";
 import { IsArray, IsEnum, IsInt, IsString, Min, ValidateNested } from "class-validator";
@@ -33,6 +33,11 @@ class CreateSaleDto {
 @UseGuards(JwtAuthGuard)
 export class SalesController {
   constructor(private service: SalesService) {}
+
+  @Get("session/:cashSessionId/products")
+  listSessionProducts(@Param("cashSessionId") cashSessionId: string) {
+    return this.service.listSessionProducts(cashSessionId);
+  }
 
   @Post()
   create(@Req() req: any, @Body() dto: CreateSaleDto) {

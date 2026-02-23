@@ -40,6 +40,12 @@ export class InventoryReportsController {
     return this.inventoryReportsService.findBySession(cashSessionId);
   }
 
+  @Get('session/:cashSessionId/ipv')
+  @Roles('ADMIN', 'CASHIER')
+  async getSessionIpv(@Param('cashSessionId') cashSessionId: string) {
+    return this.inventoryReportsService.getSessionIpvReport(cashSessionId);
+  }
+
   @Get('session/:cashSessionId/latest')
   @Roles('ADMIN', 'CASHIER')
   async getLatestBySession(

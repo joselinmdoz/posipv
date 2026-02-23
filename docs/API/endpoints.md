@@ -140,6 +140,20 @@ Content-Type: application/json
 
 ## Cajas (Cash Sessions)
 
+### Listar sesiones de caja
+```bash
+GET /api/cash-sessions
+Authorization: Bearer <token>
+```
+
+Incluye para cada sesion: `register`, `openedBy` y `warehouseId` asociado al TPV.
+
+### Ver detalle de una sesion
+```bash
+GET /api/cash-sessions/:id
+Authorization: Bearer <token>
+```
+
 ### Abrir caja
 ```bash
 POST /api/cash-sessions/open
@@ -148,7 +162,8 @@ Content-Type: application/json
 
 {
   "registerId": "reg_xxx",
-  "initialAmount": 1000.00
+  "openingAmount": "1000.00",
+  "note": "Apertura de turno"
 }
 ```
 
@@ -159,16 +174,80 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "finalAmount": 2500.00,
-  "notes": "Cierre de jornada"
+  "closingAmount": "2500.00",
+  "note": "Cierre de jornada"
 }
 ```
 
 ### Ver caja abierta
 ```bash
-GET /api/cash-sessions/open
+GET /api/cash-sessions/open?registerId=reg_xxx
 Authorization: Bearer <token>
 ```
+
+### Resumen de sesion (para cierre de caja)
+```bash
+GET /api/cash-sessions/:id/summary
+Authorization: Bearer <token>
+```
+
+Incluye `salesCount`, `totalSales` y `paymentTotals` por metodo (`CASH`, `CARD`, `TRANSFER`, `OTHER`).
+
+---
+
+## IPV (Inventario por Sesion)
+
+> Desde la actualizacion del 2026-02-23, el modelo operativo es **1 IPV por sesion de TPV**.
+> No existe IPV inicial/final separado para uso funcional en reporteria.
+
+### Obtener IPV consolidado de una sesion
+```bash
+GET /api/inventory-reports/session/:cashSessionId/ipv
+Authorization: Bearer <token>
+```
+
+Respuesta (resumen):
+```json
+{
+  "cashSessionId": "cm...",
+  "status": "OPEN",
+  "openedAt": "2026-02-23T10:00:00.000Z",
+  "closedAt": null,
+  "totals": {
+    "sales": 12,
+    "entries": 4,
+    "outs": 1,
+    "amount": 1580
+  },
+  "paymentTotals": {
+    "CASH": 900,
+    "CARD": 500,
+    "TRANSFER": 180,
+    "OTHER": 0
+  },
+  "lines": []
+}
+```
+
+### Consultar reportes IPV asociados a una sesion
+```bash
+GET /api/inventory-reports/session/:cashSessionId
+Authorization: Bearer <token>
+```
+
+### Obtener ultimo IPV de sesion
+```bash
+GET /api/inventory-reports/session/:cashSessionId/latest
+Authorization: Bearer <token>
+```
+
+### Endpoint legacy para crear IPV final
+```bash
+POST /api/inventory-reports/final
+Authorization: Bearer <token>
+```
+
+Actualmente responde error de negocio indicando que ahora existe un solo IPV por sesion.
 
 ---
 
@@ -215,10 +294,10 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "warehouseId": "ware_xxx",
   "productId": "prod_xxx",
   "type": "IN",
-  "quantity": 50,
+  "qty": 50,
+  "toWarehouseId": "ware_xxx",
   "reason": "Compra de inventario"
 }
 ```

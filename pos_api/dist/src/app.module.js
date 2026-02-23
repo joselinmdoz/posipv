@@ -24,6 +24,11 @@ const reports_module_1 = require("./modules/reports/reports.module");
 const warehouses_module_1 = require("./modules/warehouses/warehouses.module");
 const stock_movements_module_1 = require("./modules/stock-movements/stock-movements.module");
 const settings_module_1 = require("./modules/settings/settings.module");
+const inventory_reports_module_1 = require("./modules/inventory-reports/inventory-reports.module");
+const product_types_module_1 = require("./modules/product-types/product-types.module");
+const product_categories_module_1 = require("./modules/product-categories/product-categories.module");
+const measurement_unit_types_module_1 = require("./modules/measurement-unit-types/measurement-unit-types.module");
+const measurement_units_module_1 = require("./modules/measurement-units/measurement-units.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -48,6 +53,11 @@ exports.AppModule = AppModule = __decorate([
             warehouses_module_1.WarehousesModule,
             stock_movements_module_1.StockMovementsModule,
             settings_module_1.SettingsModule,
+            inventory_reports_module_1.InventoryReportsModule,
+            product_types_module_1.ProductTypesModule,
+            product_categories_module_1.ProductCategoriesModule,
+            measurement_unit_types_module_1.MeasurementUnitTypesModule,
+            measurement_units_module_1.MeasurementUnitsModule,
         ],
     })
 ], AppModule);

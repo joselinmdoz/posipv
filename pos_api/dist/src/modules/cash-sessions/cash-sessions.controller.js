@@ -47,8 +47,17 @@ let CashSessionsController = class CashSessionsController {
     constructor(service) {
         this.service = service;
     }
+    list() {
+        return this.service.findAll();
+    }
     getOpen(registerId) {
         return this.service.getOpenByRegister(registerId);
+    }
+    getSummary(id) {
+        return this.service.getSessionSummary(id);
+    }
+    getOne(id) {
+        return this.service.findOne(id);
     }
     open(req, dto) {
         return this.service.open({
@@ -64,12 +73,32 @@ let CashSessionsController = class CashSessionsController {
 };
 exports.CashSessionsController = CashSessionsController;
 __decorate([
+    (0, common_1.Get)(),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], CashSessionsController.prototype, "list", null);
+__decorate([
     (0, common_1.Get)("open"),
     __param(0, (0, common_1.Query)("registerId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CashSessionsController.prototype, "getOpen", null);
+__decorate([
+    (0, common_1.Get)(":id/summary"),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CashSessionsController.prototype, "getSummary", null);
+__decorate([
+    (0, common_1.Get)(":id"),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CashSessionsController.prototype, "getOne", null);
 __decorate([
     (0, common_1.Post)("open"),
     __param(0, (0, common_1.Req)()),

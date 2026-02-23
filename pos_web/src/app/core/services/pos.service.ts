@@ -1,6 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { Product } from './products.service';
 
 export interface Register {
   id: string;
@@ -21,10 +22,31 @@ export interface CashSession {
   openedById: string;
 }
 
+export interface CashSessionSummary {
+  id: string;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: Date;
+  closedAt?: Date;
+  openingAmount: number;
+  register: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  salesCount: number;
+  totalSales: number;
+  paymentTotals: {
+    CASH: number;
+    CARD: number;
+    TRANSFER: number;
+    OTHER: number;
+  };
+}
+
 export interface SaleItem {
   productId: string;
   productName: string;
-  productSku?: string;
+  productCodigo?: string;
   price: number;
   qty: number;
   subtotal: number;
@@ -77,6 +99,10 @@ export class PosService {
     });
   }
 
+  getSessionSummary(sessionId: string): Observable<CashSessionSummary> {
+    return this.http.get<CashSessionSummary>(`${this.API_URL}/cash-sessions/${sessionId}/summary`);
+  }
+
   // Cart operations
   addToCart(product: any, qty: number = 1) {
     const currentCart = this._cart();
@@ -96,7 +122,7 @@ export class PosService {
       this._cart.set([...currentCart, {
         productId: product.id,
         productName: product.name,
-        productSku: product.sku,
+        productCodigo: product.codigo,
         price: Number(product.price),
         qty,
         subtotal: Number(product.price) * qty
@@ -133,6 +159,10 @@ export class PosService {
   }
 
   // Sales
+  listSessionProducts(cashSessionId: string): Observable<Product[]> {
+    return this.http.get<Product[]>(`${this.API_URL}/sales/session/${cashSessionId}/products`);
+  }
+
   createSale(cashSessionId: string, items: any[], payments: Payment[]): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/sales`, {
       cashSessionId,

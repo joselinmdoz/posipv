@@ -7,6 +7,7 @@ export interface Warehouse {
   name: string;
   code: string;
   type: 'CENTRAL' | 'TPV';
+  registerId?: string | null;
   active: boolean;
   createdAt: Date;
 }
@@ -19,7 +20,7 @@ export interface StockItem {
   product: {
     id: string;
     name: string;
-    sku?: string;
+    codigo?: string;
   };
 }
 

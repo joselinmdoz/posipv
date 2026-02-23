@@ -27,7 +27,7 @@ export class WarehousesService {
       where: { warehouseId },
       include: {
         product: {
-          select: { id: true, name: true, sku: true },
+          select: { id: true, name: true, codigo: true },
         },
       },
       orderBy: { product: { name: 'asc' } },

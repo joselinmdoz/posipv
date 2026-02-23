@@ -11,6 +11,11 @@ import { Tpv } from './app/pages/tpv/tpv';
 import { Settings } from './app/pages/settings/settings';
 import { Reports } from './app/pages/reports/reports';
 import { InventoryReportsComponent } from './app/pages/inventory-reports/inventory-reports';
+import { ProductTypes } from './app/pages/product-types/product-types';
+import { ProductCategories } from './app/pages/product-categories/product-categories';
+import { MeasurementUnits } from './app/pages/measurement-units/measurement-units';
+import { Denominations } from './app/pages/denominations/denominations';
+import { TpvManagement } from './app/pages/tpv-management/tpv-management';
 import { inject } from '@angular/core';
 import { AuthService } from './app/core/services/auth.service';
 import { Router } from '@angular/router';
@@ -41,9 +46,14 @@ export const appRoutes: Routes = [
             { path: 'documentation', component: Documentation },
             { path: 'users', component: Users },
             { path: 'products', component: Products },
+            { path: 'product-types', component: ProductTypes },
+            { path: 'product-categories', component: ProductCategories },
+            { path: 'measurement-units', component: MeasurementUnits },
             { path: 'warehouses', component: Warehouses },
             { path: 'tpv', component: Tpv },
+            { path: 'tpv-management', component: TpvManagement },
             { path: 'settings', component: Settings },
+            { path: 'denominations', component: Denominations },
             { path: 'reports', component: Reports },
             { path: 'inventory-reports', component: InventoryReportsComponent },
             { path: 'pages', loadChildren: () => import('./app/pages/pages.routes') }

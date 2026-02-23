@@ -62,11 +62,21 @@ let SalesController = class SalesController {
     constructor(service) {
         this.service = service;
     }
+    listSessionProducts(cashSessionId) {
+        return this.service.listSessionProducts(cashSessionId);
+    }
     create(req, dto) {
         return this.service.createSale(req.user.userId, dto);
     }
 };
 exports.SalesController = SalesController;
+__decorate([
+    (0, common_1.Get)("session/:cashSessionId/products"),
+    __param(0, (0, common_1.Param)("cashSessionId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], SalesController.prototype, "listSessionProducts", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Req)()),

@@ -17,6 +17,10 @@ import { WarehousesModule } from "./modules/warehouses/warehouses.module";
 import { StockMovementsModule } from "./modules/stock-movements/stock-movements.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { InventoryReportsModule } from "./modules/inventory-reports/inventory-reports.module";
+import { ProductTypesModule } from "./modules/product-types/product-types.module";
+import { ProductCategoriesModule } from "./modules/product-categories/product-categories.module";
+import { MeasurementUnitTypesModule } from "./modules/measurement-unit-types/measurement-unit-types.module";
+import { MeasurementUnitsModule } from "./modules/measurement-units/measurement-units.module";
 
 @Module({
   imports: [
@@ -39,6 +43,10 @@ import { InventoryReportsModule } from "./modules/inventory-reports/inventory-re
     StockMovementsModule,
     SettingsModule,
     InventoryReportsModule,
+    ProductTypesModule,
+    ProductCategoriesModule,
+    MeasurementUnitTypesModule,
+    MeasurementUnitsModule,
   ],
 })
 export class AppModule {}

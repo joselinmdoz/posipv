@@ -80,14 +80,22 @@ model CashSession {
 model Product {
   id        String   @id @default(cuid())
   name      String
-  sku       String?  @unique
+  codigo   String?  @unique
   barcode   String?  @unique
   price     Decimal  @db.Decimal(12,2)
   cost      Decimal? @db.Decimal(12,2)
-  unit      String?  // Unidad de medida
-  image     String?  // URL o path de la imagen
+  image     String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+
+  productTypeId     String?
+  productType       ProductType?     @relation(fields: [productTypeId], references: [id])
+  
+  productCategoryId String?
+  productCategory   ProductCategory? @relation(fields: [productCategoryId], references: [id])
+  
+  measurementUnitId String?
+  measurementUnit   MeasurementUnit? @relation(fields: [measurementUnitId], references: [id])
 
   items                 SaleItem[]
   stock                 Stock[]
@@ -255,4 +263,49 @@ model InventoryReportItem {
 
   inventoryReportId String
   inventoryReport   InventoryReport @relation(fields: [inventoryReportId], references: [id])
+}
+
+// Catálogos de productos
+model ProductType {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  products Product[]
+}
+
+model ProductCategory {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  products Product[]
+}
+
+// Unidades de medida
+model MeasurementUnitType {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  measurementUnits MeasurementUnit[]
+}
+
+model MeasurementUnit {
+  id        String              @id @default(cuid())
+  name      String
+  symbol    String
+  active    Boolean             @default(true)
+  createdAt DateTime           @default(now())
+
+  typeId    String?
+  type      MeasurementUnitType? @relation(fields: [typeId], references: [id])
+
+  products Product[]
 }

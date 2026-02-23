@@ -1,8 +1,7 @@
 import { Body, Controller, Get, Param, Put, UseGuards } from "@nestjs/common";
 import { SettingsService } from "./settings.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { IsArray, IsBoolean, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from "class-validator";
-import { Type } from "class-transformer";
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString } from "class-validator";
 
 class PaymentMethodSettingDto {
   @IsString() code!: string;
@@ -20,7 +19,8 @@ class RegisterSettingsDto {
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsString() warehouseId?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) paymentMethods?: string[];
-  @IsOptional() @IsArray() @IsNumber({}, { each: true }) denominations?: number[];
+  // Compatibilidad: se aceptan números (legacy) u objetos { value, enabled }.
+  @IsOptional() @IsArray() denominations?: Array<number | DenominationSettingDto>;
 }
 
 @Controller("settings")

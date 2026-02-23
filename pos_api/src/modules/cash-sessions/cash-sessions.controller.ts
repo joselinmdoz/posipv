@@ -19,9 +19,24 @@ class CloseDto {
 export class CashSessionsController {
   constructor(private service: CashSessionsService) {}
 
+  @Get()
+  list() {
+    return this.service.findAll();
+  }
+
   @Get("open")
   getOpen(@Query("registerId") registerId: string) {
     return this.service.getOpenByRegister(registerId);
+  }
+
+  @Get(":id/summary")
+  getSummary(@Param("id") id: string) {
+    return this.service.getSessionSummary(id);
+  }
+
+  @Get(":id")
+  getOne(@Param("id") id: string) {
+    return this.service.findOne(id);
   }
 
   @Post("open")

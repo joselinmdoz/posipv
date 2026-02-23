@@ -51,6 +51,15 @@ let UsersService = class UsersService {
             data: { passwordHash },
         });
     }
+    findOne(id) {
+        return this.prisma.user.findUnique({
+            where: { id },
+            select: { id: true, email: true, role: true, active: true, createdAt: true },
+        });
+    }
+    delete(id) {
+        return this.prisma.user.delete({ where: { id } });
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([
