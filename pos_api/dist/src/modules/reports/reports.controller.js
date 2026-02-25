@@ -20,14 +20,20 @@ let ReportsController = class ReportsController {
     constructor(reportsService) {
         this.reportsService = reportsService;
     }
+    getServerDate() {
+        return this.reportsService.getServerDateInfo();
+    }
     async getSalesReport(startDate, endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        return this.reportsService.getSalesReport(start, end);
+        return this.reportsService.getSalesReport(startDate, endDate);
     }
 };
 exports.ReportsController = ReportsController;
+__decorate([
+    (0, common_1.Get)("server-date"),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], ReportsController.prototype, "getServerDate", null);
 __decorate([
     (0, common_1.Get)("sales"),
     __param(0, (0, common_1.Query)("startDate")),

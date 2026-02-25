@@ -36,7 +36,11 @@ let WarehousesService = class WarehousesService {
             where: { warehouseId },
             include: {
                 product: {
-                    select: { id: true, name: true, codigo: true },
+                    include: {
+                        productType: true,
+                        productCategory: true,
+                        measurementUnit: true,
+                    },
                 },
             },
             orderBy: { product: { name: 'asc' } },

@@ -20,6 +20,7 @@ import { SliderModule } from 'primeng/slider';
 import { CardModule } from 'primeng/card';
 import { DividerModule } from 'primeng/divider';
 import { MessageService, ConfirmationService } from 'primeng/api';
+import { firstValueFrom } from 'rxjs';
 import { ProductsService, Product, CreateProductDto, UpdateProductDto, ProductType, ProductCategory, MeasurementUnit } from '@/app/core/services/products.service';
 import { CatalogService, ProductType as CatalogProductType, ProductCategory as CatalogProductCategory, MeasurementUnit as CatalogMeasurementUnit } from '@/app/core/services/catalog.service';
 
@@ -60,7 +61,11 @@ interface Column {
                 <p-button label="Nuevo" icon="pi pi-plus" severity="secondary" class="mr-2" (click)="openNew()" />
             </ng-template>
             <ng-template #end>
-                <p-button label="Exportar" icon="pi pi-upload" severity="secondary" (onClick)="exportCSV()" />
+                <div class="flex gap-2">
+                    <p-button label="Importar CSV" icon="pi pi-download" severity="secondary" [outlined]="true" (onClick)="triggerCsvImport(csvFileInput)" />
+                    <p-button label="Exportar" icon="pi pi-upload" severity="secondary" (onClick)="exportCSV()" />
+                </div>
+                <input #csvFileInput type="file" accept=".csv,text/csv" class="hidden" (change)="onCsvSelected($event)" />
             </ng-template>
         </p-toolbar>
 
@@ -751,7 +756,324 @@ export class Products implements OnInit {
         // Implementar filtrado global
     }
 
+    triggerCsvImport(input: HTMLInputElement) {
+        input.value = '';
+        input.click();
+    }
+
+    onCsvSelected(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input?.files?.[0];
+        if (!file) return;
+
+        const isCsv = file.name.toLowerCase().endsWith('.csv') || file.type.includes('csv') || file.type === 'text/plain';
+        if (!isCsv) {
+            this.messageService.add({ severity: 'warn', summary: 'Formato inválido', detail: 'Seleccione un archivo CSV válido.' });
+            input.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const content = String(reader.result || '');
+            await this.importProductsFromCsv(content);
+            input.value = '';
+        };
+        reader.onerror = () => {
+            this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo leer el archivo CSV.' });
+            input.value = '';
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    private async importProductsFromCsv(content: string) {
+        const rows = this.parseCsv(content);
+        if (rows.length < 2) {
+            this.messageService.add({ severity: 'warn', summary: 'CSV vacío', detail: 'El archivo no contiene filas de datos.' });
+            return;
+        }
+
+        const headers = rows[0].map((h) => this.normalizeHeader(h));
+        const nameIdx = headers.indexOf('name');
+        const priceIdx = headers.indexOf('price');
+        if (nameIdx === -1 || priceIdx === -1) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Columnas requeridas',
+                detail: 'El CSV debe incluir al menos las columnas: name y price.'
+            });
+            return;
+        }
+
+        let created = 0;
+        let failed = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+        const existingCodigo = new Set(
+            this.products()
+                .map((p) => this.toKey(p.codigo))
+                .filter((key): key is string => !!key)
+        );
+        const existingBarcode = new Set(
+            this.products()
+                .map((p) => this.toKey(p.barcode))
+                .filter((key): key is string => !!key)
+        );
+        const csvCodigo = new Set<string>();
+        const csvBarcode = new Set<string>();
+
+        for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+            const row = rows[rowIndex];
+            if (this.isEmptyRow(row)) continue;
+
+            const raw = this.rowToRecord(headers, row);
+            const line = rowIndex + 1;
+
+            const name = (raw['name'] || '').trim();
+            const priceText = (raw['price'] || '').trim().replace(',', '.');
+            const price = Number(priceText);
+            if (!name || Number.isNaN(price) || price <= 0) {
+                failed++;
+                errors.push(`Fila ${line}: name/price inválido.`);
+                continue;
+            }
+
+            const productTypeId = this.resolveCatalogId(raw, 'producttypeid', 'producttype', this.productTypes());
+            const productCategoryId = this.resolveCatalogId(raw, 'productcategoryid', 'productcategory', this.productCategories());
+            const measurementUnitId = this.resolveCatalogId(raw, 'measurementunitid', 'measurementunit', this.measurementUnits());
+
+            const dto: CreateProductDto = {
+                name,
+                price: price.toFixed(2),
+            };
+
+            const codigo = (raw['codigo'] || '').trim();
+            const barcode = (raw['barcode'] || '').trim();
+            const costText = (raw['cost'] || '').trim().replace(',', '.');
+            const cost = Number(costText);
+
+            const codigoKey = this.toKey(codigo);
+            if (codigoKey && (existingCodigo.has(codigoKey) || csvCodigo.has(codigoKey))) {
+                skipped++;
+                errors.push(`Fila ${line}: código duplicado (${codigo}).`);
+                continue;
+            }
+
+            const barcodeKey = this.toKey(barcode);
+            if (barcodeKey && (existingBarcode.has(barcodeKey) || csvBarcode.has(barcodeKey))) {
+                skipped++;
+                errors.push(`Fila ${line}: código de barras duplicado (${barcode}).`);
+                continue;
+            }
+
+            if (codigo) dto.codigo = codigo;
+            if (barcode) dto.barcode = barcode;
+            if (costText && !Number.isNaN(cost) && cost >= 0) dto.cost = cost.toFixed(2);
+            if (productTypeId) dto.productTypeId = productTypeId;
+            if (productCategoryId) dto.productCategoryId = productCategoryId;
+            if (measurementUnitId) dto.measurementUnitId = measurementUnitId;
+
+            try {
+                await firstValueFrom(this.productsService.create(dto));
+                created++;
+                if (codigoKey) existingCodigo.add(codigoKey);
+                if (barcodeKey) existingBarcode.add(barcodeKey);
+                if (codigoKey) csvCodigo.add(codigoKey);
+                if (barcodeKey) csvBarcode.add(barcodeKey);
+            } catch (error: any) {
+                failed++;
+                const detail = error?.error?.message || 'Error al crear producto';
+                errors.push(`Fila ${line}: ${detail}`);
+            }
+        }
+
+        this.loadProducts();
+
+        if (created > 0 && failed === 0 && skipped === 0) {
+            this.messageService.add({
+                severity: 'success',
+                summary: 'Importación completada',
+                detail: `Se importaron ${created} productos correctamente.`
+            });
+            return;
+        }
+
+        if (created > 0 || skipped > 0) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Importación procesada',
+                detail: `Importados: ${created}. Omitidos: ${skipped}. Fallidos: ${failed}.`
+            });
+            console.warn('Errores de importación CSV:', errors);
+            return;
+        }
+
+        this.messageService.add({
+            severity: 'error',
+            summary: 'Importación fallida',
+            detail: 'No se pudo importar ningún producto. Revise formato y datos del CSV.'
+        });
+        console.warn('Errores de importación CSV:', errors);
+    }
+
+    private parseCsv(content: string): string[][] {
+        const delimiter = this.detectCsvDelimiter(content);
+        const rows: string[][] = [];
+        let row: string[] = [];
+        let value = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < content.length; i++) {
+            const char = content[i];
+            const next = content[i + 1];
+
+            if (char === '"') {
+                if (inQuotes && next === '"') {
+                    value += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+
+            if (char === delimiter && !inQuotes) {
+                row.push(value.trim());
+                value = '';
+                continue;
+            }
+
+            if ((char === '\n' || char === '\r') && !inQuotes) {
+                if (char === '\r' && next === '\n') i++;
+                row.push(value.trim());
+                rows.push(row);
+                row = [];
+                value = '';
+                continue;
+            }
+
+            value += char;
+        }
+
+        if (value.length > 0 || row.length > 0) {
+            row.push(value.trim());
+            rows.push(row);
+        }
+
+        return rows.filter((r) => r.some((col) => col !== ''));
+    }
+
+    private detectCsvDelimiter(content: string): ',' | ';' {
+        let sample = '';
+        for (let i = 0; i < content.length; i++) {
+            const char = content[i];
+            if (char === '\n' || char === '\r') break;
+            sample += char;
+        }
+
+        let commas = 0;
+        let semicolons = 0;
+        let inQuotes = false;
+
+        for (let i = 0; i < sample.length; i++) {
+            const char = sample[i];
+            const next = sample[i + 1];
+            if (char === '"') {
+                if (inQuotes && next === '"') {
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+            if (inQuotes) continue;
+            if (char === ',') commas++;
+            if (char === ';') semicolons++;
+        }
+
+        return semicolons > commas ? ';' : ',';
+    }
+
+    private rowToRecord(headers: string[], row: string[]) {
+        const record: Record<string, string> = {};
+        for (let i = 0; i < headers.length; i++) {
+            record[headers[i]] = (row[i] || '').trim();
+        }
+        return record;
+    }
+
+    private normalizeHeader(value: string) {
+        return String(value || '')
+            .replace(/^\ufeff/, '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/_/g, '');
+    }
+
+    private resolveCatalogId(
+        row: Record<string, string>,
+        idKey: string,
+        nameKey: string,
+        catalog: Array<{ id: string; name: string }>
+    ): string | undefined {
+        const id = (row[idKey] || '').trim();
+        if (id) return id;
+
+        const name = (row[nameKey] || '').trim().toLowerCase();
+        if (!name) return undefined;
+        return catalog.find((item) => item.name.trim().toLowerCase() === name)?.id;
+    }
+
+    private isEmptyRow(row: string[]) {
+        return row.every((col) => !String(col || '').trim());
+    }
+
+    private toKey(value?: string | null) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return normalized.length ? normalized : undefined;
+    }
+
     exportCSV() {
-        // Implementar exportación
+        const rows = this.products();
+        if (!rows || rows.length === 0) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin datos', detail: 'No hay productos para exportar.' });
+            return;
+        }
+
+        const headers = ['name', 'codigo', 'barcode', 'price', 'cost', 'productType', 'productCategory', 'measurementUnit', 'active'];
+        const lines = rows.map((product) => [
+            product.name || '',
+            product.codigo || '',
+            product.barcode || '',
+            product.price != null ? Number(product.price).toFixed(2) : '',
+            product.cost != null ? Number(product.cost).toFixed(2) : '',
+            product.productType?.name || '',
+            product.productCategory?.name || '',
+            product.measurementUnit?.name || '',
+            product.active ? 'true' : 'false',
+        ]);
+
+        const csv = [headers, ...lines]
+            .map((line) => line.map((value) => this.escapeCsv(String(value ?? ''))).join(','))
+            .join('\r\n');
+
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const stamp = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `productos_${stamp}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        this.messageService.add({ severity: 'success', summary: 'Exportación', detail: 'CSV exportado correctamente.' });
+    }
+
+    private escapeCsv(value: string): string {
+        if (value.includes('"') || value.includes(',') || value.includes('\n') || value.includes('\r')) {
+            return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
     }
 }

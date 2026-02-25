@@ -13,7 +13,7 @@ import { TagModule } from 'primeng/tag';
 import { MenuItem, MessageService } from 'primeng/api';
 import { CashSessionSummary, Payment, PosService, SaleItem } from '@/app/core/services/pos.service';
 import { Product, ProductsService } from '@/app/core/services/products.service';
-import { Denomination, SettingsService } from '@/app/core/services/settings.service';
+import { Denomination, PaymentMethodSetting, SettingsService } from '@/app/core/services/settings.service';
 import { CreateStockMovementDto, WarehousesService } from '@/app/core/services/warehouses.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
 import { forkJoin } from 'rxjs';
@@ -330,10 +330,22 @@ import { forkJoin } from 'rxjs';
                 </div>
 
                 <div class="tpv-payment-actions">
-                    <p-button label="Agregar línea" icon="pi pi-plus" severity="secondary" [outlined]="true" (onClick)="addPaymentLine()" />
-                    <p-button label="Resto en Efectivo" severity="secondary" [outlined]="true" (onClick)="addRemainingAs('CASH')" />
-                    <p-button label="Resto en Tarjeta" severity="secondary" [outlined]="true" (onClick)="addRemainingAs('CARD')" />
-                    <p-button label="Resto en Transferencia" severity="secondary" [outlined]="true" (onClick)="addRemainingAs('TRANSFER')" />
+                    <p-button
+                        label="Agregar línea"
+                        icon="pi pi-plus"
+                        severity="secondary"
+                        [outlined]="true"
+                        [disabled]="paymentLines.length >= paymentMethods.length"
+                        (onClick)="addPaymentLine()"
+                    />
+                    @for (methodOption of paymentMethods; track methodOption.value) {
+                        <p-button
+                            [label]="'Resto en ' + methodOption.label"
+                            severity="secondary"
+                            [outlined]="true"
+                            (onClick)="addRemainingAs(methodOption.value)"
+                        />
+                    }
                 </div>
 
                 <div class="tpv-payment-lines">
@@ -342,8 +354,9 @@ import { forkJoin } from 'rxjs';
                             <div class="tpv-payment-line-index">#{{ i + 1 }}</div>
                             <div class="tpv-payment-line-method">
                                 <p-select
-                                    [options]="paymentMethods"
+                                    [options]="getPaymentMethodOptionsForLine(i)"
                                     [(ngModel)]="line.method"
+                                    (ngModelChange)="onPaymentMethodChanged(i, $event)"
                                     optionLabel="label"
                                     optionValue="value"
                                     appendTo="body"
@@ -640,12 +653,16 @@ export class Tpv implements OnInit {
         { label: 'Salida', value: 'OUT' }
     ];
 
-    paymentMethods = [
-        { label: 'Efectivo', value: 'CASH' },
-        { label: 'Tarjeta', value: 'CARD' },
-        { label: 'Transferencia', value: 'TRANSFER' },
-        { label: 'Otro', value: 'OTHER' }
+    private readonly paymentMethodCatalog: Array<{ label: string; value: Payment['method']; defaultEnabled: boolean }> = [
+        { label: 'Efectivo', value: 'CASH', defaultEnabled: true },
+        { label: 'Tarjeta', value: 'CARD', defaultEnabled: true },
+        { label: 'Transferencia', value: 'TRANSFER', defaultEnabled: true },
+        { label: 'Otro', value: 'OTHER', defaultEnabled: false }
     ];
+    paymentMethods: Array<{ label: string; value: Payment['method'] }> = this.paymentMethodCatalog
+        .filter((item) => item.defaultEnabled)
+        .map(({ label, value }) => ({ label, value }));
+    private allowedPaymentMethods = new Set<Payment['method']>(this.paymentMethods.map((item) => item.value));
     sessionIpvExportItems: MenuItem[] = [
         {
             label: 'Exportar XLSX',
@@ -678,6 +695,7 @@ export class Tpv implements OnInit {
     ) {}
 
     ngOnInit() {
+        this.setDefaultPaymentMethods();
         this.clearProducts();
         this.handleNavigationParams();
         this.loadRegisters();
@@ -733,6 +751,7 @@ export class Tpv implements OnInit {
         this.registerWarehouseName = '';
 
         if (this.selectedRegisterId) {
+            this.setPaymentMethods([]);
             this.loadRegisterWarehouse(this.selectedRegisterId);
 
             this.posService.getOpenSession(this.selectedRegisterId).subscribe({
@@ -765,6 +784,7 @@ export class Tpv implements OnInit {
             });
         } else {
             this.posService.setCurrentSession(null);
+            this.setDefaultPaymentMethods();
         }
     }
 
@@ -964,6 +984,10 @@ export class Tpv implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Abra la caja primero' });
             return;
         }
+        if (this.paymentMethods.length === 0) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Este TPV no tiene métodos de pago configurados' });
+            return;
+        }
         this.initPaymentLines();
         this.paymentDialog = true;
     }
@@ -976,6 +1000,7 @@ export class Tpv implements OnInit {
             (line) => !line.method || Number(line.amount || 0) <= 0
         );
         if (hasInvalidLine) return false;
+        if (this.hasDuplicatePaymentMethods()) return false;
 
         return this.paymentDifference() === 0;
     }
@@ -1005,13 +1030,29 @@ export class Tpv implements OnInit {
         });
     }
 
-    addPaymentLine(method: Payment['method'] = 'CASH', amount?: number) {
+    addPaymentLine(method?: Payment['method'], amount?: number) {
+        const methodToUse = method || this.getNextAvailablePaymentMethod();
+        if (!methodToUse) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay métodos de pago disponibles para este TPV' });
+            return;
+        }
+
+        if (!this.isPaymentMethodAllowed(methodToUse)) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'El método de pago no está permitido en este TPV' });
+            return;
+        }
+
+        if (this.isPaymentMethodAlreadyUsed(methodToUse)) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No puede repetir el mismo método de pago' });
+            return;
+        }
+
         const lineAmount = amount !== undefined ? this.roundMoney(amount) : 0;
         this.paymentLines = [
             ...this.paymentLines,
             {
                 id: this.paymentLineSeq++,
-                method,
+                method: methodToUse,
                 amount: lineAmount
             }
         ];
@@ -1036,11 +1077,29 @@ export class Tpv implements OnInit {
     }
 
     addRemainingAs(method: Payment['method']) {
+        if (!this.isPaymentMethodAllowed(method)) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Método no permitido',
+                detail: 'El método seleccionado no está configurado en este TPV'
+            });
+            return;
+        }
+
         const remaining = this.paymentDifference();
         if (remaining <= 0) {
             this.messageService.add({ severity: 'info', summary: 'Info', detail: 'No hay monto restante por asignar' });
             return;
         }
+
+        const existingIndex = this.paymentLines.findIndex((line) => line.method === method);
+        if (existingIndex >= 0) {
+            const line = this.paymentLines[existingIndex];
+            line.amount = this.roundMoney(Number(line.amount || 0) + remaining);
+            this.paymentLines = [...this.paymentLines];
+            return;
+        }
+
         this.addPaymentLine(method, remaining);
     }
 
@@ -1274,9 +1333,13 @@ export class Tpv implements OnInit {
     private loadRegisterWarehouse(registerId: string) {
         this.settingsService.getRegisterSettings(registerId).subscribe({
             next: (settings) => {
+                if (this.selectedRegisterId !== registerId) return;
+                this.applyRegisterPaymentMethods(settings.paymentMethods || []);
                 this.resolveRegisterWarehouse(registerId, settings.warehouseId || '');
             },
             error: () => {
+                if (this.selectedRegisterId !== registerId) return;
+                this.setDefaultPaymentMethods();
                 this.resolveRegisterWarehouse(registerId, '');
             }
         });
@@ -1366,11 +1429,17 @@ export class Tpv implements OnInit {
     }
 
     private initPaymentLines() {
+        const defaultMethod = this.getDefaultPaymentMethod();
+        if (!defaultMethod) {
+            this.paymentLines = [];
+            return;
+        }
+
         this.paymentLineSeq = 1;
         this.paymentLines = [
             {
                 id: this.paymentLineSeq++,
-                method: 'CASH',
+                method: defaultMethod,
                 amount: this.roundMoney(this.cartTotal())
             }
         ];
@@ -1388,6 +1457,25 @@ export class Tpv implements OnInit {
             return false;
         }
 
+        const disallowedLine = this.paymentLines.find((line) => !this.isPaymentMethodAllowed(line.method));
+        if (disallowedLine) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Método no permitido',
+                detail: 'Hay líneas con métodos de pago no configurados para este TPV'
+            });
+            return false;
+        }
+
+        if (this.hasDuplicatePaymentMethods()) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Métodos duplicados',
+                detail: 'No puede repetir el mismo método de pago en varias líneas'
+            });
+            return false;
+        }
+
         if (this.paymentDifference() !== 0) {
             if (this.paymentDifference() > 0) {
                 this.messageService.add({ severity: 'warn', summary: 'Pago incompleto', detail: `Falta ${this.absolutePaymentDifference().toFixed(2)} por cobrar` });
@@ -1402,6 +1490,165 @@ export class Tpv implements OnInit {
 
     private roundMoney(value: number): number {
         return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    }
+
+    private setDefaultPaymentMethods() {
+        const defaultCodes = this.paymentMethodCatalog
+            .filter((item) => item.defaultEnabled)
+            .map((item) => item.value);
+        this.setPaymentMethods(defaultCodes);
+    }
+
+    private applyRegisterPaymentMethods(settingsMethods: PaymentMethodSetting[]) {
+        const enabledCodes = (settingsMethods || [])
+            .filter((method) => method.enabled !== false)
+            .map((method) => this.normalizePaymentMethodCode(method.code))
+            .filter((code): code is Payment['method'] => !!code);
+
+        if (enabledCodes.length > 0) {
+            this.setPaymentMethods(enabledCodes);
+            return;
+        }
+
+        this.setDefaultPaymentMethods();
+    }
+
+    private normalizePaymentMethodCode(code: string): Payment['method'] | null {
+        const normalized = (code || '').trim().toUpperCase();
+        switch (normalized) {
+            case 'CASH':
+            case 'EFECTIVO':
+                return 'CASH';
+            case 'CARD':
+            case 'TARJETA':
+                return 'CARD';
+            case 'TRANSFER':
+            case 'TRANSFERENCIA':
+                return 'TRANSFER';
+            case 'OTHER':
+            case 'OTRO':
+                return 'OTHER';
+            default:
+                return null;
+        }
+    }
+
+    private setPaymentMethods(codes: Payment['method'][]) {
+        const allowed = new Set(codes);
+        this.paymentMethods = this.paymentMethodCatalog
+            .filter((item) => allowed.has(item.value))
+            .map(({ label, value }) => ({ label, value }));
+
+        this.allowedPaymentMethods = new Set(this.paymentMethods.map((item) => item.value));
+        this.sanitizePaymentLines();
+    }
+
+    private sanitizePaymentLines() {
+        if (!this.paymentLines.length) return;
+
+        const defaultMethod = this.getDefaultPaymentMethod();
+        if (!defaultMethod) {
+            this.paymentLines = [];
+            return;
+        }
+
+        let hasChanges = false;
+        const sanitized = this.paymentLines.map((line) => {
+            if (this.isPaymentMethodAllowed(line.method)) {
+                return line;
+            }
+
+            hasChanges = true;
+            return { ...line, method: defaultMethod };
+        });
+
+        if (hasChanges) {
+            this.paymentLines = sanitized;
+        }
+
+        this.removeDuplicatePaymentLines();
+    }
+
+    private isPaymentMethodAllowed(method: Payment['method']): boolean {
+        return this.allowedPaymentMethods.has(method);
+    }
+
+    private getDefaultPaymentMethod(): Payment['method'] | null {
+        return this.paymentMethods.length > 0 ? this.paymentMethods[0].value : null;
+    }
+
+    getPaymentMethodOptionsForLine(index: number): Array<{ label: string; value: Payment['method'] }> {
+        const line = this.paymentLines[index];
+        if (!line) return this.paymentMethods;
+
+        const usedByOthers = new Set<Payment['method']>(
+            this.paymentLines
+                .filter((_, i) => i !== index)
+                .map((item) => item.method)
+        );
+
+        return this.paymentMethods.filter((option) => !usedByOthers.has(option.value) || option.value === line.method);
+    }
+
+    onPaymentMethodChanged(index: number, method: Payment['method']) {
+        if (!this.isPaymentMethodAllowed(method)) {
+            return;
+        }
+
+        if (!this.isPaymentMethodDuplicated(index, method)) {
+            return;
+        }
+
+        const fallback = this.getFallbackPaymentMethodForLine(index, method);
+        if (fallback) {
+            this.paymentLines[index].method = fallback;
+            this.paymentLines = [...this.paymentLines];
+        }
+
+        this.messageService.add({
+            severity: 'warn',
+            summary: 'Método duplicado',
+            detail: 'Cada línea debe usar un método de pago diferente'
+        });
+    }
+
+    private isPaymentMethodAlreadyUsed(method: Payment['method']): boolean {
+        return this.paymentLines.some((line) => line.method === method);
+    }
+
+    private isPaymentMethodDuplicated(index: number, method: Payment['method']): boolean {
+        return this.paymentLines.some((line, i) => i !== index && line.method === method);
+    }
+
+    private hasDuplicatePaymentMethods(): boolean {
+        const used = new Set<Payment['method']>();
+        for (const line of this.paymentLines) {
+            if (!line.method) continue;
+            if (used.has(line.method)) return true;
+            used.add(line.method);
+        }
+        return false;
+    }
+
+    private getNextAvailablePaymentMethod(): Payment['method'] | null {
+        const used = new Set<Payment['method']>(this.paymentLines.map((line) => line.method));
+        const available = this.paymentMethods.find((option) => !used.has(option.value));
+        return available?.value || null;
+    }
+
+    private getFallbackPaymentMethodForLine(index: number, currentMethod: Payment['method']): Payment['method'] | null {
+        const fallback = this.getPaymentMethodOptionsForLine(index).find((option) => option.value !== currentMethod);
+        return fallback?.value || null;
+    }
+
+    private removeDuplicatePaymentLines() {
+        const used = new Set<Payment['method']>();
+        this.paymentLines = this.paymentLines.filter((line) => {
+            if (!line.method) return true;
+            if (used.has(line.method)) return false;
+            used.add(line.method);
+            return true;
+        });
     }
 
     onAmountFieldInteraction(event: Event): void {

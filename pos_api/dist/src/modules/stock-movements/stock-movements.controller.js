@@ -50,8 +50,8 @@ let StockMovementsController = class StockMovementsController {
     constructor(service) {
         this.service = service;
     }
-    list(warehouseId, from, to) {
-        return this.service.list({ warehouseId, from, to });
+    list(warehouseId, from, to, type, reason) {
+        return this.service.list({ warehouseId, from, to, type, reason });
     }
     create(dto) {
         return this.service.create(dto);
@@ -63,8 +63,10 @@ __decorate([
     __param(0, (0, common_1.Query)('warehouseId')),
     __param(1, (0, common_1.Query)('from')),
     __param(2, (0, common_1.Query)('to')),
+    __param(3, (0, common_1.Query)('type')),
+    __param(4, (0, common_1.Query)('reason')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], StockMovementsController.prototype, "list", null);
 __decorate([

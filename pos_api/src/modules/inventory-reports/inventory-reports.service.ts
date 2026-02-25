@@ -146,15 +146,34 @@ export class InventoryReportsService {
     if (!initial) throw new BadRequestException('No se pudo inicializar el IPV de la sesión.');
 
     const sessionEnd = asOf || session.closedAt || new Date();
+    const previousClosedSession = await this.prisma.cashSession.findFirst({
+      where: {
+        id: { not: cashSessionId },
+        registerId: session.registerId,
+        status: CashSessionStatus.CLOSED,
+        closedAt: { lt: session.openedAt },
+      },
+      select: { closedAt: true },
+      orderBy: { closedAt: 'desc' },
+    });
+
     const initialMap = new Map<string, number>(initial.items.map((i) => [i.productId, i.qty]));
     const productIds = new Set<string>(initial.items.map((i) => i.productId));
 
+    const movementCreatedAtFilter: { lte: Date; gte?: Date; gt?: Date } = {
+      lte: sessionEnd,
+    };
+    if (previousClosedSession?.closedAt) {
+      // Include carry-over movements between last close and this opening.
+      movementCreatedAtFilter.gt = previousClosedSession.closedAt;
+    } else {
+      // First known session: keep movement window inside current session only.
+      movementCreatedAtFilter.gte = session.openedAt;
+    }
+
     const movements = await this.prisma.stockMovement.findMany({
       where: {
-        createdAt: {
-          gte: session.openedAt,
-          lte: sessionEnd,
-        },
+        createdAt: movementCreatedAtFilter,
         OR: [
           { toWarehouseId: warehouseId },
           { fromWarehouseId: warehouseId },
@@ -168,6 +187,7 @@ export class InventoryReportsService {
     for (const mv of movements) {
       productIds.add(mv.productId);
       const qty = Number(mv.qty);
+      const isSessionWindowMovement = mv.createdAt >= session.openedAt;
 
       const isInbound =
         (mv.type === 'IN' && mv.toWarehouseId === warehouseId) ||
@@ -181,7 +201,9 @@ export class InventoryReportsService {
         (mv.type === 'TRANSFER' && mv.fromWarehouseId === warehouseId);
       if (isOutbound) {
         const reason = (mv.reason || '').trim();
-        if (!saleReasonRegex.test(reason)) {
+        // Exclude sale movements only during this session to avoid double count with salesMap.
+        const isSaleOutInsideSession = isSessionWindowMovement && saleReasonRegex.test(reason);
+        if (!isSaleOutInsideSession) {
           outsMap.set(mv.productId, (outsMap.get(mv.productId) || 0) + qty);
         }
       }

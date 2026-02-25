@@ -24,12 +24,33 @@ let StockMovementsService = class StockMovementsService {
                 { toWarehouseId: params.warehouseId },
             ];
         }
-        if (params?.from || params?.to) {
+        if (params?.type) {
+            const validTypes = new Set(["IN", "OUT", "TRANSFER"]);
+            if (!validTypes.has(params.type)) {
+                throw new common_1.BadRequestException("Tipo de movimiento inválido.");
+            }
+            where.type = params.type;
+        }
+        if (params?.reason?.trim()) {
+            where.reason = { contains: params.reason.trim(), mode: "insensitive" };
+        }
+        const fromDate = params?.from ? this.parseDateParam(params.from, false) : null;
+        const toDate = params?.to ? this.parseDateParam(params.to, true) : null;
+        if (params?.from && !fromDate) {
+            throw new common_1.BadRequestException("Fecha 'from' inválida.");
+        }
+        if (params?.to && !toDate) {
+            throw new common_1.BadRequestException("Fecha 'to' inválida.");
+        }
+        if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
+            throw new common_1.BadRequestException("El rango de fechas es inválido.");
+        }
+        if (fromDate || toDate) {
             where.createdAt = {};
-            if (params.from)
-                where.createdAt.gte = new Date(params.from);
-            if (params.to)
-                where.createdAt.lte = new Date(params.to);
+            if (fromDate)
+                where.createdAt.gte = fromDate;
+            if (toDate)
+                where.createdAt.lte = toDate;
         }
         return this.prisma.stockMovement.findMany({
             where,
@@ -40,6 +61,25 @@ let StockMovementsService = class StockMovementsService {
             },
             orderBy: { createdAt: "desc" },
         });
+    }
+    parseDateParam(value, endOfDay) {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            const [y, m, d] = trimmed.split("-").map(Number);
+            const date = endOfDay
+                ? new Date(y, m - 1, d, 23, 59, 59, 999)
+                : new Date(y, m - 1, d, 0, 0, 0, 0);
+            if (date.getFullYear() !== y ||
+                date.getMonth() !== m - 1 ||
+                date.getDate() !== d) {
+                return null;
+            }
+            return date;
+        }
+        const parsed = new Date(trimmed);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
     async create(dto) {
         const normalized = {

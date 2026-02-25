@@ -22,8 +22,10 @@ export class StockMovementsController {
     @Query('warehouseId') warehouseId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('type') type?: 'IN' | 'OUT' | 'TRANSFER',
+    @Query('reason') reason?: string,
   ) {
-    return this.service.list({ warehouseId, from, to });
+    return this.service.list({ warehouseId, from, to, type, reason });
   }
 
   @Post()

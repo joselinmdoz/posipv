@@ -21,6 +21,33 @@ export interface StockItem {
     id: string;
     name: string;
     codigo?: string;
+    barcode?: string;
+    price: number;
+    cost?: number;
+    image?: string;
+    active: boolean;
+    createdAt: Date;
+    productTypeId?: string;
+    productCategoryId?: string;
+    measurementUnitId?: string;
+    productType?: {
+      id: string;
+      name: string;
+      description?: string;
+      active: boolean;
+    };
+    productCategory?: {
+      id: string;
+      name: string;
+      description?: string;
+      active: boolean;
+    };
+    measurementUnit?: {
+      id: string;
+      name: string;
+      symbol: string;
+      active: boolean;
+    };
   };
 }
 
@@ -97,11 +124,19 @@ export class WarehousesService {
   }
 
   // Stock Movements
-  listMovements(params?: { warehouseId?: string; from?: string; to?: string }): Observable<StockMovement[]> {
+  listMovements(params?: {
+    warehouseId?: string;
+    from?: string;
+    to?: string;
+    type?: 'IN' | 'OUT' | 'TRANSFER';
+    reason?: string;
+  }): Observable<StockMovement[]> {
     const queryParams = new URLSearchParams();
     if (params?.warehouseId) queryParams.set('warehouseId', params.warehouseId);
     if (params?.from) queryParams.set('from', params.from);
     if (params?.to) queryParams.set('to', params.to);
+    if (params?.type) queryParams.set('type', params.type);
+    if (params?.reason) queryParams.set('reason', params.reason);
     
     const url = queryParams.toString() ? `${this.MOVEMENTS_URL}?${queryParams}` : this.MOVEMENTS_URL;
     return this.http.get<StockMovement[]>(url);
