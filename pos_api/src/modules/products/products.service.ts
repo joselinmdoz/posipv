@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec } from "../../common/decimal";
-import { Prisma } from "@prisma/client";
+import { CurrencyCode, Prisma } from "@prisma/client";
 
 type CreateProductInput = {
   name: string;
@@ -9,6 +9,7 @@ type CreateProductInput = {
   barcode?: string;
   price: string;
   cost?: string;
+  currency?: CurrencyCode;
   image?: string;
   productTypeId?: string;
   productCategoryId?: string;
@@ -21,6 +22,7 @@ type UpdateProductInput = {
   barcode?: string;
   price?: string;
   cost?: string;
+  currency?: CurrencyCode;
   image?: string;
   active?: boolean;
   productTypeId?: string;
@@ -53,6 +55,7 @@ export class ProductsService {
           barcode: this.asOptional(dto.barcode),
           price: dec(dto.price) as any,
           cost: dto.cost ? dec(dto.cost) as any : undefined,
+          currency: dto.currency || CurrencyCode.CUP,
           image: this.asOptional(dto.image),
           productTypeId: this.asOptional(dto.productTypeId),
           productCategoryId: this.asOptional(dto.productCategoryId),
@@ -74,6 +77,7 @@ export class ProductsService {
           barcode: dto.barcode !== undefined ? this.asOptional(dto.barcode) : undefined,
           price: dto.price ? dec(dto.price) as any : undefined,
           cost: dto.cost ? dec(dto.cost) as any : undefined,
+          currency: dto.currency !== undefined ? dto.currency : undefined,
           image: dto.image,
           active: dto.active,
           productTypeId: dto.productTypeId !== undefined ? this.asOptional(dto.productTypeId) : undefined,

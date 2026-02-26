@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SalesService } from "./sales.service";
-import { IsArray, IsEnum, IsInt, IsString, Min, ValidateNested } from "class-validator";
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
-import { PaymentMethod } from "@prisma/client";
+import { CurrencyCode, PaymentMethod } from "@prisma/client";
 
 class ItemDto {
   @IsString() productId!: string;
@@ -12,7 +12,9 @@ class ItemDto {
 
 class PayDto {
   @IsEnum(PaymentMethod) method!: PaymentMethod;
-  @IsString() amount!: string; // decimal string
+  @IsOptional() @IsString() amount?: string; // compat: monto en moneda base
+  @IsOptional() @IsString() amountOriginal?: string; // monto digitado en moneda de la línea
+  @IsOptional() @IsEnum(CurrencyCode) currency?: CurrencyCode;
 }
 
 class CreateSaleDto {

@@ -69,9 +69,40 @@ __decorate([
     (0, class_validator_1.IsArray)(),
     __metadata("design:type", Array)
 ], RegisterSettingsDto.prototype, "denominations", void 0);
+class SystemSettingsDto {
+}
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsIn)(["CUP", "USD"]),
+    __metadata("design:type", String)
+], SystemSettingsDto.prototype, "defaultCurrency", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ArrayMinSize)(1),
+    (0, class_validator_1.IsString)({ each: true }),
+    (0, class_validator_1.IsIn)(["CUP", "USD"], { each: true }),
+    __metadata("design:type", Array)
+], SystemSettingsDto.prototype, "enabledCurrencies", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.000001),
+    __metadata("design:type", Number)
+], SystemSettingsDto.prototype, "exchangeRateUsdToCup", void 0);
 let SettingsController = class SettingsController {
     constructor(service) {
         this.service = service;
+    }
+    getSystemSettings() {
+        return this.service.getSystemSettings();
+    }
+    saveSystemSettings(payload) {
+        return this.service.saveSystemSettings(payload);
+    }
+    listExchangeRates(limit) {
+        return this.service.listExchangeRates(limit ? Number(limit) : 50);
     }
     getRegisterSettings(registerId) {
         return this.service.getRegisterSettings(registerId);
@@ -93,6 +124,26 @@ let SettingsController = class SettingsController {
     }
 };
 exports.SettingsController = SettingsController;
+__decorate([
+    (0, common_1.Get)("system"),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], SettingsController.prototype, "getSystemSettings", null);
+__decorate([
+    (0, common_1.Put)("system"),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [SystemSettingsDto]),
+    __metadata("design:returntype", void 0)
+], SettingsController.prototype, "saveSystemSettings", null);
+__decorate([
+    (0, common_1.Get)("exchange-rates"),
+    __param(0, (0, common_1.Query)("limit")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], SettingsController.prototype, "listExchangeRates", null);
 __decorate([
     (0, common_1.Get)("register/:registerId"),
     __param(0, (0, common_1.Param)("registerId")),

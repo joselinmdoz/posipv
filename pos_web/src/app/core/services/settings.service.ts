@@ -25,6 +25,26 @@ export interface Denomination {
   enabled: boolean;
 }
 
+export type SystemCurrencyCode = 'CUP' | 'USD';
+
+export interface SystemSettings {
+  id: string;
+  defaultCurrency: SystemCurrencyCode;
+  enabledCurrencies: SystemCurrencyCode[];
+  exchangeRateUsdToCup: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExchangeRateRecord {
+  id: string;
+  baseCurrency: SystemCurrencyCode;
+  quoteCurrency: SystemCurrencyCode;
+  rate: number;
+  source: string | null;
+  createdAt: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -32,6 +52,22 @@ export class SettingsService {
   private readonly API_URL = 'http://localhost:3021/api/settings';
 
   constructor(private http: HttpClient) {}
+
+  getSystemSettings(): Observable<SystemSettings> {
+    return this.http.get<SystemSettings>(`${this.API_URL}/system`);
+  }
+
+  saveSystemSettings(data: {
+    defaultCurrency?: SystemCurrencyCode;
+    enabledCurrencies?: SystemCurrencyCode[];
+    exchangeRateUsdToCup?: number;
+  }): Observable<SystemSettings> {
+    return this.http.put<SystemSettings>(`${this.API_URL}/system`, data);
+  }
+
+  listExchangeRates(limit = 50): Observable<ExchangeRateRecord[]> {
+    return this.http.get<ExchangeRateRecord[]>(`${this.API_URL}/exchange-rates?limit=${limit}`);
+  }
 
   getRegisterSettings(registerId: string): Observable<RegisterSettings> {
     return this.http.get<RegisterSettings>(`${this.API_URL}/register/${registerId}`);

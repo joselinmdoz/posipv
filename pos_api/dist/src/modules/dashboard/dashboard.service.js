@@ -41,7 +41,11 @@ let DashboardService = class DashboardService {
                 orderBy: { createdAt: "desc" },
                 select: { createdAt: true },
             }),
-            Promise.resolve(0),
+            this.prisma.stock.count({
+                where: {
+                    qty: { lte: 5 },
+                },
+            }),
         ]);
         return {
             salesToday: parseFloat((salesToday._sum.total || 0).toFixed(2)),

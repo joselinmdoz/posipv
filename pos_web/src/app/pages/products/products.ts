@@ -23,6 +23,7 @@ import { MessageService, ConfirmationService } from 'primeng/api';
 import { firstValueFrom } from 'rxjs';
 import { ProductsService, Product, CreateProductDto, UpdateProductDto, ProductType, ProductCategory, MeasurementUnit } from '@/app/core/services/products.service';
 import { CatalogService, ProductType as CatalogProductType, ProductCategory as CatalogProductCategory, MeasurementUnit as CatalogMeasurementUnit } from '@/app/core/services/catalog.service';
+import { SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 
 interface Column {
     field: string;
@@ -91,6 +92,7 @@ interface Column {
                     <th pSortableColumn="productType">Tipo</th>
                     <th pSortableColumn="productCategory">Categoría</th>
                     <th pSortableColumn="measurementUnit">Unidad</th>
+                    <th pSortableColumn="currency">Moneda</th>
                     <th pSortableColumn="price">Precio <p-sortIcon field="price" /></th>
                     <th pSortableColumn="cost">Costo</th>
                     <th pSortableColumn="active">Estado</th>
@@ -107,6 +109,7 @@ interface Column {
                     <th>
                         <input pInputText [(ngModel)]="filters['barcode']" placeholder="Buscar código" (input)="filterGlobal($event)" class="w-full" />
                     </th>
+                    <th></th>
                     <th></th>
                     <th></th>
                     <th></th>
@@ -152,8 +155,9 @@ interface Column {
                             <span class="text-gray-400">-</span>
                         }
                     </td>
-                    <td>{{ product.price | currency }}</td>
-                    <td>{{ product.cost ? (product.cost | currency) : '-' }}</td>
+                    <td>{{ product.currency || defaultProductCurrency }}</td>
+                    <td>{{ product.price | currency:(product.currency || defaultProductCurrency) }}</td>
+                    <td>{{ product.cost ? (product.cost | currency:(product.currency || defaultProductCurrency)) : '-' }}</td>
                     <td>
                         <p-tag [value]="product.active ? 'Activo' : 'Inactivo'" [severity]="product.active ? 'success' : 'warn'" />
                     </td>
@@ -165,7 +169,7 @@ interface Column {
             </ng-template>
             <ng-template #emptymessage>
                 <tr>
-                    <td colspan="11">No se encontraron productos.</td>
+                    <td colspan="12">No se encontraron productos.</td>
                 </tr>
             </ng-template>
         </p-table>
@@ -331,12 +335,24 @@ interface Column {
                         <div class="flex flex-col gap-4">
                             <!-- Campo de Costo -->
                             <div class="flex flex-col gap-2">
+                                <label for="currency" class="font-semibold">Moneda del Producto *</label>
+                                <p-select
+                                    id="currency"
+                                    [options]="currencyOptions"
+                                    [(ngModel)]="product.currency"
+                                    optionLabel="label"
+                                    optionValue="value"
+                                    class="w-full"
+                                />
+                            </div>
+
+                            <div class="flex flex-col gap-2">
                                 <label for="cost" class="font-semibold">Costo de Compra</label>
                                 <p-inputnumber 
                                     id="cost" 
                                     [(ngModel)]="product.cost" 
                                     mode="currency" 
-                                    currency="USD" 
+                                    [currency]="product.currency || defaultProductCurrency"
                                     locale="es-MX"
                                     (onInput)="onCostChange()"
                                     (onFocus)="selectInputValue($event)"
@@ -357,7 +373,7 @@ interface Column {
                                     [min]="0" 
                                     [max]="200" 
                                     [step]="5"
-                                    (onChange)="calculateSuggestedPrice()"
+                                    (onChange)="onProfitPercentageChanged()"
                                     styleClass="profit-slider"
                                 />
                                 
@@ -405,7 +421,7 @@ interface Column {
                                 <div class="suggested-price-card">
                                     <div class="flex align-items-center justify-content-between">
                                         <span class="text-500">Precio sugerido ({{ profitPercentage | number:'1.0-0' }}% de ganancia):</span>
-                                        <span class="suggested-price">{{ suggestedPrice | currency:'USD':'symbol':'1.2-2' }}</span>
+                                        <span class="suggested-price">{{ suggestedPrice | currency:(product.currency || defaultProductCurrency):'symbol':'1.2-2' }}</span>
                                     </div>
                                 </div>
                             }
@@ -419,7 +435,7 @@ interface Column {
                                     id="price" 
                                     [(ngModel)]="product.price" 
                                     mode="currency" 
-                                    currency="USD" 
+                                    [currency]="product.currency || defaultProductCurrency"
                                     locale="es-MX"
                                     (onFocus)="selectInputValue($event)"
                                     class="w-full price-input" 
@@ -470,6 +486,12 @@ export class Products implements OnInit {
     // Calculadora de ganancia
     profitPercentage: number = 30;
     suggestedPrice: number = 0;
+    defaultProductCurrency: SystemCurrencyCode = 'CUP';
+    enabledProductCurrencies: SystemCurrencyCode[] = ['CUP', 'USD'];
+    currencyOptions: Array<{ label: string; value: SystemCurrencyCode }> = [
+        { label: 'CUP', value: 'CUP' },
+        { label: 'USD', value: 'USD' }
+    ];
 
     // URL base del API para las imágenes
     readonly IMAGE_BASE_URL = 'http://localhost:3021';
@@ -481,6 +503,7 @@ export class Products implements OnInit {
         { field: 'productType', header: 'Tipo' },
         { field: 'productCategory', header: 'Categoría' },
         { field: 'measurementUnit', header: 'Unidad' },
+        { field: 'currency', header: 'Moneda' },
         { field: 'price', header: 'Precio' },
         { field: 'cost', header: 'Costo' },
         { field: 'active', header: 'Estado' }
@@ -498,6 +521,7 @@ export class Products implements OnInit {
         barcode: '',
         price: 0,
         cost: 0,
+        currency: 'CUP' as SystemCurrencyCode,
         image: '',
         active: true,
         productTypeId: undefined,
@@ -508,12 +532,14 @@ export class Products implements OnInit {
     constructor(
         private productsService: ProductsService,
         private catalogService: CatalogService,
+        private settingsService: SettingsService,
         private messageService: MessageService,
         private confirmationService: ConfirmationService,
         private cdr: ChangeDetectorRef
     ) {}
 
     ngOnInit() {
+        this.loadSystemCurrencySettings();
         this.loadProducts();
         this.loadCatalogs();
     }
@@ -571,6 +597,7 @@ export class Products implements OnInit {
             barcode: '',
             price: 0,
             cost: 0,
+            currency: this.defaultProductCurrency,
             image: '',
             active: true,
             productTypeId: undefined,
@@ -589,6 +616,7 @@ export class Products implements OnInit {
         this.selectedProduct = product;
         this.product = { 
             ...product,
+            currency: (product.currency || this.defaultProductCurrency) as SystemCurrencyCode,
             productTypeId: product.productTypeId,
             productCategoryId: product.productCategoryId,
             measurementUnitId: product.measurementUnitId
@@ -601,7 +629,7 @@ export class Products implements OnInit {
         } else {
             this.profitPercentage = 30;
         }
-        this.calculateSuggestedPrice();
+        this.calculateSuggestedPrice(false);
         this.isEditMode.set(true);
         this.productDialog = true;
     }
@@ -640,13 +668,20 @@ export class Products implements OnInit {
 
     setProfitPercentage(value: number) {
         this.profitPercentage = value;
-        this.calculateSuggestedPrice();
+        this.calculateSuggestedPrice(true);
     }
 
-    calculateSuggestedPrice() {
+    onProfitPercentageChanged() {
+        this.calculateSuggestedPrice(true);
+    }
+
+    calculateSuggestedPrice(autoApply = false) {
         if (this.product.cost && this.product.cost > 0) {
             // Calcular precio con el porcentaje de ganancia
             this.suggestedPrice = this.product.cost * (1 + this.profitPercentage / 100);
+            if (autoApply) {
+                this.product.price = this.roundMoney(this.suggestedPrice);
+            }
         } else {
             this.suggestedPrice = 0;
         }
@@ -654,11 +689,7 @@ export class Products implements OnInit {
 
     onCostChange() {
         // Cuando cambia el costo, calcular automáticamente el precio de venta
-        this.calculateSuggestedPrice();
-        // Autoaplicar el precio sugerido al campo de precio
-        if (this.suggestedPrice > 0) {
-            this.product.price = this.suggestedPrice;
-        }
+        this.calculateSuggestedPrice(true);
     }
 
     selectInputValue(event: any) {
@@ -670,7 +701,7 @@ export class Products implements OnInit {
 
     applySuggestedPrice() {
         if (this.suggestedPrice > 0) {
-            this.product.price = this.suggestedPrice;
+            this.product.price = this.roundMoney(this.suggestedPrice);
         }
     }
 
@@ -695,6 +726,7 @@ export class Products implements OnInit {
         const formData = new FormData();
         formData.append('name', this.product.name);
         formData.append('price', String(this.product.price));
+        formData.append('currency', String(this.product.currency || this.defaultProductCurrency));
         
         if (this.product.codigo) formData.append('codigo', this.product.codigo);
         if (this.product.barcode) formData.append('barcode', this.product.barcode);
@@ -845,12 +877,14 @@ export class Products implements OnInit {
             const dto: CreateProductDto = {
                 name,
                 price: price.toFixed(2),
+                currency: this.defaultProductCurrency,
             };
 
             const codigo = (raw['codigo'] || '').trim();
             const barcode = (raw['barcode'] || '').trim();
             const costText = (raw['cost'] || '').trim().replace(',', '.');
             const cost = Number(costText);
+            const currencyText = (raw['currency'] || '').trim().toUpperCase();
 
             const codigoKey = this.toKey(codigo);
             if (codigoKey && (existingCodigo.has(codigoKey) || csvCodigo.has(codigoKey))) {
@@ -869,6 +903,7 @@ export class Products implements OnInit {
             if (codigo) dto.codigo = codigo;
             if (barcode) dto.barcode = barcode;
             if (costText && !Number.isNaN(cost) && cost >= 0) dto.cost = cost.toFixed(2);
+            if (currencyText && this.isValidCurrencyCode(currencyText)) dto.currency = currencyText as SystemCurrencyCode;
             if (productTypeId) dto.productTypeId = productTypeId;
             if (productCategoryId) dto.productCategoryId = productCategoryId;
             if (measurementUnitId) dto.measurementUnitId = measurementUnitId;
@@ -1041,11 +1076,12 @@ export class Products implements OnInit {
             return;
         }
 
-        const headers = ['name', 'codigo', 'barcode', 'price', 'cost', 'productType', 'productCategory', 'measurementUnit', 'active'];
+        const headers = ['name', 'codigo', 'barcode', 'currency', 'price', 'cost', 'productType', 'productCategory', 'measurementUnit', 'active'];
         const lines = rows.map((product) => [
             product.name || '',
             product.codigo || '',
             product.barcode || '',
+            product.currency || this.defaultProductCurrency,
             product.price != null ? Number(product.price).toFixed(2) : '',
             product.cost != null ? Number(product.cost).toFixed(2) : '',
             product.productType?.name || '',
@@ -1075,5 +1111,40 @@ export class Products implements OnInit {
             return `"${value.replace(/"/g, '""')}"`;
         }
         return value;
+    }
+
+    private loadSystemCurrencySettings() {
+        this.settingsService.getSystemSettings().subscribe({
+            next: (settings) => {
+                this.defaultProductCurrency = settings.defaultCurrency || 'CUP';
+                const enabled = (settings.enabledCurrencies || ['CUP', 'USD']) as SystemCurrencyCode[];
+                this.enabledProductCurrencies = enabled.length > 0 ? enabled : ['CUP'];
+                this.currencyOptions = this.enabledProductCurrencies.map((code) => ({ label: code, value: code }));
+
+                if (!this.enabledProductCurrencies.includes(this.defaultProductCurrency)) {
+                    this.defaultProductCurrency = this.enabledProductCurrencies[0];
+                }
+
+                if (!this.product?.currency || !this.enabledProductCurrencies.includes(this.product.currency)) {
+                    this.product.currency = this.defaultProductCurrency;
+                }
+            },
+            error: () => {
+                this.defaultProductCurrency = 'CUP';
+                this.enabledProductCurrencies = ['CUP', 'USD'];
+                this.currencyOptions = this.enabledProductCurrencies.map((code) => ({ label: code, value: code }));
+                if (!this.product?.currency) {
+                    this.product.currency = this.defaultProductCurrency;
+                }
+            }
+        });
+    }
+
+    private roundMoney(value: number): number {
+        return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    }
+
+    private isValidCurrencyCode(code: string): code is SystemCurrencyCode {
+        return code === 'CUP' || code === 'USD';
     }
 }

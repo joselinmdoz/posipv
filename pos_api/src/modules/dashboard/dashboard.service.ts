@@ -31,8 +31,11 @@ export class DashboardService {
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
-      // TODO: Implement low stock calculation when stock management is added
-      Promise.resolve(0),
+      this.prisma.stock.count({
+        where: {
+          qty: { lte: 5 },
+        },
+      }),
     ]);
 
     return {

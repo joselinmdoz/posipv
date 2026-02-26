@@ -20,6 +20,7 @@ const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const class_validator_1 = require("class-validator");
 const multer_1 = require("multer");
 const path_1 = require("path");
+const client_1 = require("@prisma/client");
 class CreateProductDto {
 }
 __decorate([
@@ -46,6 +47,11 @@ __decorate([
     (0, class_validator_1.IsNumberString)(),
     __metadata("design:type", String)
 ], CreateProductDto.prototype, "cost", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.CurrencyCode),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "currency", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -80,6 +86,7 @@ let ProductsController = class ProductsController {
             codigo: req.body.codigo,
             barcode: req.body.barcode,
             cost: req.body.cost,
+            currency: req.body.currency,
             productTypeId: req.body.productTypeId,
             productCategoryId: req.body.productCategoryId,
             measurementUnitId: req.body.measurementUnitId,
@@ -96,6 +103,7 @@ let ProductsController = class ProductsController {
             codigo: req.body.codigo,
             barcode: req.body.barcode,
             cost: req.body.cost,
+            currency: req.body.currency,
             productTypeId: req.body.productTypeId,
             productCategoryId: req.body.productCategoryId,
             measurementUnitId: req.body.measurementUnitId,

@@ -28,6 +28,10 @@ export interface DetailedSale {
     saleId: string;
     method: string;
     amount: number;
+    currency: 'CUP' | 'USD' | string;
+    amountOriginal: number;
+    exchangeRateUsdToCup: number | null;
+    exchangeRateRecordId: string | null;
   }>;
   cashier: {
     id: string;

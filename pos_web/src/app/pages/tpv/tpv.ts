@@ -13,7 +13,7 @@ import { TagModule } from 'primeng/tag';
 import { MenuItem, MessageService } from 'primeng/api';
 import { CashSessionSummary, Payment, PosService, SaleItem } from '@/app/core/services/pos.service';
 import { Product, ProductsService } from '@/app/core/services/products.service';
-import { Denomination, PaymentMethodSetting, SettingsService } from '@/app/core/services/settings.service';
+import { Denomination, PaymentMethodSetting, SettingsService, SystemCurrencyCode, SystemSettings } from '@/app/core/services/settings.service';
 import { CreateStockMovementDto, WarehousesService } from '@/app/core/services/warehouses.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
 import { forkJoin } from 'rxjs';
@@ -312,21 +312,25 @@ import { forkJoin } from 'rxjs';
         </p-dialog>
 
         <!-- Dialog: Pago -->
-        <p-dialog header="Procesar Pago" [(visible)]="paymentDialog" [modal]="true" [style]="{ width: '700px' }">
+        <p-dialog header="Procesar Pago" [(visible)]="paymentDialog" [modal]="true" [style]="{ width: '860px' }">
             <div class="flex flex-col gap-4 tpv-payment-modal">
                 <div class="tpv-payment-summary">
                     <div class="tpv-payment-summary-item">
-                        <span>Total</span>
-                        <strong>{{ cartTotal() | currency }}</strong>
+                        <span>Total ({{ paymentBaseCurrency() }})</span>
+                        <strong>{{ cartTotal() | currency: paymentBaseCurrency() }}</strong>
                     </div>
                     <div class="tpv-payment-summary-item">
-                        <span>Pagado</span>
-                        <strong>{{ paymentTotal() | currency }}</strong>
+                        <span>Pagado ({{ paymentBaseCurrency() }})</span>
+                        <strong>{{ paymentTotal() | currency: paymentBaseCurrency() }}</strong>
                     </div>
                     <div class="tpv-payment-summary-item" [class.ok]="paymentDifference() === 0" [class.warn]="paymentDifference() > 0" [class.over]="paymentDifference() < 0">
-                        <span>{{ paymentDifference() >= 0 ? 'Restante' : 'Exceso' }}</span>
-                        <strong>{{ absolutePaymentDifference() | currency }}</strong>
+                        <span>{{ paymentDifference() >= 0 ? 'Restante' : 'Exceso' }} ({{ paymentBaseCurrency() }})</span>
+                        <strong>{{ absolutePaymentDifference() | currency: paymentBaseCurrency() }}</strong>
                     </div>
+                </div>
+                <div class="text-sm text-gray-600">
+                    Monedas habilitadas: <strong>{{ paymentEnabledCurrencies.join(', ') }}</strong> |
+                    Tasa activa: <strong>1 USD = {{ paymentRateUsdToCup }} CUP</strong>
                 </div>
 
                 <div class="tpv-payment-actions">
@@ -363,16 +367,30 @@ import { forkJoin } from 'rxjs';
                                     class="w-full"
                                 />
                             </div>
+                            <div class="tpv-payment-line-currency">
+                                <p-select
+                                    [options]="paymentCurrencyOptions"
+                                    [(ngModel)]="line.currency"
+                                    (ngModelChange)="onPaymentCurrencyChanged(i, $event)"
+                                    optionLabel="label"
+                                    optionValue="value"
+                                    appendTo="body"
+                                    class="w-full"
+                                />
+                            </div>
                             <div class="tpv-payment-line-amount" (click)="onAmountFieldInteraction($event)" (touchend)="onAmountFieldInteraction($event)">
                                 <p-inputnumber
                                     [(ngModel)]="line.amount"
                                     mode="currency"
-                                    currency="USD"
+                                    [currency]="line.currency"
                                     locale="en-US"
                                     [min]="0"
                                     inputStyleClass="tpv-amount-input"
                                     class="w-full"
                                 />
+                            </div>
+                            <div class="tpv-payment-line-base text-xs text-gray-600">
+                                {{ paymentLineBaseAmount(line) | currency: paymentBaseCurrency() }}
                             </div>
                             <div class="tpv-payment-line-fill">
                                 <p-button
@@ -627,9 +645,17 @@ export class Tpv implements OnInit {
     paymentLines: Array<{
         id: number;
         method: Payment['method'];
+        currency: SystemCurrencyCode;
         amount: number | null;
     }> = [];
     private paymentLineSeq = 1;
+    paymentDefaultCurrency: SystemCurrencyCode = 'CUP';
+    paymentEnabledCurrencies: SystemCurrencyCode[] = ['CUP', 'USD'];
+    paymentRateUsdToCup = 1;
+    paymentCurrencyOptions: Array<{ label: string; value: SystemCurrencyCode }> = [
+        { label: 'CUP', value: 'CUP' },
+        { label: 'USD', value: 'USD' }
+    ];
 
     movementProductOptions: Array<{ label: string; value: string }> = [];
     movementProductsCatalog: Product[] = [];
@@ -696,6 +722,7 @@ export class Tpv implements OnInit {
 
     ngOnInit() {
         this.setDefaultPaymentMethods();
+        this.loadSystemPaymentSettings();
         this.clearProducts();
         this.handleNavigationParams();
         this.loadRegisters();
@@ -997,7 +1024,7 @@ export class Tpv implements OnInit {
         if (!this.paymentLines.length) return false;
 
         const hasInvalidLine = this.paymentLines.some(
-            (line) => !line.method || Number(line.amount || 0) <= 0
+            (line) => !line.method || !this.isCurrencyAllowed(line.currency) || Number(line.amount || 0) <= 0
         );
         if (hasInvalidLine) return false;
         if (this.hasDuplicatePaymentMethods()) return false;
@@ -1015,7 +1042,8 @@ export class Tpv implements OnInit {
             .filter((line) => Number(line.amount || 0) > 0)
             .map((line) => ({
                 method: line.method,
-                amount: this.roundMoney(Number(line.amount || 0))
+                amount: this.roundMoney(Number(line.amount || 0)),
+                currency: line.currency
             }));
 
         this.posService.createSale(session.id, this.posService.cart(), payments).subscribe({
@@ -1053,6 +1081,7 @@ export class Tpv implements OnInit {
             {
                 id: this.paymentLineSeq++,
                 method: methodToUse,
+                currency: this.paymentDefaultCurrency,
                 amount: lineAmount
             }
         ];
@@ -1069,10 +1098,10 @@ export class Tpv implements OnInit {
 
         const totalExcludingLine = this.paymentLines.reduce((sum, current, i) => {
             if (i === index) return sum;
-            return sum + Number(current.amount || 0);
+            return sum + this.toBaseAmount(Number(current.amount || 0), current.currency);
         }, 0);
         const remaining = this.roundMoney(this.cartTotal() - totalExcludingLine);
-        line.amount = remaining > 0 ? remaining : 0;
+        line.amount = remaining > 0 ? this.roundMoney(this.fromBaseAmount(remaining, line.currency)) : 0;
         this.paymentLines = [...this.paymentLines];
     }
 
@@ -1095,12 +1124,14 @@ export class Tpv implements OnInit {
         const existingIndex = this.paymentLines.findIndex((line) => line.method === method);
         if (existingIndex >= 0) {
             const line = this.paymentLines[existingIndex];
-            line.amount = this.roundMoney(Number(line.amount || 0) + remaining);
+            const currentBase = this.toBaseAmount(Number(line.amount || 0), line.currency);
+            const nextBase = this.roundMoney(currentBase + remaining);
+            line.amount = this.roundMoney(this.fromBaseAmount(nextBase, line.currency));
             this.paymentLines = [...this.paymentLines];
             return;
         }
 
-        this.addPaymentLine(method, remaining);
+        this.addPaymentLine(method, this.fromBaseAmount(remaining, this.paymentDefaultCurrency));
     }
 
     canManageSessionInventory(): boolean {
@@ -1440,7 +1471,8 @@ export class Tpv implements OnInit {
             {
                 id: this.paymentLineSeq++,
                 method: defaultMethod,
-                amount: this.roundMoney(this.cartTotal())
+                currency: this.paymentDefaultCurrency,
+                amount: this.roundMoney(this.fromBaseAmount(this.cartTotal(), this.paymentDefaultCurrency))
             }
         ];
     }
@@ -1454,6 +1486,12 @@ export class Tpv implements OnInit {
         const invalidLine = this.paymentLines.find((line) => !line.method || Number(line.amount || 0) <= 0);
         if (invalidLine) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Todas las lineas de pago deben tener metodo y monto mayor a 0' });
+            return false;
+        }
+
+        const invalidCurrency = this.paymentLines.find((line) => !this.isCurrencyAllowed(line.currency));
+        if (invalidCurrency) {
+            this.messageService.add({ severity: 'warn', summary: 'Moneda inválida', detail: 'Hay líneas con moneda no habilitada en configuración general' });
             return false;
         }
 
@@ -1490,6 +1528,59 @@ export class Tpv implements OnInit {
 
     private roundMoney(value: number): number {
         return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    }
+
+    private loadSystemPaymentSettings() {
+        this.settingsService.getSystemSettings().subscribe({
+            next: (settings) => this.applySystemPaymentSettings(settings),
+            error: () => {
+                this.paymentDefaultCurrency = 'CUP';
+                this.paymentEnabledCurrencies = ['CUP', 'USD'];
+                this.paymentRateUsdToCup = 1;
+                this.refreshPaymentCurrencyOptions();
+            }
+        });
+    }
+
+    private applySystemPaymentSettings(settings: SystemSettings) {
+        this.paymentDefaultCurrency = (settings.defaultCurrency || 'CUP') as SystemCurrencyCode;
+        this.paymentEnabledCurrencies = Array.isArray(settings.enabledCurrencies) && settings.enabledCurrencies.length
+            ? (settings.enabledCurrencies as SystemCurrencyCode[])
+            : ['CUP', 'USD'];
+        this.paymentRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
+        if (!Number.isFinite(this.paymentRateUsdToCup) || this.paymentRateUsdToCup <= 0) {
+            this.paymentRateUsdToCup = 1;
+        }
+
+        if (!this.paymentEnabledCurrencies.includes(this.paymentDefaultCurrency)) {
+            this.paymentDefaultCurrency = this.paymentEnabledCurrencies[0];
+        }
+
+        this.refreshPaymentCurrencyOptions();
+        this.sanitizePaymentLines();
+    }
+
+    private refreshPaymentCurrencyOptions() {
+        this.paymentCurrencyOptions = this.paymentEnabledCurrencies.map((code) => ({
+            label: code,
+            value: code
+        }));
+    }
+
+    private toBaseAmount(amount: number, currency: SystemCurrencyCode): number {
+        if (!Number.isFinite(amount) || amount <= 0) return 0;
+        if (currency === 'USD') {
+            return this.roundMoney(amount * this.paymentRateUsdToCup);
+        }
+        return this.roundMoney(amount);
+    }
+
+    private fromBaseAmount(baseAmount: number, currency: SystemCurrencyCode): number {
+        if (!Number.isFinite(baseAmount) || baseAmount <= 0) return 0;
+        if (currency === 'USD') {
+            return this.roundMoney(baseAmount / this.paymentRateUsdToCup);
+        }
+        return this.roundMoney(baseAmount);
     }
 
     private setDefaultPaymentMethods() {
@@ -1554,12 +1645,18 @@ export class Tpv implements OnInit {
 
         let hasChanges = false;
         const sanitized = this.paymentLines.map((line) => {
-            if (this.isPaymentMethodAllowed(line.method)) {
-                return line;
+            let next = line;
+            if (!this.isPaymentMethodAllowed(line.method)) {
+                hasChanges = true;
+                next = { ...next, method: defaultMethod };
             }
 
-            hasChanges = true;
-            return { ...line, method: defaultMethod };
+            if (!this.isCurrencyAllowed(next.currency)) {
+                hasChanges = true;
+                next = { ...next, currency: this.paymentDefaultCurrency };
+            }
+
+            return next;
         });
 
         if (hasChanges) {
@@ -1571,6 +1668,10 @@ export class Tpv implements OnInit {
 
     private isPaymentMethodAllowed(method: Payment['method']): boolean {
         return this.allowedPaymentMethods.has(method);
+    }
+
+    private isCurrencyAllowed(currency: SystemCurrencyCode): boolean {
+        return this.paymentEnabledCurrencies.includes(currency);
     }
 
     private getDefaultPaymentMethod(): Payment['method'] | null {
@@ -1610,6 +1711,24 @@ export class Tpv implements OnInit {
             summary: 'Método duplicado',
             detail: 'Cada línea debe usar un método de pago diferente'
         });
+    }
+
+    onPaymentCurrencyChanged(index: number, currency: SystemCurrencyCode) {
+        const line = this.paymentLines[index];
+        if (!line || !this.isCurrencyAllowed(currency)) return;
+
+        const baseAmount = this.toBaseAmount(Number(line.amount || 0), line.currency);
+        line.currency = currency;
+        line.amount = this.roundMoney(this.fromBaseAmount(baseAmount, currency));
+        this.paymentLines = [...this.paymentLines];
+    }
+
+    paymentLineBaseAmount(line: { amount: number | null; currency: SystemCurrencyCode }): number {
+        return this.roundMoney(this.toBaseAmount(Number(line.amount || 0), line.currency));
+    }
+
+    paymentBaseCurrency(): SystemCurrencyCode {
+        return 'CUP';
     }
 
     private isPaymentMethodAlreadyUsed(method: Payment['method']): boolean {
@@ -1664,7 +1783,7 @@ export class Tpv implements OnInit {
 
     paymentTotal(): number {
         return this.roundMoney(
-            this.paymentLines.reduce((sum, line) => sum + Number(line.amount || 0), 0)
+            this.paymentLines.reduce((sum, line) => sum + this.toBaseAmount(Number(line.amount || 0), line.currency), 0)
         );
     }
 

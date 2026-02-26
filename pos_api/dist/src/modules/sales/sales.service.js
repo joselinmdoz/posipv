@@ -14,10 +14,11 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const decimal_1 = require("../../common/decimal");
-const client_2 = require("@prisma/client");
+const settings_service_1 = require("../settings/settings.service");
 let SalesService = class SalesService {
-    constructor(prisma) {
+    constructor(prisma, settingsService) {
         this.prisma = prisma;
+        this.settingsService = settingsService;
     }
     async listSessionProducts(cashSessionId) {
         const session = await this.prisma.cashSession.findUnique({
@@ -82,6 +83,7 @@ let SalesService = class SalesService {
             throw new common_1.BadRequestException("Sin items.");
         if (!dto.payments?.length)
             throw new common_1.BadRequestException("Sin pagos.");
+        const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
         const qtyByProduct = new Map();
         for (const item of dto.items) {
             const currentQty = qtyByProduct.get(item.productId) || 0;
@@ -109,7 +111,7 @@ let SalesService = class SalesService {
             }
         }
         const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
-        let total = new client_2.Prisma.Decimal(0);
+        let total = new client_1.Prisma.Decimal(0);
         const itemsData = dto.items.map((i) => {
             const price = priceMap.get(i.productId);
             if (!price)
@@ -117,7 +119,25 @@ let SalesService = class SalesService {
             total = total.add(price.mul(i.qty));
             return { productId: i.productId, qty: i.qty, price: price };
         });
-        const paySum = dto.payments.reduce((acc, p) => acc.add((0, decimal_1.dec)(p.amount)), new client_2.Prisma.Decimal(0));
+        const normalizedPayments = dto.payments.map((rawPayment) => {
+            const currency = this.normalizeCurrency(rawPayment.currency);
+            const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
+            const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
+            let amountBase = amountOriginal;
+            const exchangeRateUsdToCup = (0, decimal_1.dec)(rateSnapshot.rate.toString());
+            if (currency === client_1.CurrencyCode.USD) {
+                amountBase = (0, decimal_1.dec)(amountOriginal.mul(exchangeRateUsdToCup).toFixed(2));
+            }
+            return {
+                method: rawPayment.method,
+                currency,
+                amountOriginal,
+                amount: amountBase,
+                exchangeRateUsdToCup,
+                exchangeRateRecordId: rateSnapshot.rateRecordId,
+            };
+        });
+        const paySum = normalizedPayments.reduce((acc, p) => acc.add((0, decimal_1.dec)(p.amount)), new client_1.Prisma.Decimal(0));
         if (!(0, decimal_1.moneyEq)(total, paySum)) {
             throw new common_1.BadRequestException(`Pagos (${paySum.toFixed(2)}) no cuadran con total (${total.toFixed(2)}).`);
         }
@@ -129,9 +149,13 @@ let SalesService = class SalesService {
                     total: total,
                     items: { create: itemsData },
                     payments: {
-                        create: dto.payments.map((p) => ({
+                        create: normalizedPayments.map((p) => ({
                             method: p.method,
                             amount: (0, decimal_1.dec)(p.amount),
+                            currency: p.currency,
+                            amountOriginal: (0, decimal_1.dec)(p.amountOriginal),
+                            exchangeRateUsdToCup: (0, decimal_1.dec)(p.exchangeRateUsdToCup),
+                            exchangeRateRecordId: p.exchangeRateRecordId || null,
                         })),
                     },
                 },
@@ -164,10 +188,31 @@ let SalesService = class SalesService {
             return sale;
         });
     }
+    normalizeCurrency(currencyInput) {
+        const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
+        if (raw === client_1.CurrencyCode.CUP)
+            return client_1.CurrencyCode.CUP;
+        if (raw === client_1.CurrencyCode.USD)
+            return client_1.CurrencyCode.USD;
+        throw new common_1.BadRequestException("Moneda de pago inválida.");
+    }
+    parsePositiveAmount(input, message) {
+        try {
+            const value = (0, decimal_1.dec)(input);
+            if (!value.isFinite() || value.lte(0)) {
+                throw new common_1.BadRequestException(message);
+            }
+            return value;
+        }
+        catch {
+            throw new common_1.BadRequestException(message);
+        }
+    }
 };
 exports.SalesService = SalesService;
 exports.SalesService = SalesService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        settings_service_1.SettingsService])
 ], SalesService);
 //# sourceMappingURL=sales.service.js.map

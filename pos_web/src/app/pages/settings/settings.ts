@@ -8,211 +8,282 @@ import { ToastModule } from 'primeng/toast';
 import { CardModule } from 'primeng/card';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { MessageService } from 'primeng/api';
-import { SettingsService, RegisterSettings, PaymentMethodSetting } from '@/app/core/services/settings.service';
-import { PosService } from '@/app/core/services/pos.service';
-import { WarehousesService } from '@/app/core/services/warehouses.service';
+import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings } from '@/app/core/services/settings.service';
 
 @Component({
     selector: 'app-settings',
     standalone: true,
-    imports: [
-        CommonModule,
-        FormsModule,
-        ButtonModule,
-        InputNumberModule,
-        SelectModule,
-        ToastModule,
-        CardModule,
-        ToggleSwitchModule
-    ],
+    imports: [CommonModule, FormsModule, ButtonModule, InputNumberModule, SelectModule, ToastModule, CardModule, ToggleSwitchModule],
     providers: [MessageService],
     template: `
-        <div class="p-4">
-            <h1 class="text-2xl font-bold mb-4">Configuraciones del TPV</h1>
+        <div class="p-4 settings-page">
+            <h1 class="text-2xl font-bold mb-1">Configuración General del Sistema</h1>
+            <p class="text-gray-500 mb-4">Define la moneda por defecto, monedas habilitadas y la tasa de cambio operativa.</p>
 
-            <div class="mb-4">
-                <label class="block mb-2 font-medium">Seleccionar TPV</label>
-                <p-select
-                    [options]="registerOptions"
-                    [(ngModel)]="selectedRegisterId"
-                    placeholder="Seleccionar TPV"
-                    (onChange)="loadSettings()"
-                    styleClass="w-64"
-                />
-            </div>
-
-            @if (selectedRegisterId) {
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <p-card header="Configuración General">
-                        <div class="flex flex-col gap-4">
-                            <div>
-                                <label class="block mb-2">Fondo de caja por defecto</label>
-                                <p-inputnumber
-                                    [(ngModel)]="settings().defaultOpeningFloat"
-                                    mode="currency"
-                                    currency="USD"
-                                    locale="en-US"
-                                    class="w-full"
-                                />
-                            </div>
-                            <div>
-                                <label class="block mb-2">Moneda</label>
-                                <p-select
-                                    [options]="currencyOptions"
-                                    [(ngModel)]="settings().currency"
-                                    class="w-full"
-                                />
-                            </div>
-                            <div>
-                                <label class="block mb-2">Almacén predeterminado</label>
-                                <p-select
-                                    [options]="warehouseOptions"
-                                    [(ngModel)]="settings().warehouseId"
-                                    placeholder="Seleccionar almacén"
-                                    [showClear]="true"
-                                    class="w-full"
-                                />
-                            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <p-card header="Moneda y Tasa de Cambio">
+                    <div class="flex flex-col gap-4">
+                        <div>
+                            <label class="block mb-2 font-medium">Moneda por defecto</label>
+                            <p-select
+                                [options]="currencyOptions"
+                                [(ngModel)]="defaultCurrency"
+                                (ngModelChange)="enforceDefaultCurrencyEnabled()"
+                                class="w-full"
+                            />
                         </div>
-                    </p-card>
 
-                    <p-card header="Métodos de Pago">
-                        <div class="flex flex-col gap-2">
-                            @for (method of paymentMethods(); track method.code) {
-                                <div class="flex items-center justify-between p-2 border rounded">
-                                    <span>{{ method.name }}</span>
-                                    <p-toggleswitch [(ngModel)]="method.enabled" />
+                        <div>
+                            <label class="block mb-2 font-medium">Monedas habilitadas</label>
+                            <div class="flex flex-col gap-2">
+                                <div class="flex items-center justify-between p-3 border rounded-lg">
+                                    <div>
+                                        <div class="font-semibold">CUP</div>
+                                        <div class="text-sm text-gray-500">Peso cubano</div>
+                                    </div>
+                                    <p-toggleswitch [(ngModel)]="enabledCUP" (onChange)="onCurrenciesToggle()" />
                                 </div>
+                                <div class="flex items-center justify-between p-3 border rounded-lg">
+                                    <div>
+                                        <div class="font-semibold">USD</div>
+                                        <div class="text-sm text-gray-500">Dólar estadounidense</div>
+                                    </div>
+                                    <p-toggleswitch [(ngModel)]="enabledUSD" (onChange)="onCurrenciesToggle()" />
+                                </div>
+                            </div>
+                            @if (currencyValidationMessage()) {
+                                <small class="text-red-500 block mt-2">{{ currencyValidationMessage() }}</small>
                             }
                         </div>
-                    </p-card>
-                </div>
 
-                <div class="mt-4">
-                    <p-button
-                        label="Guardar Configuraciones"
-                        icon="pi pi-save"
-                        (onClick)="saveSettings()"
-                    />
-                </div>
-            } @else {
-                <div class="text-center py-8 text-gray-500">
-                    <i class="pi pi-cog text-4xl mb-2"></i>
-                    <p>Seleccione un TPV para configurar</p>
-                </div>
-            }
+                        <div>
+                            <label class="block mb-2 font-medium">Tasa de cambio USD → CUP</label>
+                            <p-inputnumber
+                                [(ngModel)]="exchangeRateUsdToCup"
+                                [min]="0.000001"
+                                [minFractionDigits]="2"
+                                [maxFractionDigits]="6"
+                                mode="decimal"
+                                inputStyleClass="w-full"
+                                class="w-full"
+                            />
+                            <small class="text-gray-500 block mt-2">1 USD = {{ exchangeRateUsdToCup || 0 }} CUP</small>
+                        </div>
+                    </div>
+                </p-card>
+
+                <p-card header="Vista Operativa">
+                    <div class="flex flex-col gap-4 text-sm">
+                        <div class="p-3 border rounded-lg bg-surface-50">
+                            <div class="font-semibold mb-1">Resumen actual</div>
+                            <div>Moneda por defecto: <b>{{ defaultCurrency }}</b></div>
+                            <div>Monedas habilitadas: <b>{{ enabledCurrenciesPreview() }}</b></div>
+                            <div>Tasa activa: <b>1 USD = {{ exchangeRateUsdToCup || 0 }} CUP</b></div>
+                        </div>
+
+                        <div class="p-3 border rounded-lg">
+                            <div class="font-semibold mb-2">Recomendación de operación</div>
+                            <p class="m-0 text-gray-600">
+                                Define <b>CUP</b> como moneda por defecto para operaciones locales y mantiene <b>USD</b> habilitada para ventas mixtas.
+                                Actualiza esta tasa al inicio de la jornada o cuando cambie oficialmente.
+                            </p>
+                        </div>
+
+                        <div class="p-3 border rounded-lg">
+                            <div class="font-semibold mb-2">Historial de tasas (USD → CUP)</div>
+                            <div class="overflow-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-left py-1">Fecha</th>
+                                            <th class="text-right py-1">Tasa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (row of exchangeRateHistory(); track row.id) {
+                                            <tr>
+                                                <td class="py-1">{{ formatDateTime(row.createdAt) }}</td>
+                                                <td class="py-1 text-right">{{ row.rate }}</td>
+                                            </tr>
+                                        }
+                                        @if (!exchangeRateHistory().length) {
+                                            <tr>
+                                                <td colspan="2" class="py-1 text-center text-gray-500">Sin historial registrado.</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </p-card>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <p-button label="Guardar Configuración" icon="pi pi-save" (onClick)="saveSettings()" [disabled]="hasValidationErrors()" />
+                <p-button label="Recargar" icon="pi pi-refresh" severity="secondary" [outlined]="true" (onClick)="loadSystemSettings()" />
+            </div>
         </div>
 
         <p-toast />
     `
 })
 export class Settings implements OnInit {
-    registerOptions: any[] = [];
-    warehouseOptions: any[] = [];
-    selectedRegisterId: string = '';
-
-    settings = signal<RegisterSettings>({
-        id: '',
-        registerId: '',
-        defaultOpeningFloat: 0,
-        currency: 'USD',
-        warehouseId: '',
-        paymentMethods: [],
-        denominations: []
-    });
-
-    paymentMethods = signal<PaymentMethodSetting[]>([]);
-
-    currencyOptions = [
-        { label: 'USD - Dólar estadounidense', value: 'USD' },
-        { label: 'EUR - Euro', value: 'EUR' },
-        { label: 'MXN - Peso mexicano', value: 'MXN' },
-        { label: 'COP - Peso colombiano', value: 'COP' }
+    readonly currencyOptions = [
+        { label: 'CUP - Peso cubano', value: 'CUP' as SystemCurrencyCode },
+        { label: 'USD - Dólar estadounidense', value: 'USD' as SystemCurrencyCode }
     ];
+
+    defaultCurrency: SystemCurrencyCode = 'CUP';
+    enabledCUP = true;
+    enabledUSD = true;
+    exchangeRateUsdToCup = 1;
+    exchangeRateHistory = signal<ExchangeRateRecord[]>([]);
+
+    currencyValidationMessage = signal('');
 
     constructor(
         private settingsService: SettingsService,
-        private posService: PosService,
-        private warehousesService: WarehousesService,
         private messageService: MessageService
     ) {}
 
     ngOnInit() {
-        this.loadRegisters();
-        this.loadWarehouses();
+        this.loadSystemSettings();
     }
 
-    loadRegisters() {
-        this.posService.loadRegisters();
-        setTimeout(() => {
-            this.registerOptions = this.posService.registers().map((r) => ({
-                label: r.name,
-                value: r.id
-            }));
-        }, 500);
-    }
-
-    loadWarehouses() {
-        this.warehousesService.listWarehouses().subscribe({
-            next: (warehouses) => {
-                this.warehouseOptions = [
-                    { label: 'Sin asignar', value: '' },
-                    ...warehouses.map((w) => ({ label: w.name, value: w.id }))
-                ];
-            }
-        });
-    }
-
-    loadSettings() {
-        if (!this.selectedRegisterId) return;
-
-        this.settingsService.getRegisterSettings(this.selectedRegisterId).subscribe({
+    loadSystemSettings() {
+        this.settingsService.getSystemSettings().subscribe({
             next: (settings) => {
-                this.settings.set(settings);
-                this.paymentMethods.set(settings.paymentMethods || []);
+                this.applySystemSettings(settings);
+                this.loadExchangeRateHistory();
             },
             error: () => {
-                this.paymentMethods.set([
-                    { id: '1', code: 'CASH', name: 'Efectivo', enabled: true },
-                    { id: '2', code: 'CARD', name: 'Tarjeta', enabled: true },
-                    { id: '3', code: 'TRANSFER', name: 'Transferencia', enabled: true },
-                    { id: '4', code: 'OTHER', name: 'Otro', enabled: false }
-                ]);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo cargar la configuración del sistema'
+                });
             }
         });
     }
 
     saveSettings() {
-        if (!this.selectedRegisterId) return;
-
-        const settings = this.settings();
+        if (this.hasValidationErrors()) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Validación',
+                detail: this.currencyValidationMessage() || 'Revise los datos antes de guardar.'
+            });
+            return;
+        }
 
         this.settingsService
-            .saveRegisterSettings(this.selectedRegisterId, {
-                defaultOpeningFloat: settings.defaultOpeningFloat,
-                currency: settings.currency,
-                warehouseId: settings.warehouseId || undefined,
-                paymentMethods: this.paymentMethods()
-                    .filter((m) => m.enabled)
-                    .map((m) => m.code)
+            .saveSystemSettings({
+                defaultCurrency: this.defaultCurrency,
+                enabledCurrencies: this.getEnabledCurrencies(),
+                exchangeRateUsdToCup: Number(this.exchangeRateUsdToCup || 0)
             })
             .subscribe({
-                next: (savedSettings) => {
-                    this.settings.set(savedSettings);
-                    this.paymentMethods.set(savedSettings.paymentMethods || this.paymentMethods());
+                next: (saved) => {
+                    this.applySystemSettings(saved);
+                    this.loadExchangeRateHistory();
                     this.messageService.add({
                         severity: 'success',
                         summary: 'Éxito',
-                        detail: 'Configuraciones guardadas'
+                        detail: 'Configuración general actualizada'
                     });
                 },
-                error: () => {
+                error: (error) => {
                     this.messageService.add({
                         severity: 'error',
                         summary: 'Error',
-                        detail: 'Error al guardar configuraciones'
+                        detail: error?.error?.message || 'No se pudo guardar la configuración'
                     });
                 }
             });
+    }
+
+    onCurrenciesToggle() {
+        this.validateCurrencies();
+        this.enforceDefaultCurrencyEnabled();
+    }
+
+    enforceDefaultCurrencyEnabled() {
+        if (this.defaultCurrency === 'CUP') {
+            this.enabledCUP = true;
+        }
+        if (this.defaultCurrency === 'USD') {
+            this.enabledUSD = true;
+        }
+        this.validateCurrencies();
+    }
+
+    hasValidationErrors() {
+        if (!this.exchangeRateUsdToCup || Number(this.exchangeRateUsdToCup) <= 0) {
+            return true;
+        }
+        return !!this.currencyValidationMessage();
+    }
+
+    enabledCurrenciesPreview() {
+        return this.getEnabledCurrencies().join(', ');
+    }
+
+    private applySystemSettings(settings: SystemSettings) {
+        this.defaultCurrency = settings.defaultCurrency || 'CUP';
+        const enabled = settings.enabledCurrencies || ['CUP', 'USD'];
+        this.enabledCUP = enabled.includes('CUP');
+        this.enabledUSD = enabled.includes('USD');
+        this.exchangeRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
+        this.validateCurrencies();
+        this.enforceDefaultCurrencyEnabled();
+    }
+
+    private getEnabledCurrencies(): SystemCurrencyCode[] {
+        const list: SystemCurrencyCode[] = [];
+        if (this.enabledCUP) list.push('CUP');
+        if (this.enabledUSD) list.push('USD');
+        return list;
+    }
+
+    private validateCurrencies() {
+        const enabled = this.getEnabledCurrencies();
+
+        if (enabled.length === 0) {
+            this.currencyValidationMessage.set('Debe habilitar al menos una moneda.');
+            return;
+        }
+
+        if (!enabled.includes(this.defaultCurrency)) {
+            this.currencyValidationMessage.set('La moneda por defecto debe estar habilitada.');
+            return;
+        }
+
+        this.currencyValidationMessage.set('');
+    }
+
+    private loadExchangeRateHistory() {
+        this.settingsService.listExchangeRates(10).subscribe({
+            next: (rows) => {
+                this.exchangeRateHistory.set(rows || []);
+            },
+            error: () => {
+                this.exchangeRateHistory.set([]);
+            }
+        });
+    }
+
+    formatDateTime(value: string | Date | null | undefined): string {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '-';
+        const formatter = new Intl.DateTimeFormat('es-ES', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        return formatter.format(date);
     }
 }

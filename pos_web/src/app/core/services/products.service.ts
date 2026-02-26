@@ -1,6 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { SystemCurrencyCode } from './settings.service';
 
 export interface ProductType {
   id: string;
@@ -31,6 +32,7 @@ export interface Product {
   price: number;
   qtyAvailable?: number;
   cost?: number;
+  currency: SystemCurrencyCode;
   image?: string;
   active: boolean;
   createdAt: Date;
@@ -48,6 +50,7 @@ export interface CreateProductDto {
   barcode?: string;
   price: string;
   cost?: string;
+  currency?: SystemCurrencyCode;
   image?: string;
   productTypeId?: string;
   productCategoryId?: string;
@@ -60,6 +63,7 @@ export interface UpdateProductDto {
   barcode?: string;
   price?: string;
   cost?: string;
+  currency?: SystemCurrencyCode;
   image?: string;
   active?: boolean;
   productTypeId?: string;

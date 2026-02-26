@@ -1,12 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CashSessionStatus, StockMovementType } from "@prisma/client";
+import { CashSessionStatus, CurrencyCode, Prisma, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
-import { Prisma } from "@prisma/client";
+import { SettingsService } from "../settings/settings.service";
 
 @Injectable()
 export class SalesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settingsService: SettingsService,
+  ) {}
 
   async listSessionProducts(cashSessionId: string) {
     const session = await this.prisma.cashSession.findUnique({
@@ -71,6 +74,8 @@ export class SalesService {
     if (!dto.items?.length) throw new BadRequestException("Sin items.");
     if (!dto.payments?.length) throw new BadRequestException("Sin pagos.");
 
+    const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
+
     const qtyByProduct = new Map<string, number>();
     for (const item of dto.items) {
       const currentQty = qtyByProduct.get(item.productId) || 0;
@@ -112,7 +117,29 @@ export class SalesService {
       return { productId: i.productId, qty: i.qty, price: price as any };
     });
 
-    const paySum = dto.payments.reduce((acc: Prisma.Decimal, p: any) => acc.add(dec(p.amount)), new Prisma.Decimal(0));
+    const normalizedPayments = dto.payments.map((rawPayment: any) => {
+      const currency = this.normalizeCurrency(rawPayment.currency);
+      const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
+      const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
+
+      let amountBase = amountOriginal;
+      const exchangeRateUsdToCup: Prisma.Decimal = dec(rateSnapshot.rate.toString());
+
+      if (currency === CurrencyCode.USD) {
+        amountBase = dec(amountOriginal.mul(exchangeRateUsdToCup).toFixed(2));
+      }
+
+      return {
+        method: rawPayment.method,
+        currency,
+        amountOriginal,
+        amount: amountBase,
+        exchangeRateUsdToCup,
+        exchangeRateRecordId: rateSnapshot.rateRecordId,
+      };
+    });
+
+    const paySum = normalizedPayments.reduce((acc: Prisma.Decimal, p) => acc.add(dec(p.amount)), new Prisma.Decimal(0));
 
     // comparación exacta a 2 decimales
     if (!moneyEq(total, paySum)) {
@@ -127,9 +154,13 @@ export class SalesService {
           total: total as any,
           items: { create: itemsData },
           payments: {
-            create: dto.payments.map((p: any) => ({
+            create: normalizedPayments.map((p) => ({
               method: p.method,
               amount: dec(p.amount) as any,
+              currency: p.currency,
+              amountOriginal: dec(p.amountOriginal) as any,
+              exchangeRateUsdToCup: dec(p.exchangeRateUsdToCup) as any,
+              exchangeRateRecordId: p.exchangeRateRecordId || null,
             })),
           },
         },
@@ -165,5 +196,24 @@ export class SalesService {
 
       return sale;
     });
+  }
+
+  private normalizeCurrency(currencyInput?: string): CurrencyCode {
+    const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
+    if (raw === CurrencyCode.CUP) return CurrencyCode.CUP;
+    if (raw === CurrencyCode.USD) return CurrencyCode.USD;
+    throw new BadRequestException("Moneda de pago inválida.");
+  }
+
+  private parsePositiveAmount(input: string, message: string): Prisma.Decimal {
+    try {
+      const value = dec(input);
+      if (!value.isFinite() || value.lte(0)) {
+        throw new BadRequestException(message);
+      }
+      return value;
+    } catch {
+      throw new BadRequestException(message);
+    }
   }
 }

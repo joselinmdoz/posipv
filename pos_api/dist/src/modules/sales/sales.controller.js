@@ -37,9 +37,20 @@ __decorate([
     __metadata("design:type", String)
 ], PayDto.prototype, "method", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PayDto.prototype, "amount", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PayDto.prototype, "amountOriginal", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.CurrencyCode),
+    __metadata("design:type", String)
+], PayDto.prototype, "currency", void 0);
 class CreateSaleDto {
 }
 __decorate([

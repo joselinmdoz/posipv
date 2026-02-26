@@ -2,9 +2,10 @@ import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseGuard
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProductsService } from "./products.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEnum, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
 import { diskStorage } from "multer";
 import { extname } from "path";
+import { CurrencyCode } from "@prisma/client";
 
 class CreateProductDto {
   @IsString() @MinLength(2) name!: string;
@@ -12,6 +13,7 @@ class CreateProductDto {
   @IsOptional() @IsString() barcode?: string;
   @IsNumberString() price!: string;
   @IsOptional() @IsNumberString() cost?: string;
+  @IsOptional() @IsEnum(CurrencyCode) currency?: CurrencyCode;
   @IsOptional() @IsString() image?: string;
   @IsOptional() @IsString() productTypeId?: string;
   @IsOptional() @IsString() productCategoryId?: string;
@@ -45,6 +47,7 @@ export class ProductsController {
       codigo: req.body.codigo,
       barcode: req.body.barcode,
       cost: req.body.cost,
+      currency: req.body.currency,
       productTypeId: req.body.productTypeId,
       productCategoryId: req.body.productCategoryId,
       measurementUnitId: req.body.measurementUnitId,
@@ -72,6 +75,7 @@ export class ProductsController {
       codigo: req.body.codigo,
       barcode: req.body.barcode,
       cost: req.body.cost,
+      currency: req.body.currency,
       productTypeId: req.body.productTypeId,
       productCategoryId: req.body.productCategoryId,
       measurementUnitId: req.body.measurementUnitId,

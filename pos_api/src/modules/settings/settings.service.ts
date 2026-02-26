@@ -1,10 +1,143 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec } from "../../common/decimal";
+import { CurrencyCode, Prisma } from "@prisma/client";
+
+type SystemCurrencyCode = CurrencyCode;
+
+type SystemSettingsPayload = Partial<{
+  defaultCurrency: SystemCurrencyCode;
+  enabledCurrencies: SystemCurrencyCode[];
+  exchangeRateUsdToCup: number;
+}>;
 
 @Injectable()
 export class SettingsService {
+  private readonly systemSettingsId = "default";
+  private readonly supportedCurrencies: SystemCurrencyCode[] = ["CUP", "USD"];
+
   constructor(private prisma: PrismaService) {}
+
+  async getSystemSettings() {
+    let settings = await this.prisma.systemSettings.findUnique({
+      where: { id: this.systemSettingsId },
+    });
+
+    if (!settings) {
+      settings = await this.prisma.systemSettings.create({
+        data: {
+          id: this.systemSettingsId,
+          defaultCurrency: "CUP",
+          enabledCurrencies: ["CUP", "USD"],
+          exchangeRateUsdToCup: dec("1"),
+        },
+      });
+    }
+
+    await this.ensureInitialExchangeRateRecord(settings.exchangeRateUsdToCup);
+    return settings;
+  }
+
+  async saveSystemSettings(payload: SystemSettingsPayload) {
+    const current = await this.getSystemSettings();
+
+    const enabledCurrencies = this.normalizeEnabledCurrencies(
+      payload.enabledCurrencies ?? (current.enabledCurrencies as SystemCurrencyCode[]),
+    );
+    const defaultCurrency = (payload.defaultCurrency ?? current.defaultCurrency) as SystemCurrencyCode;
+
+    if (!enabledCurrencies.includes(defaultCurrency)) {
+      throw new BadRequestException("La moneda por defecto debe estar habilitada.");
+    }
+
+    const exchangeRateUsdToCup = payload.exchangeRateUsdToCup ?? Number(current.exchangeRateUsdToCup);
+    if (!Number.isFinite(exchangeRateUsdToCup) || exchangeRateUsdToCup <= 0) {
+      throw new BadRequestException("La tasa de cambio debe ser mayor a 0.");
+    }
+
+    const rateDecimal = dec(exchangeRateUsdToCup.toString());
+    const hasRateChanged = !dec(current.exchangeRateUsdToCup).equals(rateDecimal);
+
+    const settings = await this.prisma.systemSettings.upsert({
+      where: { id: this.systemSettingsId },
+      create: {
+        id: this.systemSettingsId,
+        defaultCurrency,
+        enabledCurrencies,
+        exchangeRateUsdToCup: rateDecimal,
+      },
+      update: {
+        defaultCurrency,
+        enabledCurrencies,
+        exchangeRateUsdToCup: rateDecimal,
+      },
+    });
+
+    if (hasRateChanged) {
+      await this.prisma.exchangeRateRecord.create({
+        data: {
+          baseCurrency: "USD",
+          quoteCurrency: "CUP",
+          rate: rateDecimal,
+          source: "SYSTEM_SETTINGS",
+        },
+      });
+    } else {
+      await this.ensureInitialExchangeRateRecord(rateDecimal);
+    }
+
+    return settings;
+  }
+
+  async listExchangeRates(limit = 50) {
+    const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 50;
+    return this.prisma.exchangeRateRecord.findMany({
+      orderBy: { createdAt: "desc" },
+      take: effectiveLimit,
+    });
+  }
+
+  async getCurrentUsdToCupRateSnapshot(tx?: Prisma.TransactionClient) {
+    const prisma = tx || this.prisma;
+    let settings = await prisma.systemSettings.findUnique({
+      where: { id: this.systemSettingsId },
+    });
+
+    if (!settings) {
+      settings = await prisma.systemSettings.create({
+        data: {
+          id: this.systemSettingsId,
+          defaultCurrency: "CUP",
+          enabledCurrencies: ["CUP", "USD"],
+          exchangeRateUsdToCup: dec("1"),
+        },
+      });
+    }
+
+    let rateRecord = await prisma.exchangeRateRecord.findFirst({
+      where: {
+        baseCurrency: "USD",
+        quoteCurrency: "CUP",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!rateRecord) {
+      rateRecord = await prisma.exchangeRateRecord.create({
+        data: {
+          baseCurrency: "USD",
+          quoteCurrency: "CUP",
+          rate: settings.exchangeRateUsdToCup,
+          source: "SYSTEM_SETTINGS",
+        },
+      });
+    }
+
+    return {
+      rateRecordId: rateRecord.id,
+      rate: Number(rateRecord.rate),
+    };
+  }
 
   async getRegisterSettings(registerId: string) {
     // First check if register exists
@@ -176,5 +309,42 @@ export class SettingsService {
     }
 
     return Array.from(map.values()).sort((a, b) => a.value - b.value);
+  }
+
+  private normalizeEnabledCurrencies(input: string[]) {
+    const normalized = Array.from(
+      new Set(
+        (input || [])
+          .map((item) => item?.trim().toUpperCase())
+          .filter((item): item is SystemCurrencyCode => this.supportedCurrencies.includes(item as SystemCurrencyCode)),
+      ),
+    ) as SystemCurrencyCode[];
+
+    if (normalized.length === 0) {
+      throw new BadRequestException("Debe habilitar al menos una moneda.");
+    }
+
+    return normalized;
+  }
+
+  private async ensureInitialExchangeRateRecord(rate: Prisma.Decimal | number | string) {
+    const existing = await this.prisma.exchangeRateRecord.findFirst({
+      where: {
+        baseCurrency: "USD",
+        quoteCurrency: "CUP",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) return;
+
+    await this.prisma.exchangeRateRecord.create({
+      data: {
+        baseCurrency: "USD",
+        quoteCurrency: "CUP",
+        rate: dec(rate),
+        source: "SYSTEM_SETTINGS",
+      },
+    });
   }
 }

@@ -1,10 +1,11 @@
 import { Component, inject } from '@angular/core';
 import { MenuItem } from 'primeng/api';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { StyleClassModule } from 'primeng/styleclass';
 import { AppConfigurator } from './app.configurator';
 import { LayoutService } from '@/app/layout/service/layout.service';
+import { AuthService } from '@/app/core/services/auth.service';
 
 @Component({
     selector: 'app-topbar',
@@ -72,10 +73,34 @@ import { LayoutService } from '@/app/layout/service/layout.service';
                         <i class="pi pi-inbox"></i>
                         <span>Messages</span>
                     </button>
-                    <button type="button" class="layout-topbar-action">
-                        <i class="pi pi-user"></i>
-                        <span>Profile</span>
-                    </button>
+                    <div class="layout-topbar-user-wrap">
+                        <span class="layout-topbar-user-name">{{ connectedUserName() }}</span>
+                        <div class="layout-topbar-user-menu-wrap">
+                            <button
+                                type="button"
+                                class="layout-topbar-action"
+                                pStyleClass="@next"
+                                enterFromClass="hidden"
+                                enterActiveClass="animate-scalein"
+                                leaveToClass="hidden"
+                                leaveActiveClass="animate-fadeout"
+                                [hideOnOutsideClick]="true"
+                            >
+                                <i class="pi pi-user"></i>
+                                <span>Profile</span>
+                            </button>
+                            <div class="layout-topbar-profile-menu hidden">
+                                <button type="button" class="layout-topbar-action" (click)="goToProfile()">
+                                    <i class="pi pi-id-card"></i>
+                                    <span>Mi perfil</span>
+                                </button>
+                                <button type="button" class="layout-topbar-action" (click)="logout()">
+                                    <i class="pi pi-sign-out"></i>
+                                    <span>Cerrar sesión</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -85,11 +110,27 @@ export class AppTopbar {
     items!: MenuItem[];
 
     layoutService = inject(LayoutService);
+    private authService = inject(AuthService);
+    private router = inject(Router);
 
     toggleDarkMode() {
         this.layoutService.layoutConfig.update((state) => ({
             ...state,
             darkTheme: !state.darkTheme
         }));
+    }
+
+    connectedUserName(): string {
+        const email = this.authService.currentUser()?.email || '';
+        if (!email) return 'Usuario';
+        return email.split('@')[0] || email;
+    }
+
+    goToProfile() {
+        this.router.navigate(['/users']);
+    }
+
+    logout() {
+        this.authService.logout();
     }
 }

@@ -38,7 +38,7 @@ export class AppMenu {
                     { label: 'Unidades de Medida', icon: 'pi pi-fw pi-slack', routerLink: ['/measurement-units'] },
                     { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'] },
                     { label: 'Gestión TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'] },
-                    { label: 'Configuración', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
+                    { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
                     { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'] }
                 ]
             },

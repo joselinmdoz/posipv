@@ -17,6 +17,7 @@ exports.SettingsModule = SettingsModule = __decorate([
     (0, common_1.Module)({
         controllers: [settings_controller_1.SettingsController],
         providers: [settings_service_1.SettingsService],
+        exports: [settings_service_1.SettingsService],
     })
 ], SettingsModule);
 //# sourceMappingURL=settings.module.js.map

@@ -55,6 +55,7 @@ export interface SaleItem {
 export interface Payment {
   method: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
   amount: number;
+  currency?: 'CUP' | 'USD';
 }
 
 @Injectable({
@@ -167,7 +168,12 @@ export class PosService {
     return this.http.post<any>(`${this.API_URL}/sales`, {
       cashSessionId,
       items: items.map(item => ({ productId: item.productId, qty: item.qty })),
-      payments: payments.map(p => ({ method: p.method, amount: p.amount.toString() }))
+      payments: payments.map(p => ({
+        method: p.method,
+        amountOriginal: p.amount.toString(),
+        amount: p.amount.toString(),
+        currency: p.currency || 'CUP'
+      }))
     });
   }
 

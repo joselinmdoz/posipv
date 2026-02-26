@@ -645,7 +645,7 @@
     background: #ffffff;
     padding: 0.5rem;
     display: grid;
-    grid-template-columns: 42px minmax(150px, 1fr) minmax(150px, 1fr) auto auto;
+    grid-template-columns: 40px minmax(170px, 1.2fr) 96px minmax(150px, 1fr) minmax(120px, 0.9fr) 40px 40px;
     gap: 0.45rem;
     align-items: center;
 }
@@ -661,6 +661,27 @@
     color: #0f172a;
     font-size: 0.74rem;
     font-weight: 700;
+}
+
+.tpv-payment-line-method,
+.tpv-payment-line-currency,
+.tpv-payment-line-amount {
+    min-width: 0;
+}
+
+.tpv-payment-line-currency .p-select {
+    width: 100%;
+}
+
+.tpv-payment-line-base {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.tpv-payment-line-fill,
+.tpv-payment-line-remove {
+    justify-self: center;
 }
 
 .tpv-close-summary-grid {
@@ -968,6 +989,47 @@
     }
 }
 
+@media (max-width: 900px) {
+    .tpv-payment-line {
+        grid-template-columns: 34px minmax(150px, 1fr) 84px minmax(130px, 1fr) 36px 36px;
+        grid-template-areas:
+            "index method currency amount fill remove"
+            ". base base base base base";
+        row-gap: 0.35rem;
+    }
+
+    .tpv-payment-line-index {
+        grid-area: index;
+    }
+
+    .tpv-payment-line-method {
+        grid-area: method;
+    }
+
+    .tpv-payment-line-currency {
+        grid-area: currency;
+    }
+
+    .tpv-payment-line-amount {
+        grid-area: amount;
+    }
+
+    .tpv-payment-line-base {
+        grid-area: base;
+        text-align: left;
+        font-size: 0.74rem;
+        white-space: normal;
+    }
+
+    .tpv-payment-line-fill {
+        grid-area: fill;
+    }
+
+    .tpv-payment-line-remove {
+        grid-area: remove;
+    }
+}
+
 @media (max-width: 768px) {
     .tpv-shell {
         padding: 0.75rem;
@@ -1009,6 +1071,16 @@
 
     .tpv-payment-line {
         grid-template-columns: 1fr;
+    }
+
+    .tpv-payment-line-index,
+    .tpv-payment-line-method,
+    .tpv-payment-line-currency,
+    .tpv-payment-line-amount,
+    .tpv-payment-line-base,
+    .tpv-payment-line-fill,
+    .tpv-payment-line-remove {
+        grid-area: auto;
     }
 
     .tpv-payment-line-index {

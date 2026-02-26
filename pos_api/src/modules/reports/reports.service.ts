@@ -27,7 +27,11 @@ type DetailedSale = {
     id: string;
     saleId: string;
     method: string;
-    amount: number;
+    amount: number; // monto en moneda base (CUP)
+    currency: string;
+    amountOriginal: number;
+    exchangeRateUsdToCup: number | null;
+    exchangeRateRecordId: string | null;
   }>;
   cashier: {
     id: string;
@@ -107,6 +111,10 @@ export class ReportsService {
         saleId: payment.saleId,
         method: payment.method,
         amount: Number(payment.amount.toFixed(2)),
+        currency: payment.currency,
+        amountOriginal: Number(payment.amountOriginal.toFixed(2)),
+        exchangeRateUsdToCup: payment.exchangeRateUsdToCup ? Number(payment.exchangeRateUsdToCup.toFixed(6)) : null,
+        exchangeRateRecordId: payment.exchangeRateRecordId || null,
       })),
       cashier: sale.cashier,
     }));

@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Put, Query, UseGuards } from "@nestjs/common";
 import { SettingsService } from "./settings.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString } from "class-validator";
+import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 class PaymentMethodSettingDto {
   @IsString() code!: string;
@@ -23,10 +23,31 @@ class RegisterSettingsDto {
   @IsOptional() @IsArray() denominations?: Array<number | DenominationSettingDto>;
 }
 
+class SystemSettingsDto {
+  @IsOptional() @IsString() @IsIn(["CUP", "USD"]) defaultCurrency?: "CUP" | "USD";
+  @IsOptional() @IsArray() @ArrayMinSize(1) @IsString({ each: true }) @IsIn(["CUP", "USD"], { each: true }) enabledCurrencies?: Array<"CUP" | "USD">;
+  @IsOptional() @IsNumber() @Min(0.000001) exchangeRateUsdToCup?: number;
+}
+
 @Controller("settings")
 @UseGuards(JwtAuthGuard)
 export class SettingsController {
   constructor(private service: SettingsService) {}
+
+  @Get("system")
+  getSystemSettings() {
+    return this.service.getSystemSettings();
+  }
+
+  @Put("system")
+  saveSystemSettings(@Body() payload: SystemSettingsDto) {
+    return this.service.saveSystemSettings(payload);
+  }
+
+  @Get("exchange-rates")
+  listExchangeRates(@Query("limit") limit?: string) {
+    return this.service.listExchangeRates(limit ? Number(limit) : 50);
+  }
 
   @Get("register/:registerId")
   getRegisterSettings(@Param("registerId") registerId: string) {

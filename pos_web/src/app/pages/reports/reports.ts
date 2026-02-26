@@ -207,24 +207,30 @@ import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/r
                             <ng-template #header>
                                 <tr>
                                     <th>Método</th>
-                                    <th class="text-right">Monto</th>
+                                    <th class="text-right">Monto original</th>
+                                    <th>Moneda</th>
+                                    <th class="text-right">Tasa usada</th>
+                                    <th class="text-right">Monto base (CUP)</th>
                                 </tr>
                             </ng-template>
                             <ng-template #body let-payment>
                                 <tr>
                                     <td>{{ getPaymentMethodLabel(payment.method) }}</td>
-                                    <td class="text-right">{{ payment.amount | currency }}</td>
+                                    <td class="text-right">{{ payment.amountOriginal | currency: payment.currency }}</td>
+                                    <td>{{ payment.currency || 'CUP' }}</td>
+                                    <td class="text-right">{{ payment.exchangeRateUsdToCup || 1 }}</td>
+                                    <td class="text-right">{{ payment.amount | currency:'CUP' }}</td>
                                 </tr>
                             </ng-template>
                             <ng-template #emptymessage>
                                 <tr>
-                                    <td colspan="2" class="text-center">Esta venta no tiene pagos registrados.</td>
+                                    <td colspan="5" class="text-center">Esta venta no tiene pagos registrados.</td>
                                 </tr>
                             </ng-template>
                         </p-table>
                         <div class="flex justify-end pt-3 text-sm">
-                            <span class="text-gray-500 mr-2">Total pagado:</span>
-                            <strong>{{ salePaymentsTotal(selectedSale()!) | currency }}</strong>
+                            <span class="text-gray-500 mr-2">Total pagado base (CUP):</span>
+                            <strong>{{ salePaymentsTotal(selectedSale()!) | currency:'CUP' }}</strong>
                         </div>
                     </p-card>
                 </div>
