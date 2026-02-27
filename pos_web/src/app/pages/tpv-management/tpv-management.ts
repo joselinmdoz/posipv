@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -131,7 +131,8 @@ interface RegisterCard extends Register {
 
         <p-dialog
             header="Configuracion TPV"
-            [(visible)]="settingsDialog"
+            [visible]="settingsDialog"
+            (visibleChange)="onSettingsDialogVisibleChange($event)"
             [modal]="true"
             [style]="{ width: '560px' }"
             [draggable]="false"
@@ -201,16 +202,13 @@ export class TpvManagement implements OnInit {
         paymentMethods: PaymentMethodSetting[];
     } = {
         defaultOpeningFloat: 0,
-        currency: 'USD',
+        currency: 'CUP',
         paymentMethods: []
     };
 
     currencyOptions = [
-        { label: 'USD - Dolar estadounidense', value: 'USD' },
-        { label: 'EUR - Euro', value: 'EUR' },
-        { label: 'MXN - Peso mexicano', value: 'MXN' },
-        { label: 'COP - Peso colombiano', value: 'COP' },
-        { label: 'CUP - Peso cubano', value: 'CUP' }
+        { label: 'CUP - Peso cubano', value: 'CUP' },
+        { label: 'USD - Dolar estadounidense', value: 'USD' }
     ];
 
     private readonly paymentMethodCatalog: PaymentMethodSetting[] = [
@@ -226,7 +224,8 @@ export class TpvManagement implements OnInit {
         private settingsService: SettingsService,
         private router: Router,
         private messageService: MessageService,
-        private confirmationService: ConfirmationService
+        private confirmationService: ConfirmationService,
+        private cdr: ChangeDetectorRef
     ) {}
 
     ngOnInit() {
@@ -412,26 +411,33 @@ export class TpvManagement implements OnInit {
 
     openSettings(register: Register) {
         this.selectedRegisterForSettings = register;
-        this.settingsDialog = true;
+        this.settingsDialog = false;
+        this.settingsForm = {
+            defaultOpeningFloat: 0,
+            currency: 'CUP',
+            paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm }))
+        };
 
         this.settingsService.getRegisterSettings(register.id).subscribe({
             next: (settings) => {
                 const enabledCodes = new Set((settings.paymentMethods || []).filter((m) => m.enabled).map((m) => m.code));
                 this.settingsForm = {
                     defaultOpeningFloat: Number(settings.defaultOpeningFloat || 0),
-                    currency: settings.currency || 'USD',
+                    currency: this.normalizeCurrency(settings.currency),
                     paymentMethods: this.paymentMethodCatalog.map((pm) => ({
                         ...pm,
                         enabled: enabledCodes.size > 0 ? enabledCodes.has(pm.code) : pm.enabled
                     }))
                 };
+                this.openSettingsDialogSafely();
             },
             error: () => {
                 this.settingsForm = {
                     defaultOpeningFloat: 0,
-                    currency: 'USD',
+                    currency: 'CUP',
                     paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm }))
                 };
+                this.openSettingsDialogSafely();
             }
         });
     }
@@ -465,5 +471,23 @@ export class TpvManagement implements OnInit {
                 });
             }
         });
+    }
+
+    private normalizeCurrency(value?: string | null): string {
+        const normalized = (value || '').toString().trim().toUpperCase();
+        return normalized === 'USD' ? 'USD' : 'CUP';
+    }
+
+    private openSettingsDialogSafely() {
+        setTimeout(() => {
+            this.settingsDialog = true;
+            this.cdr.detectChanges();
+        }, 0);
+    }
+
+    onSettingsDialogVisibleChange(visible: boolean) {
+        if (!visible) {
+            this.hideSettingsDialog();
+        }
     }
 }

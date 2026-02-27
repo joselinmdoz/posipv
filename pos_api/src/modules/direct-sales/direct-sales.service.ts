@@ -77,15 +77,23 @@ export class DirectSalesService {
       }
     }
 
-    const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
-
+    const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
+    const exchangeRateUsdToCup: Prisma.Decimal = dec(rateSnapshot.rate.toString());
     let total = new Prisma.Decimal(0);
 
     const itemsData = dto.items.map((i: any) => {
-      const price = priceMap.get(i.productId);
-      if (!price) throw new BadRequestException("Producto inválido.");
-      total = total.add(price.mul(i.qty));
-      return { productId: i.productId, qty: i.qty, price: price as any };
+      const product = productById.get(i.productId);
+      if (!product) throw new BadRequestException("Producto inválido.");
+
+      const linePrice = dec(product.price);
+      const lineTotal = linePrice.mul(i.qty);
+      const lineTotalBaseCup =
+        product.currency === CurrencyCode.USD
+          ? dec(lineTotal.mul(exchangeRateUsdToCup).toFixed(2))
+          : dec(lineTotal.toFixed(2));
+
+      total = total.add(lineTotalBaseCup);
+      return { productId: i.productId, qty: i.qty, price: linePrice as any };
     });
 
     const normalizedPayments = dto.payments.map((rawPayment: any) => {
@@ -94,7 +102,6 @@ export class DirectSalesService {
       const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
 
       let amountBase = amountOriginal;
-      const exchangeRateUsdToCup: Prisma.Decimal = dec(rateSnapshot.rate.toString());
 
       if (currency === CurrencyCode.USD) {
         amountBase = dec(amountOriginal.mul(exchangeRateUsdToCup).toFixed(2));
@@ -211,6 +218,7 @@ export class DirectSalesService {
                 name: true,
                 codigo: true,
                 barcode: true,
+                currency: true,
               },
             },
           },
@@ -263,6 +271,7 @@ export class DirectSalesService {
         name: item.product.name,
         codigo: item.product.codigo,
         barcode: item.product.barcode,
+        currency: item.product.currency,
         qty: item.qty,
         price: Number(item.price.toFixed(2)),
         subtotal: Number(item.price.mul(item.qty).toFixed(2)),

@@ -31,6 +31,7 @@ export interface DetailedSale {
       name: string;
       codigo: string | null;
       barcode: string | null;
+      currency: 'CUP' | 'USD' | string;
     };
   }>;
   payments: Array<{
@@ -60,7 +61,12 @@ export interface SalesReport {
   totalSales: number;
   totalAmount: number;
   averageTicket: number;
-  salesByPaymentMethod: { method: string; amount: number }[];
+  salesByPaymentMethod: {
+    method: string;
+    currency: 'CUP' | 'USD' | string;
+    amountOriginal: number;
+    amountBase: number;
+  }[];
   salesByCashier: { name: string; sales: number; amount: number }[];
   detailedSales: DetailedSale[];
 }

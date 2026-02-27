@@ -115,13 +115,17 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
                             <ng-template #header>
                                 <tr>
                                     <th>Método</th>
-                                    <th>Monto</th>
+                                    <th>Moneda</th>
+                                    <th class="text-right">Monto</th>
+                                    <th class="text-right">Monto base (CUP)</th>
                                 </tr>
                             </ng-template>
                             <ng-template #body let-item>
                                 <tr>
                                     <td>{{ getPaymentMethodLabel(item.method) }}</td>
-                                    <td>{{ item.amount | currency }}</td>
+                                    <td>{{ item.currency || 'CUP' }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(item.amountOriginal, item.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(item.amountBase, 'CUP') }}</td>
                                 </tr>
                             </ng-template>
                         </p-table>
@@ -239,8 +243,8 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
                                     <td>{{ item.product?.name || 'Producto sin nombre' }}</td>
                                     <td>{{ item.product?.codigo || item.product?.barcode || '-' }}</td>
                                     <td class="text-right">{{ item.qty }}</td>
-                                    <td class="text-right">{{ item.price | currency }}</td>
-                                    <td class="text-right">{{ lineSubtotal(item) | currency }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(item.price, item.product?.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(lineSubtotal(item), item.product?.currency) }}</td>
                                 </tr>
                             </ng-template>
                             <ng-template #emptymessage>
@@ -265,10 +269,10 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
                             <ng-template #body let-payment>
                                 <tr>
                                     <td>{{ getPaymentMethodLabel(payment.method) }}</td>
-                                    <td class="text-right">{{ payment.amountOriginal | currency: payment.currency }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(payment.amountOriginal, payment.currency) }}</td>
                                     <td>{{ payment.currency || 'CUP' }}</td>
                                     <td class="text-right">{{ payment.exchangeRateUsdToCup || 1 }}</td>
-                                    <td class="text-right">{{ payment.amount | currency:'CUP' }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(payment.amount, 'CUP') }}</td>
                                 </tr>
                             </ng-template>
                             <ng-template #emptymessage>
@@ -279,7 +283,7 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
                         </p-table>
                         <div class="flex justify-end pt-3 text-sm">
                             <span class="text-gray-500 mr-2">Total pagado base (CUP):</span>
-                            <strong>{{ salePaymentsTotal(selectedSale()!) | currency:'CUP' }}</strong>
+                            <strong class="whitespace-nowrap">{{ formatAmountWithCurrency(salePaymentsTotal(selectedSale()!), 'CUP') }}</strong>
                         </div>
                     </p-card>
                 </div>
@@ -465,6 +469,15 @@ export class Reports implements OnInit {
         return Number(item.qty || 0) * Number(item.price || 0);
     }
 
+    formatAmountWithCurrency(amount: number, currency?: string) {
+        const safeCurrency = String(currency || 'CUP').trim().toUpperCase() === 'USD' ? 'USD' : 'CUP';
+        const formattedAmount = new Intl.NumberFormat('es-DO', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(Number(amount || 0));
+        return `${safeCurrency}\u00A0${formattedAmount}`;
+    }
+
     salePaymentsTotal(sale: DetailedSale) {
         return (sale.payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     }
@@ -481,11 +494,16 @@ export class Reports implements OnInit {
             ['Monto total', report.totalAmount],
             [],
             ['VENTAS POR METODO DE PAGO'],
-            ['Metodo', 'Monto']
+            ['Metodo', 'Moneda', 'Monto', 'Monto base (CUP)']
         ];
 
         for (const row of report.salesByPaymentMethod || []) {
-            rows.push([this.getPaymentMethodLabel(row.method), Number(row.amount || 0)]);
+            rows.push([
+                this.getPaymentMethodLabel(row.method),
+                row.currency || 'CUP',
+                Number(row.amountOriginal || 0),
+                Number(row.amountBase || 0)
+            ]);
         }
 
         rows.push([]);
@@ -532,7 +550,9 @@ export class Reports implements OnInit {
         ];
 
         for (const row of report.salesByPaymentMethod || []) {
-            lines.push(`${this.getPaymentMethodLabel(row.method)}: ${Number(row.amount || 0).toFixed(2)}`);
+            lines.push(
+                `${this.getPaymentMethodLabel(row.method)} | ${row.currency || 'CUP'}: ${Number(row.amountOriginal || 0).toFixed(2)} | Base CUP: ${Number(row.amountBase || 0).toFixed(2)}`
+            );
         }
 
         lines.push('');

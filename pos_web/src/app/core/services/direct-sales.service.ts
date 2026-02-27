@@ -11,6 +11,7 @@ export interface DirectSaleProduct {
   codigo?: string | null;
   barcode?: string | null;
   price: number;
+  currency: SystemCurrencyCode;
   qtyAvailable: number;
   image?: string | null;
   active: boolean;
@@ -70,6 +71,7 @@ export interface DirectSaleTicket {
     name: string;
     codigo: string | null;
     barcode: string | null;
+    currency: SystemCurrencyCode;
     qty: number;
     price: number;
     subtotal: number;

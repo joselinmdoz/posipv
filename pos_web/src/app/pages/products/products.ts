@@ -81,6 +81,28 @@ interface Column {
             dataKey="id"
             currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} productos"
         >
+            <ng-template #caption>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="font-semibold text-lg">Listado de productos</div>
+                    <div class="flex items-center gap-2 w-full md:w-auto">
+                        <i class="pi pi-search text-500"></i>
+                        <input
+                            pInputText
+                            [(ngModel)]="searchTerm"
+                            placeholder="Buscar por nombre, código o código de barras"
+                            (input)="onSearchInput()"
+                            class="w-full md:w-22rem"
+                        />
+                        <p-button
+                            icon="pi pi-times"
+                            severity="secondary"
+                            [outlined]="true"
+                            [disabled]="!searchTerm"
+                            (onClick)="clearSearch()"
+                        />
+                    </div>
+                </div>
+            </ng-template>
             <ng-template #header>
                 <tr>
                     <th style="width: 4rem">
@@ -97,26 +119,6 @@ interface Column {
                     <th pSortableColumn="cost">Costo</th>
                     <th pSortableColumn="active">Estado</th>
                     <th>Acciones</th>
-                </tr>
-                <tr>
-                    <th></th>
-                    <th>
-                        <input pInputText [(ngModel)]="filters['name']" placeholder="Buscar por nombre" (input)="filterGlobal($event)" class="w-full" />
-                    </th>
-                    <th>
-                        <input pInputText [(ngModel)]="filters['codigo']" placeholder="Buscar código" (input)="filterGlobal($event)" class="w-full" />
-                    </th>
-                    <th>
-                        <input pInputText [(ngModel)]="filters['barcode']" placeholder="Buscar código" (input)="filterGlobal($event)" class="w-full" />
-                    </th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
-                    <th></th>
                 </tr>
             </ng-template>
             <ng-template #body let-product>
@@ -156,8 +158,8 @@ interface Column {
                         }
                     </td>
                     <td>{{ product.currency || defaultProductCurrency }}</td>
-                    <td>{{ product.price | currency:(product.currency || defaultProductCurrency) }}</td>
-                    <td>{{ product.cost ? (product.cost | currency:(product.currency || defaultProductCurrency)) : '-' }}</td>
+                    <td>{{ product.price | number:'1.2-2' }}</td>
+                    <td>{{ product.cost ? (product.cost | number:'1.2-2') : '-' }}</td>
                     <td>
                         <p-tag [value]="product.active ? 'Activo' : 'Inactivo'" [severity]="product.active ? 'success' : 'warn'" />
                     </td>
@@ -470,6 +472,7 @@ interface Column {
     `
 })
 export class Products implements OnInit {
+    allProducts = signal<Product[]>([]);
     products = signal<Product[]>([]);
     productTypes = signal<CatalogProductType[]>([]);
     productCategories = signal<CatalogProductCategory[]>([]);
@@ -509,11 +512,7 @@ export class Products implements OnInit {
         { field: 'active', header: 'Estado' }
     ];
 
-    filters = {
-        name: '',
-        codigo: '',
-        barcode: ''
-    };
+    searchTerm = '';
 
     product: any = {
         name: '',
@@ -546,7 +545,10 @@ export class Products implements OnInit {
 
     loadProducts() {
         this.productsService.list().subscribe({
-            next: (products) => this.products.set(products),
+            next: (products) => {
+                this.allProducts.set(products);
+                this.applyFilters();
+            },
             error: (err) => {
                 console.error('Error loading products:', err);
                 this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos' });
@@ -784,8 +786,38 @@ export class Products implements OnInit {
         });
     }
 
-    filterGlobal(event: Event) {
-        // Implementar filtrado global
+    onSearchInput() {
+        this.applyFilters();
+    }
+
+    clearSearch() {
+        this.searchTerm = '';
+        this.applyFilters();
+    }
+
+    private applyFilters() {
+        const source = this.allProducts();
+        if (!source || source.length === 0) {
+            this.products.set([]);
+            return;
+        }
+
+        const term = (this.searchTerm || '').trim().toLowerCase();
+
+        const filtered = source.filter((product) => {
+            const productName = String(product.name || '').toLowerCase();
+            const productCodigo = String(product.codigo || '').toLowerCase();
+            const productBarcode = String(product.barcode || '').toLowerCase();
+
+            if (!term) return true;
+            return (
+                productName.includes(term) ||
+                productCodigo.includes(term) ||
+                productBarcode.includes(term)
+            );
+        });
+
+        this.products.set(filtered);
     }
 
     triggerCsvImport(input: HTMLInputElement) {

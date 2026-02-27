@@ -938,18 +938,23 @@ export class Warehouses implements OnInit {
 
     private buildMovementProductLabel(product: Product): string {
         const codePart = product.codigo ? ` (${product.codigo})` : '';
-        const pricePart = this.formatMovementPrice(product.price);
+        const pricePart = this.formatMovementPrice(product.price, product.currency);
         return `${product.name}${codePart} - ${pricePart}`;
     }
 
-    private formatMovementPrice(value: unknown): string {
+    private formatMovementPrice(value: unknown, currency?: string): string {
         const numericValue = Number(value);
         if (!Number.isFinite(numericValue)) return '$0.00';
+        const safeCurrency = this.normalizeProductCurrency(currency);
         return new Intl.NumberFormat('es-DO', {
             style: 'currency',
-            currency: 'USD',
+            currency: safeCurrency,
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         }).format(numericValue);
+    }
+
+    private normalizeProductCurrency(currency?: string): 'CUP' | 'USD' {
+        return String(currency || '').trim().toUpperCase() === 'USD' ? 'USD' : 'CUP';
     }
 }

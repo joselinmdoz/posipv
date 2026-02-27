@@ -37,8 +37,8 @@ export class AppMenu {
                     { label: 'Categorías', icon: 'pi pi-fw pi-folder', routerLink: ['/product-categories'] },
                     { label: 'Unidades de Medida', icon: 'pi pi-fw pi-slack', routerLink: ['/measurement-units'] },
                     { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'] },
-                    { label: 'Gestión TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'] },
-                    { label: 'Ventas Directas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'] },
+                    { label: 'TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'] },
+                    { label: 'Ventas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'] },
                     { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
                     { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'] }
                 ]

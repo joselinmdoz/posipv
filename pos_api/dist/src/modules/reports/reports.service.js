@@ -31,6 +31,7 @@ let ReportsService = class ReportsService {
                                 name: true,
                                 codigo: true,
                                 barcode: true,
+                                currency: true,
                             },
                         },
                     },
@@ -89,6 +90,7 @@ let ReportsService = class ReportsService {
                     name: item.product.name,
                     codigo: item.product.codigo,
                     barcode: item.product.barcode,
+                    currency: item.product.currency,
                 },
             })),
             payments: sale.payments.map((payment) => ({
@@ -178,16 +180,34 @@ let ReportsService = class ReportsService {
         const paymentMethodTotals = {};
         for (const sale of sales) {
             for (const payment of sale.payments) {
-                if (!paymentMethodTotals[payment.method]) {
-                    paymentMethodTotals[payment.method] = 0;
+                const method = payment.method || "OTHER";
+                const currency = payment.currency || "CUP";
+                const key = `${method}::${currency}`;
+                if (!paymentMethodTotals[key]) {
+                    paymentMethodTotals[key] = {
+                        method,
+                        currency,
+                        amountOriginal: 0,
+                        amountBase: 0,
+                    };
                 }
-                paymentMethodTotals[payment.method] += Number(payment.amount || 0);
+                paymentMethodTotals[key].amountOriginal += Number(payment.amountOriginal || 0);
+                paymentMethodTotals[key].amountBase += Number(payment.amount || 0);
             }
         }
-        return Object.entries(paymentMethodTotals).map(([method, amount]) => ({
-            method,
-            amount: Number(amount.toFixed(2)),
-        }));
+        return Object.values(paymentMethodTotals)
+            .map((row) => ({
+            method: row.method,
+            currency: row.currency,
+            amountOriginal: Number(row.amountOriginal.toFixed(2)),
+            amountBase: Number(row.amountBase.toFixed(2)),
+        }))
+            .sort((a, b) => {
+            const methodOrder = a.method.localeCompare(b.method);
+            if (methodOrder !== 0)
+                return methodOrder;
+            return a.currency.localeCompare(b.currency);
+        });
     }
     groupSalesByCashier(sales) {
         const cashierTotals = {};

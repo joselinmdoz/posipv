@@ -189,8 +189,14 @@ export class Dashboard implements OnInit {
     readonly paymentRows = computed(() => {
         const report = this.todayReport();
         if (!report) return [] as Array<{ method: string; amount: number }>;
-        return report.salesByPaymentMethod
-            .map((item) => ({ method: item.method, amount: Number(item.amount || 0) }))
+        const totalsByMethod = new Map<string, number>();
+        for (const item of report.salesByPaymentMethod || []) {
+            const method = item.method || 'OTHER';
+            const current = Number(totalsByMethod.get(method) || 0);
+            totalsByMethod.set(method, Number((current + Number(item.amountBase || 0)).toFixed(2)));
+        }
+        return Array.from(totalsByMethod.entries())
+            .map(([method, amount]) => ({ method, amount }))
             .sort((a, b) => b.amount - a.amount);
     });
 

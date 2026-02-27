@@ -20,6 +20,7 @@ interface CartLine {
     productId: string;
     name: string;
     codigo?: string | null;
+    currency: SystemCurrencyCode;
     price: number;
     qty: number;
     subtotal: number;
@@ -188,7 +189,7 @@ interface NewCustomerForm {
                                         <div class="tpv-product-content">
                                             <div class="tpv-product-meta">{{ product.codigo || product.barcode || 'Sin identificador' }}</div>
                                             <div class="tpv-product-footer">
-                                                <strong>{{ product.price | currency:'CUP' }}</strong>
+                                                <strong class="whitespace-nowrap">{{ formatProductPrice(product.price, product.currency) }}</strong>
                                                 <span class="tpv-add-chip">
                                                     <i class="pi pi-plus"></i>
                                                     Agregar
@@ -221,7 +222,7 @@ interface NewCustomerForm {
                                         <td>{{ product.name }}</td>
                                         <td>{{ product.codigo || product.barcode || '-' }}</td>
                                         <td class="text-right">{{ product.qtyAvailable }}</td>
-                                        <td class="text-right">{{ product.price | currency:'CUP' }}</td>
+                                        <td class="text-right whitespace-nowrap">{{ formatProductPrice(product.price, product.currency) }}</td>
                                         <td class="text-center">
                                             <p-button
                                                 icon="pi pi-plus"
@@ -258,16 +259,18 @@ interface NewCustomerForm {
                         </div>
                         <div class="flex flex-col gap-2 mb-3 cart-lines">
                             @for (line of cart(); track line.productId) {
-                                <div class="border rounded p-2">
-                                    <div class="font-medium">{{ line.name }}</div>
-                                    <div class="text-xs text-gray-500 mb-2">{{ line.codigo || '-' }}</div>
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="flex items-center gap-2">
+                                <div class="border rounded px-2 py-2">
+                                    <div class="flex items-center gap-2">
+                                        <div class="min-w-0 flex-1 flex items-center gap-2">
+                                            <span class="font-medium truncate">{{ line.name }}</span>
+                                            <span class="text-xs text-gray-500 truncate">{{ line.codigo || '-' }}</span>
+                                        </div>
+                                        <div class="flex items-center gap-1 shrink-0">
                                             <p-button icon="pi pi-minus" [rounded]="true" [text]="true" (onClick)="changeQty(line, -1)" />
                                             <strong>{{ line.qty }}</strong>
                                             <p-button icon="pi pi-plus" [rounded]="true" [text]="true" (onClick)="changeQty(line, 1)" />
                                         </div>
-                                        <div class="font-semibold">{{ line.subtotal | currency:'CUP' }}</div>
+                                        <div class="font-semibold whitespace-nowrap text-right shrink-0">{{ formatProductPrice(line.subtotal, line.currency) }}</div>
                                     </div>
                                 </div>
                             }
@@ -277,10 +280,24 @@ interface NewCustomerForm {
                             }
                         </div>
 
-                        <div class="flex items-center justify-between text-lg mb-3">
-                            <span>Total</span>
-                            <strong>{{ cartTotal() | currency:'CUP' }}</strong>
-                        </div>
+                        @if (cartCurrencyTotals().length <= 1) {
+                            <div class="flex items-center justify-between text-lg mb-3">
+                                <span>Total</span>
+                                <strong class="whitespace-nowrap">
+                                    {{ formatProductPrice(cartTotal(), cartCurrencyTotals()[0]?.currency || 'CUP') }}
+                                </strong>
+                            </div>
+                        } @else {
+                            <div class="mb-3 border rounded p-2">
+                                <div class="text-sm font-medium mb-1">Totales por moneda</div>
+                                @for (row of cartCurrencyTotals(); track row.currency) {
+                                    <div class="flex items-center justify-between text-sm py-0.5">
+                                        <span>{{ row.currency }}</span>
+                                        <strong class="whitespace-nowrap">{{ formatProductPrice(row.amount, row.currency) }}</strong>
+                                    </div>
+                                }
+                            </div>
+                        }
 
                         <h4 class="m-0 mb-2">Pagos</h4>
                         <div class="flex flex-col gap-2 payment-lines">
@@ -294,14 +311,27 @@ interface NewCustomerForm {
                             }
                         </div>
 
+                        <div class="mt-2 text-xs text-gray-500">
+                            Conversión actual: 1 USD = {{ exchangeRateUsdToCup }} CUP
+                        </div>
+                        <div class="flex justify-between mt-1 text-sm">
+                            <span>Total a cobrar ({{ defaultCurrency }})</span>
+                            <strong class="whitespace-nowrap">{{ formatProductPrice(cartTotalDefaultCurrency(), defaultCurrency) }}</strong>
+                        </div>
+                        @if (defaultCurrency !== 'CUP') {
+                            <div class="flex justify-between text-xs text-gray-600">
+                                <span>Equivalente en CUP</span>
+                                <strong class="whitespace-nowrap">{{ formatProductPrice(cartTotalCup(), 'CUP') }}</strong>
+                            </div>
+                        }
                         <div class="flex justify-between mt-2 text-sm">
-                            <span>Pagado (CUP)</span>
-                            <strong>{{ paymentTotal() | currency:'CUP' }}</strong>
+                            <span>Pagado ({{ defaultCurrency }})</span>
+                            <strong class="whitespace-nowrap">{{ formatProductPrice(paymentTotalDefaultCurrency(), defaultCurrency) }}</strong>
                         </div>
                         <div class="flex justify-between text-sm mb-3">
-                            <span>Diferencia</span>
-                            <strong [class.text-green-600]="paymentDifference() === 0" [class.text-red-600]="paymentDifference() !== 0">
-                                {{ paymentDifference() | currency:'CUP' }}
+                            <span>Diferencia ({{ defaultCurrency }})</span>
+                            <strong [class.text-green-600]="paymentDifferenceDefaultCurrency() === 0" [class.text-red-600]="paymentDifferenceDefaultCurrency() !== 0" class="whitespace-nowrap">
+                                {{ formatProductPrice(paymentDifferenceDefaultCurrency(), defaultCurrency) }}
                             </strong>
                         </div>
 
@@ -344,8 +374,8 @@ interface NewCustomerForm {
                             <tr>
                                 <td>{{ item.name }}</td>
                                 <td class="text-right">{{ item.qty }}</td>
-                                <td class="text-right">{{ item.price | currency:'CUP' }}</td>
-                                <td class="text-right">{{ item.subtotal | currency:'CUP' }}</td>
+                                <td class="text-right whitespace-nowrap">{{ formatProductPrice(item.price, item.currency) }}</td>
+                                <td class="text-right whitespace-nowrap">{{ formatProductPrice(item.subtotal, item.currency) }}</td>
                             </tr>
                         </ng-template>
                     </p-table>
@@ -555,6 +585,21 @@ export class DirectSales implements OnInit, AfterViewInit {
     cartTotal = computed(() =>
         Number(this.cart().reduce((sum, line) => sum + line.subtotal, 0).toFixed(2))
     );
+    cartCurrencyTotals = computed(() => {
+        const totals = new Map<SystemCurrencyCode, number>();
+        for (const line of this.cart()) {
+            const currency = this.normalizeDisplayCurrency(line.currency);
+            const current = Number(totals.get(currency) || 0);
+            totals.set(currency, Number((current + Number(line.subtotal || 0)).toFixed(2)));
+        }
+        return Array.from(totals.entries())
+            .map(([currency, amount]) => ({ currency, amount }))
+            .sort((a, b) => a.currency.localeCompare(b.currency));
+    });
+    singleCartCurrency = computed<SystemCurrencyCode | null>(() => {
+        const totals = this.cartCurrencyTotals();
+        return totals.length === 1 ? totals[0].currency : null;
+    });
 
     constructor(
         private readonly warehousesService: WarehousesService,
@@ -829,6 +874,7 @@ export class DirectSales implements OnInit, AfterViewInit {
                 this.messageService.add({ severity: 'warn', summary: 'Sin stock', detail: 'No hay stock suficiente.' });
                 return;
             }
+            lines[index].currency = this.normalizeDisplayCurrency(product.currency || lines[index].currency);
             lines[index].qty += 1;
             lines[index].subtotal = Number((lines[index].qty * lines[index].price).toFixed(2));
         } else {
@@ -836,6 +882,7 @@ export class DirectSales implements OnInit, AfterViewInit {
                 productId: product.id,
                 name: product.name,
                 codigo: product.codigo || product.barcode,
+                currency: this.normalizeDisplayCurrency(product.currency),
                 price: Number(product.price || 0),
                 qty: 1,
                 subtotal: Number(product.price || 0)
@@ -843,6 +890,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         }
 
         this.cart.set(lines);
+        this.syncPaymentCurrencyWithCart();
         this.rebalancePayments();
     }
 
@@ -856,6 +904,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         if (next <= 0) {
             lines.splice(index, 1);
             this.cart.set(lines);
+            this.syncPaymentCurrencyWithCart();
             this.rebalancePayments();
             return;
         }
@@ -868,6 +917,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         lines[index].qty = next;
         lines[index].subtotal = Number((lines[index].qty * lines[index].price).toFixed(2));
         this.cart.set(lines);
+        this.syncPaymentCurrencyWithCart();
         this.rebalancePayments();
     }
 
@@ -904,7 +954,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         if (this.cart().length === 0) return false;
         if (!this.paymentLines.length) return false;
         if (this.paymentLines.some((line) => Number(line.amount || 0) <= 0)) return false;
-        return this.paymentDifference() === 0;
+        return this.paymentDifferenceCup() === 0;
     }
 
     submitSale() {
@@ -975,7 +1025,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         lines.push('');
         lines.push('PRODUCTOS');
         for (const item of ticket.items) {
-            lines.push(`- ${item.name} | ${item.qty} x ${item.price.toFixed(2)} = ${item.subtotal.toFixed(2)} CUP`);
+            lines.push(`- ${item.name} | ${item.qty} x ${item.price.toFixed(2)} ${item.currency} = ${item.subtotal.toFixed(2)} ${item.currency}`);
         }
         lines.push('');
         lines.push('PAGOS');
@@ -1006,7 +1056,41 @@ export class DirectSales implements OnInit, AfterViewInit {
         ];
     }
 
-    paymentTotal() {
+    cartTotalCup() {
+        return Number(
+            this.cart()
+                .reduce(
+                    (sum, line) =>
+                        sum +
+                        this.convertAmount(
+                            Number(line.subtotal || 0),
+                            this.normalizeDisplayCurrency(line.currency),
+                            'CUP'
+                        ),
+                    0
+                )
+                .toFixed(2)
+        );
+    }
+
+    cartTotalDefaultCurrency() {
+        return Number(
+            this.cart()
+                .reduce(
+                    (sum, line) =>
+                        sum +
+                        this.convertAmount(
+                            Number(line.subtotal || 0),
+                            this.normalizeDisplayCurrency(line.currency),
+                            this.defaultCurrency
+                        ),
+                    0
+                )
+                .toFixed(2)
+        );
+    }
+
+    paymentTotalCup() {
         return Number(
             this.paymentLines
                 .reduce((sum, line) => sum + this.toBaseAmount(Number(line.amount || 0), line.currency), 0)
@@ -1014,20 +1098,37 @@ export class DirectSales implements OnInit, AfterViewInit {
         );
     }
 
-    paymentDifference() {
-        return Number((this.cartTotal() - this.paymentTotal()).toFixed(2));
+    paymentTotalDefaultCurrency() {
+        return this.convertAmount(this.paymentTotalCup(), 'CUP', this.defaultCurrency);
+    }
+
+    paymentDifferenceCup() {
+        return Number((this.cartTotalCup() - this.paymentTotalCup()).toFixed(2));
+    }
+
+    paymentDifferenceDefaultCurrency() {
+        return this.convertAmount(this.paymentDifferenceCup(), 'CUP', this.defaultCurrency);
     }
 
     private rebalancePayments() {
         if (!this.paymentLines.length) return;
 
-        const target = this.cartTotal();
+        const target = this.cartTotalCup();
         const first = this.paymentLines[0];
         if (!first) return;
 
         const othersBase = this.paymentLines.slice(1).reduce((sum, line) => sum + this.toBaseAmount(Number(line.amount || 0), line.currency), 0);
         const firstBase = Number((target - othersBase).toFixed(2));
         first.amount = firstBase > 0 ? this.fromBaseAmount(firstBase, first.currency) : 0;
+        this.paymentLines = [...this.paymentLines];
+    }
+
+    private syncPaymentCurrencyWithCart() {
+        if (this.paymentLines.length !== 1) return;
+        const singleCurrency = this.singleCartCurrency();
+        if (!singleCurrency) return;
+        if (this.paymentLines[0].currency === singleCurrency) return;
+        this.paymentLines[0] = { ...this.paymentLines[0], currency: singleCurrency };
         this.paymentLines = [...this.paymentLines];
     }
 
@@ -1039,12 +1140,37 @@ export class DirectSales implements OnInit, AfterViewInit {
         return Number(amount.toFixed(2));
     }
 
+    private convertAmount(amount: number, from: SystemCurrencyCode, to: SystemCurrencyCode): number {
+        if (!Number.isFinite(amount) || amount === 0) return 0;
+        if (from === to) return Number(amount.toFixed(2));
+        if (from === 'USD' && to === 'CUP') {
+            return Number((amount * this.exchangeRateUsdToCup).toFixed(2));
+        }
+        if (from === 'CUP' && to === 'USD') {
+            return Number((amount / this.exchangeRateUsdToCup).toFixed(2));
+        }
+        return Number(amount.toFixed(2));
+    }
+
     private fromBaseAmount(baseAmount: number, currency: SystemCurrencyCode): number {
         if (!Number.isFinite(baseAmount) || baseAmount <= 0) return 0;
         if (currency === 'USD') {
             return Number((baseAmount / this.exchangeRateUsdToCup).toFixed(2));
         }
         return Number(baseAmount.toFixed(2));
+    }
+
+    formatProductPrice(amount: number, currency?: string) {
+        const safeCurrency = this.normalizeDisplayCurrency(currency);
+        const formattedAmount = new Intl.NumberFormat('es-DO', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(Number(amount || 0));
+        return `${safeCurrency}\u00A0${formattedAmount}`;
+    }
+
+    private normalizeDisplayCurrency(currency?: string): SystemCurrencyCode {
+        return String(currency || '').trim().toUpperCase() === 'USD' ? 'USD' : 'CUP';
     }
 
     private getEmptyNewCustomerForm(): NewCustomerForm {

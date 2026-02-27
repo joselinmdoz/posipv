@@ -171,17 +171,35 @@ let SettingsService = class SettingsService {
             },
         });
         if (payload.paymentMethods) {
-            await this.prisma.paymentMethodSetting.deleteMany({
-                where: { registerSettingsId: settings.id },
-            });
-            await this.prisma.paymentMethodSetting.createMany({
-                data: payload.paymentMethods.map(code => ({
+            const normalizedCodes = Array.from(new Set(payload.paymentMethods
+                .map((code) => this.normalizePaymentMethodCode(code))
+                .filter((code) => !!code)));
+            await this.prisma.paymentMethodSetting.updateMany({
+                where: {
                     registerSettingsId: settings.id,
-                    code,
-                    name: this.getPaymentMethodName(code),
-                    enabled: true,
-                })),
+                    ...(normalizedCodes.length > 0 ? { code: { notIn: normalizedCodes } } : {}),
+                },
+                data: {
+                    registerSettingsId: null,
+                    enabled: false,
+                },
             });
+            for (const code of normalizedCodes) {
+                await this.prisma.paymentMethodSetting.upsert({
+                    where: { code },
+                    update: {
+                        registerSettingsId: settings.id,
+                        name: this.getPaymentMethodName(code),
+                        enabled: true,
+                    },
+                    create: {
+                        registerSettingsId: settings.id,
+                        code,
+                        name: this.getPaymentMethodName(code),
+                        enabled: true,
+                    },
+                });
+            }
         }
         if (payload.denominations !== undefined) {
             const systemSettings = await this.getSystemSettings();
@@ -211,12 +229,38 @@ let SettingsService = class SettingsService {
         });
     }
     getPaymentMethodName(code) {
+        const normalized = this.normalizePaymentMethodCode(code) || code;
         const names = {
+            'CASH': 'Efectivo',
+            'CARD': 'Tarjeta',
+            'TRANSFER': 'Transferencia',
+            'OTHER': 'Otro',
             'EFECTIVO': 'Efectivo',
             'TRANSFERENCIA': 'Transferencia',
             'TARJETA': 'Tarjeta',
         };
-        return names[code] || code;
+        return names[normalized] || normalized;
+    }
+    normalizePaymentMethodCode(code) {
+        const normalized = (code || '').trim().toUpperCase();
+        if (!normalized)
+            return null;
+        switch (normalized) {
+            case 'EFECTIVO':
+            case 'CASH':
+                return 'CASH';
+            case 'TARJETA':
+            case 'CARD':
+                return 'CARD';
+            case 'TRANSFERENCIA':
+            case 'TRANSFER':
+                return 'TRANSFER';
+            case 'OTRO':
+            case 'OTHER':
+                return 'OTHER';
+            default:
+                return normalized;
+        }
     }
     listPaymentMethods() {
         return this.prisma.paymentMethodSetting.findMany({

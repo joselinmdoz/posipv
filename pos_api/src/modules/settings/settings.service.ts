@@ -200,17 +200,41 @@ export class SettingsService {
 
     // Update payment methods
     if (payload.paymentMethods) {
-      await this.prisma.paymentMethodSetting.deleteMany({
-        where: { registerSettingsId: settings.id },
-      });
-      await this.prisma.paymentMethodSetting.createMany({
-        data: payload.paymentMethods.map(code => ({
+      const normalizedCodes = Array.from(
+        new Set(
+          payload.paymentMethods
+            .map((code) => this.normalizePaymentMethodCode(code))
+            .filter((code): code is string => !!code),
+        ),
+      );
+
+      await this.prisma.paymentMethodSetting.updateMany({
+        where: {
           registerSettingsId: settings.id,
-          code,
-          name: this.getPaymentMethodName(code),
-          enabled: true,
-        })),
+          ...(normalizedCodes.length > 0 ? { code: { notIn: normalizedCodes } } : {}),
+        },
+        data: {
+          registerSettingsId: null,
+          enabled: false,
+        },
       });
+
+      for (const code of normalizedCodes) {
+        await this.prisma.paymentMethodSetting.upsert({
+          where: { code },
+          update: {
+            registerSettingsId: settings.id,
+            name: this.getPaymentMethodName(code),
+            enabled: true,
+          },
+          create: {
+            registerSettingsId: settings.id,
+            code,
+            name: this.getPaymentMethodName(code),
+            enabled: true,
+          },
+        });
+      }
     }
 
     // Update denominations
@@ -244,12 +268,38 @@ export class SettingsService {
   }
 
   private getPaymentMethodName(code: string): string {
+    const normalized = this.normalizePaymentMethodCode(code) || code;
     const names: Record<string, string> = {
+      'CASH': 'Efectivo',
+      'CARD': 'Tarjeta',
+      'TRANSFER': 'Transferencia',
+      'OTHER': 'Otro',
       'EFECTIVO': 'Efectivo',
       'TRANSFERENCIA': 'Transferencia',
       'TARJETA': 'Tarjeta',
     };
-    return names[code] || code;
+    return names[normalized] || normalized;
+  }
+
+  private normalizePaymentMethodCode(code?: string | null): string | null {
+    const normalized = (code || '').trim().toUpperCase();
+    if (!normalized) return null;
+    switch (normalized) {
+      case 'EFECTIVO':
+      case 'CASH':
+        return 'CASH';
+      case 'TARJETA':
+      case 'CARD':
+        return 'CARD';
+      case 'TRANSFERENCIA':
+      case 'TRANSFER':
+        return 'TRANSFER';
+      case 'OTRO':
+      case 'OTHER':
+        return 'OTHER';
+      default:
+        return normalized;
+    }
   }
 
   listPaymentMethods() {
