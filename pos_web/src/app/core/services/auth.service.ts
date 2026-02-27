@@ -16,7 +16,7 @@ export interface LoginResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly API_URL = 'http://localhost:3021/api';
+  private readonly API_URL = '/api';
   
   // Signals para estado reactivo
   private _currentUser = signal<LoginResponse['user'] | null>(null);

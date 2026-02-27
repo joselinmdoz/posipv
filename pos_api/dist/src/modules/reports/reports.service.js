@@ -17,16 +17,11 @@ let ReportsService = class ReportsService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async getSalesReport(startDate, endDate) {
+    async getSalesReport(startDate, endDate, filters = {}) {
         const range = this.resolveDateRange(startDate, endDate);
+        const where = this.buildSalesWhere(range.start, range.end, filters);
         const sales = await this.prisma.sale.findMany({
-            where: {
-                createdAt: {
-                    gte: range.start,
-                    lte: range.end,
-                },
-                status: { not: "VOID" },
-            },
+            where,
             include: {
                 items: {
                     include: {
@@ -41,6 +36,14 @@ let ReportsService = class ReportsService {
                     },
                 },
                 payments: true,
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                        type: true,
+                    },
+                },
                 cashier: {
                     select: {
                         id: true,
@@ -60,9 +63,21 @@ let ReportsService = class ReportsService {
             createdAt: sale.createdAt,
             createdAtServer: this.formatServerDateTime(sale.createdAt),
             status: sale.status,
+            channel: sale.channel,
             total: Number(sale.total.toFixed(2)),
             cashierId: sale.cashierId,
             cashSessionId: sale.cashSessionId,
+            warehouseId: sale.warehouseId,
+            warehouse: sale.warehouse
+                ? {
+                    id: sale.warehouse.id,
+                    name: sale.warehouse.name,
+                    code: sale.warehouse.code,
+                    type: sale.warehouse.type,
+                }
+                : null,
+            customerName: sale.customerName || null,
+            documentNumber: sale.documentNumber || null,
             items: sale.items.map((item) => ({
                 id: item.id,
                 saleId: item.saleId,
@@ -102,6 +117,53 @@ let ReportsService = class ReportsService {
             salesByCashier: this.groupSalesByCashier(detailedSales),
             detailedSales,
         };
+    }
+    buildSalesWhere(start, end, filters) {
+        const where = {
+            createdAt: {
+                gte: start,
+                lte: end,
+            },
+            status: { not: "VOID" },
+        };
+        const channel = this.parseChannelFilter(filters.channel);
+        if (channel) {
+            where.channel = channel;
+        }
+        const warehouseId = this.cleanFilter(filters.warehouseId);
+        if (warehouseId) {
+            where.warehouseId = warehouseId;
+        }
+        const cashierEmail = this.cleanFilter(filters.cashierEmail);
+        if (cashierEmail) {
+            where.cashier = {
+                email: { contains: cashierEmail, mode: "insensitive" },
+            };
+        }
+        const customerName = this.cleanFilter(filters.customerName);
+        if (customerName) {
+            where.customerName = { contains: customerName, mode: "insensitive" };
+        }
+        const documentNumber = this.cleanFilter(filters.documentNumber);
+        if (documentNumber) {
+            where.documentNumber = { contains: documentNumber, mode: "insensitive" };
+        }
+        return where;
+    }
+    parseChannelFilter(channel) {
+        const normalized = this.cleanFilter(channel)?.toUpperCase();
+        if (!normalized)
+            return null;
+        if (normalized === "TPV" || normalized === "DIRECT") {
+            return normalized;
+        }
+        throw new common_1.BadRequestException("Filtro channel invalido. Use TPV o DIRECT.");
+    }
+    cleanFilter(value) {
+        if (!value)
+            return null;
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
     }
     getServerDateInfo() {
         const now = new Date();

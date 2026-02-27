@@ -520,7 +520,7 @@ type StockColumnKey =
     `
 })
 export class Warehouses implements OnInit {
-    readonly IMAGE_BASE_URL = 'http://localhost:3021';
+    readonly IMAGE_BASE_URL = '';
     warehouses = signal<Warehouse[]>([]);
     stock = signal<StockItem[]>([]);
     movements = signal<StockMovement[]>([]);

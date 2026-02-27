@@ -1,36 +1,37 @@
 # =============================================================================
 # Dockerfile para POS API (Backend NestJS)
+# - `production`: imagen lista para despliegue
+# - `development`: hot-reload para docker-compose.dev.yml (stage por defecto)
 # =============================================================================
-# Imagen base: Node.js 20 LTS
-FROM docker.m.daocloud.io/node:20-alpine
 
-# Definir variables de entorno
-ENV NODE_ENV=development
-ENV PORT=3021
-
-# Puerto en que correrá la aplicación
+FROM node:20-alpine AS base
+WORKDIR /app
 EXPOSE 3021
 
-# Directorio de trabajo
-WORKDIR /app
-
-# Copiar archivos de package.json y package-lock.json
+FROM base AS build
 COPY package*.json ./
-
-# Instalar todas las dependencias (incluyendo dev para nest CLI)
-RUN npm install
-
-# Copiar código fuente
+RUN npm ci
 COPY . .
-
-# Generar cliente Prisma
 RUN npx prisma generate
+RUN npm run build
+RUN npm prune --omit=dev
 
-# Crear directorio de uploads
+FROM base AS production
+ENV NODE_ENV=production
+ENV PORT=3021
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
 RUN mkdir -p uploads && chmod 755 uploads
+CMD ["node", "dist/src/main.js"]
 
-# Exponer puerto para la base de datos (interno)
-# La conexión se hace a través de la variable DATABASE_URL
-
-# Comando para iniciar en modo desarrollo con hot-reload
+FROM base AS development
+ENV NODE_ENV=development
+ENV PORT=3021
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npx prisma generate
+RUN mkdir -p uploads && chmod 755 uploads
 CMD ["./node_modules/.bin/nest", "start", "--watch"]

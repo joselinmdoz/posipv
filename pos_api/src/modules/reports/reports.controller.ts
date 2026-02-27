@@ -16,7 +16,18 @@ export class ReportsController {
   async getSalesReport(
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
+    @Query("channel") channel?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("cashierEmail") cashierEmail?: string,
+    @Query("customerName") customerName?: string,
+    @Query("documentNumber") documentNumber?: string,
   ) {
-    return this.reportsService.getSalesReport(startDate, endDate);
+    return this.reportsService.getSalesReport(startDate, endDate, {
+      channel,
+      warehouseId,
+      cashierEmail,
+      customerName,
+      documentNumber,
+    });
   }
 }

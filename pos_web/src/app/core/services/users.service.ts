@@ -26,7 +26,7 @@ export interface UpdateUserDto {
   providedIn: 'root'
 })
 export class UsersService {
-  private readonly API_URL = 'http://localhost:3021/api/users';
+  private readonly API_URL = '/api/users';
 
   private _users = signal<User[]>([]);
   private _isLoading = signal<boolean>(false);

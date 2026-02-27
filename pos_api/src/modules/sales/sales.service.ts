@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CashSessionStatus, CurrencyCode, Prisma, StockMovementType } from "@prisma/client";
+import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
 import { SettingsService } from "../settings/settings.service";
 
@@ -151,6 +151,9 @@ export class SalesService {
         data: {
           cashierId,
           cashSessionId: session.id,
+          warehouseId: tpvWarehouseId,
+          channel: SaleChannel.TPV,
+          documentNumber: await this.generateDocumentNumber(tx, SaleChannel.TPV),
           total: total as any,
           items: { create: itemsData },
           payments: {
@@ -215,5 +218,32 @@ export class SalesService {
     } catch {
       throw new BadRequestException(message);
     }
+  }
+
+  private async generateDocumentNumber(tx: Prisma.TransactionClient, channel: SaleChannel) {
+    const prefix = channel === SaleChannel.TPV ? "TPV" : "DIR";
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const now = new Date();
+      const stamp = [
+        now.getFullYear(),
+        `${now.getMonth() + 1}`.padStart(2, "0"),
+        `${now.getDate()}`.padStart(2, "0"),
+        `${now.getHours()}`.padStart(2, "0"),
+        `${now.getMinutes()}`.padStart(2, "0"),
+        `${now.getSeconds()}`.padStart(2, "0"),
+      ].join("");
+      const suffix = Math.floor(Math.random() * 900 + 100).toString();
+      const candidate = `${prefix}-${stamp}-${suffix}`;
+
+      const existing = await tx.sale.findUnique({
+        where: { documentNumber: candidate },
+        select: { id: true },
+      });
+
+      if (!existing) return candidate;
+    }
+
+    throw new BadRequestException("No se pudo generar un número de comprobante único.");
   }
 }

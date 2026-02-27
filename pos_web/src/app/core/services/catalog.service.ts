@@ -40,7 +40,7 @@ export interface MeasurementUnitType {
   providedIn: 'root'
 })
 export class CatalogService {
-  private readonly API_URL = 'http://localhost:3021/api';
+  private readonly API_URL = '/api';
 
   constructor(private http: HttpClient) {}
 

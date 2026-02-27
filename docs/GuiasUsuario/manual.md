@@ -152,6 +152,31 @@ Con una sesion abierta:
 
 ---
 
+## Ventas Directas (sin TPV)
+
+La vista `/direct-sales` permite vender desde un almacen **no-TPV** sin abrir/cerrar caja ni usar IPV.
+
+### Flujo de venta directa
+
+1. Selecciona un almacen de tipo central/no-TPV.
+2. (Opcional) Escribe el nombre del cliente.
+3. Agrega productos al ticket.
+4. Define una o varias lineas de pago (efectivo, tarjeta, transferencia u otro).
+5. Pulsa **Cobrar**.
+6. Al confirmar, el sistema:
+   - descuenta inventario del almacen seleccionado,
+   - registra la venta con canal `DIRECT`,
+   - genera comprobante (`documentNumber`),
+   - permite consultar y descargar ticket en formato `.txt`.
+
+### Validaciones
+
+- No se puede vender desde un almacen TPV en este modulo.
+- No se procesa la venta si el total de pagos no coincide con el total del ticket.
+- No se permite vender cantidades por encima del stock disponible.
+
+---
+
 ## Gestión de Inventario
 
 ### Movimientos de Stock

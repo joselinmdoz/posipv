@@ -27,7 +27,7 @@ export interface CashSession {
   providedIn: 'root'
 })
 export class CashSessionsService {
-  private readonly API_URL = 'http://localhost:3021/api';
+  private readonly API_URL = '/api';
   private readonly URL = `${this.API_URL}/cash-sessions`;
 
   constructor(private http: HttpClient) {}

@@ -21,6 +21,8 @@ import { ProductTypesModule } from "./modules/product-types/product-types.module
 import { ProductCategoriesModule } from "./modules/product-categories/product-categories.module";
 import { MeasurementUnitTypesModule } from "./modules/measurement-unit-types/measurement-unit-types.module";
 import { MeasurementUnitsModule } from "./modules/measurement-units/measurement-units.module";
+import { DirectSalesModule } from "./modules/direct-sales/direct-sales.module";
+import { CustomersModule } from "./modules/customers/customers.module";
 
 @Module({
   imports: [
@@ -47,6 +49,8 @@ import { MeasurementUnitsModule } from "./modules/measurement-units/measurement-
     ProductCategoriesModule,
     MeasurementUnitTypesModule,
     MeasurementUnitsModule,
+    DirectSalesModule,
+    CustomersModule,
   ],
 })
 export class AppModule {}

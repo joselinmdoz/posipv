@@ -146,6 +146,9 @@ let SalesService = class SalesService {
                 data: {
                     cashierId,
                     cashSessionId: session.id,
+                    warehouseId: tpvWarehouseId,
+                    channel: client_1.SaleChannel.TPV,
+                    documentNumber: await this.generateDocumentNumber(tx, client_1.SaleChannel.TPV),
                     total: total,
                     items: { create: itemsData },
                     payments: {
@@ -207,6 +210,29 @@ let SalesService = class SalesService {
         catch {
             throw new common_1.BadRequestException(message);
         }
+    }
+    async generateDocumentNumber(tx, channel) {
+        const prefix = channel === client_1.SaleChannel.TPV ? "TPV" : "DIR";
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const now = new Date();
+            const stamp = [
+                now.getFullYear(),
+                `${now.getMonth() + 1}`.padStart(2, "0"),
+                `${now.getDate()}`.padStart(2, "0"),
+                `${now.getHours()}`.padStart(2, "0"),
+                `${now.getMinutes()}`.padStart(2, "0"),
+                `${now.getSeconds()}`.padStart(2, "0"),
+            ].join("");
+            const suffix = Math.floor(Math.random() * 900 + 100).toString();
+            const candidate = `${prefix}-${stamp}-${suffix}`;
+            const existing = await tx.sale.findUnique({
+                where: { documentNumber: candidate },
+                select: { id: true },
+            });
+            if (!existing)
+                return candidate;
+        }
+        throw new common_1.BadRequestException("No se pudo generar un número de comprobante único.");
     }
 };
 exports.SalesService = SalesService;

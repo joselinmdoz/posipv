@@ -27,6 +27,11 @@ enum SaleStatus {
   VOID
 }
 
+enum SaleChannel {
+  TPV
+  DIRECT
+}
+
 enum PaymentMethod {
   CASH
   CARD
@@ -113,16 +118,41 @@ model Sale {
   id          String     @id @default(cuid())
   createdAt   DateTime   @default(now())
   status      SaleStatus @default(PAID)
+  channel     SaleChannel @default(TPV)
   total       Decimal    @db.Decimal(12,2)
+  customerId  String?
+  customerName String?
+  documentNumber String? @unique
 
   cashierId   String
   cashier     User       @relation(fields: [cashierId], references: [id])
 
-  cashSessionId String
-  cashSession   CashSession @relation(fields: [cashSessionId], references: [id])
+  customer    Client?    @relation(fields: [customerId], references: [id])
+
+  cashSessionId String?
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id])
+
+  warehouseId String?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
 
   items     SaleItem[]
   payments  Payment[]
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  name           String
+  identification String   @unique
+  phone          String?
+  email          String?
+  address        String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sales          Sale[]
+
+  @@index([name])
 }
 
 model SaleItem {
@@ -173,6 +203,7 @@ model Warehouse {
   fromMovements         StockMovement[] @relation("FromWarehouse")
   toMovements           StockMovement[] @relation("ToWarehouse")
   inventoryReports      InventoryReport[]
+  sales                 Sale[]
 }
 
 model Stock {
@@ -218,8 +249,12 @@ model Denomination {
   id                String  @id @default(cuid())
   value             Decimal @db.Decimal(12,2)
   enabled           Boolean @default(true)
+  currency          CurrencyCode @default(CUP)
   registerSettingsId String?
   registerSettings   RegisterSettings? @relation(fields: [registerSettingsId], references: [id])
+
+  @@index([registerSettingsId, currency])
+  @@unique([registerSettingsId, currency, value])
 }
 
 model PaymentMethodSetting {

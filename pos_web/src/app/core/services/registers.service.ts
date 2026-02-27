@@ -24,7 +24,7 @@ export interface UpdateRegisterDto {
   providedIn: 'root'
 })
 export class RegistersService {
-  private readonly API_URL = 'http://localhost:3021/api/registers';
+  private readonly API_URL = '/api/registers';
 
   constructor(private http: HttpClient) {}
 

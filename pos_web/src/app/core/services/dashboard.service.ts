@@ -14,7 +14,7 @@ export interface DashboardSummary {
   providedIn: 'root'
 })
 export class DashboardService {
-  private readonly API_URL = 'http://localhost:3021/api/dashboard';
+  private readonly API_URL = '/api/dashboard';
 
   constructor(private http: HttpClient) {}
 

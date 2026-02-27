@@ -168,7 +168,7 @@ export class SettingsService {
     currency: string;
     warehouseId: string;
     paymentMethods: string[];
-    denominations: Array<number | { value: number; enabled?: boolean }>;
+    denominations: Array<number | { value: number; enabled?: boolean; currency?: string }>;
   }>) {
     const data: any = {};
     if (payload.defaultOpeningFloat !== undefined) {
@@ -215,7 +215,10 @@ export class SettingsService {
 
     // Update denominations
     if (payload.denominations !== undefined) {
-      const denominations = this.normalizeDenominations(payload.denominations);
+      const systemSettings = await this.getSystemSettings();
+      const enabledCurrencies = this.normalizeEnabledCurrencies(systemSettings.enabledCurrencies as string[]);
+      const defaultCurrency = this.normalizeSupportedCurrency(settings.currency, "CUP");
+      const denominations = this.normalizeDenominations(payload.denominations, { defaultCurrency, enabledCurrencies });
       await this.prisma.denomination.deleteMany({
         where: { registerSettingsId: settings.id },
       });
@@ -225,6 +228,7 @@ export class SettingsService {
             registerSettingsId: settings.id,
             value: dec(d.value.toString()),
             enabled: d.enabled,
+            currency: d.currency,
           })),
         });
       }
@@ -262,17 +266,36 @@ export class SettingsService {
     });
   }
 
-  listDenominations() {
+  listDenominations(filters?: { registerId?: string; currency?: string }) {
+    const where: Prisma.DenominationWhereInput = {};
+
+    if (filters?.registerId) {
+      where.registerSettings = { is: { registerId: filters.registerId } };
+    }
+
+    if (filters?.currency) {
+      where.currency = this.normalizeSupportedCurrency(filters.currency, "CUP");
+    }
+
     return this.prisma.denomination.findMany({
-      orderBy: { value: 'asc' },
+      where,
+      orderBy: [{ currency: "asc" }, { value: "asc" }],
     });
   }
 
-  async saveDenominations(payload: { value: number; enabled: boolean }[]) {
+  async saveDenominations(payload: { value: number; enabled: boolean; currency?: string }[]) {
+    const denominations = this.normalizeDenominations(payload, {
+      defaultCurrency: "CUP",
+      enabledCurrencies: this.supportedCurrencies,
+    });
     // Delete all and recreate
     await this.prisma.denomination.deleteMany();
     return this.prisma.denomination.createMany({
-      data: payload.map(d => ({ value: dec(d.value.toString()), enabled: d.enabled })),
+      data: denominations.map((d) => ({
+        value: dec(d.value.toString()),
+        enabled: d.enabled,
+        currency: d.currency,
+      })),
     });
   }
 
@@ -289,12 +312,20 @@ export class SettingsService {
     });
   }
 
-  private normalizeDenominations(input: Array<number | { value: number; enabled?: boolean }>) {
-    const map = new Map<number, { value: number; enabled: boolean }>();
+  private normalizeDenominations(
+    input: Array<number | { value: number; enabled?: boolean; currency?: string }>,
+    options: { defaultCurrency: SystemCurrencyCode; enabledCurrencies: SystemCurrencyCode[] },
+  ) {
+    const map = new Map<string, { value: number; enabled: boolean; currency: SystemCurrencyCode }>();
 
     for (const item of input) {
       const rawValue = typeof item === "number" ? item : Number(item.value);
       const enabled = typeof item === "number" ? true : item.enabled !== false;
+      const currency = this.resolveDenominationCurrency(
+        typeof item === "number" ? undefined : item.currency,
+        options.defaultCurrency,
+        options.enabledCurrencies,
+      );
 
       if (!Number.isFinite(rawValue)) {
         throw new BadRequestException("Denominación inválida.");
@@ -305,10 +336,13 @@ export class SettingsService {
         throw new BadRequestException("Las denominaciones deben ser mayores a 0.");
       }
 
-      map.set(value, { value, enabled });
+      map.set(`${currency}:${value}`, { value, enabled, currency });
     }
 
-    return Array.from(map.values()).sort((a, b) => a.value - b.value);
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.currency === b.currency) return a.value - b.value;
+      return a.currency.localeCompare(b.currency);
+    });
   }
 
   private normalizeEnabledCurrencies(input: string[]) {
@@ -322,6 +356,35 @@ export class SettingsService {
 
     if (normalized.length === 0) {
       throw new BadRequestException("Debe habilitar al menos una moneda.");
+    }
+
+    return normalized;
+  }
+
+  private normalizeSupportedCurrency(input: string | undefined | null, fallback: SystemCurrencyCode): SystemCurrencyCode {
+    const raw = (input || "").trim().toUpperCase();
+    if (this.supportedCurrencies.includes(raw as SystemCurrencyCode)) {
+      return raw as SystemCurrencyCode;
+    }
+    return fallback;
+  }
+
+  private resolveDenominationCurrency(
+    currencyInput: string | undefined,
+    defaultCurrency: SystemCurrencyCode,
+    enabledCurrencies: SystemCurrencyCode[],
+  ): SystemCurrencyCode {
+    let normalized = defaultCurrency;
+    if (currencyInput) {
+      const raw = currencyInput.trim().toUpperCase();
+      if (!this.supportedCurrencies.includes(raw as SystemCurrencyCode)) {
+        throw new BadRequestException(`Moneda ${raw} no soportada para denominaciones.`);
+      }
+      normalized = raw as SystemCurrencyCode;
+    }
+
+    if (!enabledCurrencies.includes(normalized)) {
+      throw new BadRequestException(`La moneda ${normalized} no está habilitada en configuración general.`);
     }
 
     return normalized;

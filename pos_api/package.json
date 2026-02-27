@@ -16,6 +16,9 @@
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down -v"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "dependencies": {
     "@nestjs/common": "^11.1.13",
     "@nestjs/config": "^4.0.3",

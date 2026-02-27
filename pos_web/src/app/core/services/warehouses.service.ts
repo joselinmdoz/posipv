@@ -91,7 +91,7 @@ export interface CreateStockMovementDto {
   providedIn: 'root'
 })
 export class WarehousesService {
-  private readonly API_URL = 'http://localhost:3021/api';
+  private readonly API_URL = '/api';
   private readonly WAREHOUSES_URL = `${this.API_URL}/warehouses`;
   private readonly MOVEMENTS_URL = `${this.API_URL}/stock-movements`;
 

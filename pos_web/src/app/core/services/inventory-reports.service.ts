@@ -87,7 +87,7 @@ export interface SessionIvpReport {
 })
 export class InventoryReportsService {
   private http = inject(HttpClient);
-  private readonly baseUrl = 'http://localhost:3021/api/inventory-reports';
+  private readonly baseUrl = '/api/inventory-reports';
 
   createInitial(cashSessionId: string, warehouseId: string): Observable<InventoryReport> {
     return this.http.post<InventoryReport>(`${this.baseUrl}/initial`, {

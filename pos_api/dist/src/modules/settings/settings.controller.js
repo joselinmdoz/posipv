@@ -41,6 +41,12 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], DenominationSettingDto.prototype, "enabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsIn)(["CUP", "USD"]),
+    __metadata("design:type", String)
+], DenominationSettingDto.prototype, "currency", void 0);
 class RegisterSettingsDto {
 }
 __decorate([
@@ -116,8 +122,8 @@ let SettingsController = class SettingsController {
     savePaymentMethods(payload) {
         return this.service.savePaymentMethods(payload);
     }
-    listDenominations() {
-        return this.service.listDenominations();
+    listDenominations(registerId, currency) {
+        return this.service.listDenominations({ registerId, currency });
     }
     saveDenominations(payload) {
         return this.service.saveDenominations(payload);
@@ -174,8 +180,10 @@ __decorate([
 ], SettingsController.prototype, "savePaymentMethods", null);
 __decorate([
     (0, common_1.Get)("denominations"),
+    __param(0, (0, common_1.Query)("registerId")),
+    __param(1, (0, common_1.Query)("currency")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], SettingsController.prototype, "listDenominations", null);
 __decorate([

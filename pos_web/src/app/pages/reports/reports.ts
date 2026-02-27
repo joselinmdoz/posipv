@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { DatePickerModule } from 'primeng/datepicker';
+import { InputTextModule } from 'primeng/inputtext';
+import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
@@ -10,11 +12,12 @@ import { ToastModule } from 'primeng/toast';
 import { SplitButtonModule } from 'primeng/splitbutton';
 import { MenuItem, MessageService } from 'primeng/api';
 import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/reports.service';
+import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 
 @Component({
     selector: 'app-reports',
     standalone: true,
-    imports: [CommonModule, FormsModule, ButtonModule, DatePickerModule, TableModule, CardModule, DialogModule, ToastModule, SplitButtonModule],
+    imports: [CommonModule, FormsModule, ButtonModule, DatePickerModule, InputTextModule, SelectModule, TableModule, CardModule, DialogModule, ToastModule, SplitButtonModule],
     providers: [MessageService],
     template: `
         <div class="p-4">
@@ -37,15 +40,55 @@ import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/r
             </div>
 
             <p-card class="mb-4">
-                <div class="flex gap-4 items-end flex-wrap">
-                    <div class="flex-1 min-w-64">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div>
                         <label class="block mb-2">Fecha desde</label>
                         <p-datepicker [(ngModel)]="startDate" dateFormat="yy-mm-dd" [showIcon]="true" styleClass="w-full" [disabled]="loading()" />
                     </div>
-                    <div class="flex-1 min-w-64">
+                    <div>
                         <label class="block mb-2">Fecha hasta</label>
                         <p-datepicker [(ngModel)]="endDate" dateFormat="yy-mm-dd" [showIcon]="true" styleClass="w-full" [disabled]="loading()" />
                     </div>
+                    <div>
+                        <label class="block mb-2">Canal</label>
+                        <p-select
+                            [options]="channelOptions"
+                            [(ngModel)]="selectedChannel"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Todos los canales"
+                            class="w-full"
+                            [disabled]="loading()"
+                        />
+                    </div>
+                    <div>
+                        <label class="block mb-2">Almacén</label>
+                        <p-select
+                            [options]="warehouseOptions"
+                            [(ngModel)]="selectedWarehouseId"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Todos los almacenes"
+                            class="w-full"
+                            [disabled]="loading()"
+                        />
+                    </div>
+                    <div>
+                        <label class="block mb-2">Cajero (email contiene)</label>
+                        <input pInputText [(ngModel)]="cashierEmailFilter" class="w-full" [disabled]="loading()" placeholder="admin@pos.local" />
+                    </div>
+                    <div>
+                        <label class="block mb-2">Cliente (contiene)</label>
+                        <input pInputText [(ngModel)]="customerNameFilter" class="w-full" [disabled]="loading()" placeholder="Nombre del cliente" />
+                    </div>
+                    <div>
+                        <label class="block mb-2">Documento (contiene)</label>
+                        <input pInputText [(ngModel)]="documentNumberFilter" class="w-full" [disabled]="loading()" placeholder="VTA-20260227-0001" />
+                    </div>
+                </div>
+
+                <div class="flex gap-2 justify-end mt-3">
+                    <p-button label="Limpiar filtros" icon="pi pi-filter-slash" severity="secondary" [outlined]="true" [disabled]="loading()" (onClick)="clearAdvancedFilters()" />
                     <p-button label="Generar Reporte" icon="pi pi-chart-bar" [loading]="loading()" (onClick)="generateReport()" />
                 </div>
             </p-card>
@@ -109,6 +152,9 @@ import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/r
                         <ng-template #header>
                             <tr>
                                 <th>Fecha</th>
+                                <th>Canal</th>
+                                <th>Cliente / Documento</th>
+                                <th>Almacén</th>
                                 <th>Cajero</th>
                                 <th>Total</th>
                                 <th>Estado</th>
@@ -118,6 +164,9 @@ import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/r
                         <ng-template #body let-sale>
                             <tr>
                                 <td>{{ sale.createdAtServer || formatDateTime(sale.createdAt) }}</td>
+                                <td>{{ getChannelLabel(sale.channel) }}</td>
+                                <td>{{ sale.customerName || sale.documentNumber || '-' }}</td>
+                                <td>{{ sale.warehouse?.name || '-' }}</td>
                                 <td>{{ sale.cashier?.email || 'N/A' }}</td>
                                 <td>{{ sale.total | currency }}</td>
                                 <td>
@@ -138,7 +187,7 @@ import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/r
                         </ng-template>
                         <ng-template #emptymessage>
                             <tr>
-                                <td colspan="5" class="text-center">No hay ventas en el período seleccionado.</td>
+                                <td colspan="8" class="text-center">No hay ventas en el período seleccionado.</td>
                             </tr>
                         </ng-template>
                     </p-table>
@@ -252,6 +301,19 @@ export class Reports implements OnInit {
     selectedSale = signal<DetailedSale | null>(null);
     saleDetailDialog = false;
 
+    selectedChannel: 'TPV' | 'DIRECT' | '' = '';
+    selectedWarehouseId = '';
+    cashierEmailFilter = '';
+    customerNameFilter = '';
+    documentNumberFilter = '';
+
+    channelOptions: Array<{ label: string; value: 'TPV' | 'DIRECT' | '' }> = [
+        { label: 'Todos', value: '' },
+        { label: 'TPV', value: 'TPV' },
+        { label: 'Venta Directa', value: 'DIRECT' }
+    ];
+    warehouseOptions: Array<{ label: string; value: string }> = [{ label: 'Todos', value: '' }];
+
     exportItems: MenuItem[] = [
         {
             label: 'Exportar XLSX',
@@ -267,16 +329,35 @@ export class Reports implements OnInit {
 
     constructor(
         private reportsService: ReportsService,
+        private warehousesService: WarehousesService,
         private messageService: MessageService
     ) {}
 
     ngOnInit() {
+        this.loadWarehouseOptions();
         this.loadServerTodayReport();
+    }
+
+    private loadWarehouseOptions() {
+        this.warehousesService.listWarehouses().subscribe({
+            next: (rows: Warehouse[]) => {
+                const options = rows
+                    .filter((warehouse) => warehouse.active)
+                    .map((warehouse) => ({
+                        label: `${warehouse.name} (${warehouse.code})`,
+                        value: warehouse.id
+                    }));
+                this.warehouseOptions = [{ label: 'Todos', value: '' }, ...options];
+            },
+            error: () => {
+                this.warehouseOptions = [{ label: 'Todos', value: '' }];
+            }
+        });
     }
 
     loadServerTodayReport() {
         this.loading.set(true);
-        this.reportsService.getSalesReport().subscribe({
+        this.reportsService.getSalesReport(undefined, undefined, this.buildReportFilters()).subscribe({
             next: (report) => {
                 this.applyReport(report);
                 this.loading.set(false);
@@ -315,7 +396,7 @@ export class Reports implements OnInit {
         const endStr = this.formatDate(this.endDate);
 
         this.loading.set(true);
-        this.reportsService.getSalesReport(startStr, endStr).subscribe({
+        this.reportsService.getSalesReport(startStr, endStr, this.buildReportFilters()).subscribe({
             next: (report) => {
                 this.applyReport(report);
                 this.loading.set(false);
@@ -329,6 +410,19 @@ export class Reports implements OnInit {
                 });
             }
         });
+    }
+
+    clearAdvancedFilters() {
+        this.selectedChannel = '';
+        this.selectedWarehouseId = '';
+        this.cashierEmailFilter = '';
+        this.customerNameFilter = '';
+        this.documentNumberFilter = '';
+        if (this.startDate && this.endDate) {
+            this.generateReport();
+            return;
+        }
+        this.loadServerTodayReport();
     }
 
     exportSalesAsXlsx() {
@@ -404,12 +498,15 @@ export class Reports implements OnInit {
 
         rows.push([]);
         rows.push(['DETALLE DE VENTAS']);
-        rows.push(['ID', 'Fecha', 'Cajero', 'Total', 'Estado']);
+        rows.push(['Fecha', 'Canal', 'Cliente', 'Documento', 'Almacen', 'Cajero', 'Total', 'Estado']);
 
         for (const sale of report.detailedSales || []) {
             rows.push([
-                sale.id || '',
                 sale.createdAtServer || this.formatDateTime(sale.createdAt),
+                this.getChannelLabel(sale.channel),
+                sale.customerName || '',
+                sale.documentNumber || '',
+                sale.warehouse?.name || '',
                 sale.cashier?.email || 'N/A',
                 Number(sale.total || 0),
                 sale.status || ''
@@ -446,11 +543,11 @@ export class Reports implements OnInit {
 
         lines.push('');
         lines.push('DETALLE DE VENTAS');
-        lines.push('ID | Fecha | Cajero | Total | Estado');
+        lines.push('Fecha | Canal | Cliente | Documento | Almacen | Cajero | Total | Estado');
         for (const sale of report.detailedSales || []) {
             lines.push(
                 this.truncateForPdf(
-                    `${sale.id || ''} | ${sale.createdAtServer || this.formatDateTime(sale.createdAt)} | ${sale.cashier?.email || 'N/A'} | ${Number(sale.total || 0).toFixed(2)} | ${sale.status || ''}`,
+                    `${sale.createdAtServer || this.formatDateTime(sale.createdAt)} | ${this.getChannelLabel(sale.channel)} | ${sale.customerName || '-'} | ${sale.documentNumber || '-'} | ${sale.warehouse?.name || '-'} | ${sale.cashier?.email || 'N/A'} | ${Number(sale.total || 0).toFixed(2)} | ${sale.status || ''}`,
                     115
                 )
             );
@@ -474,6 +571,12 @@ export class Reports implements OnInit {
             OTHER: 'Otro'
         };
         return labels[method] || method;
+    }
+
+    getChannelLabel(channel?: string): string {
+        if (channel === 'DIRECT') return 'Venta Directa';
+        if (channel === 'TPV') return 'TPV';
+        return channel || '-';
     }
 
     formatDateTime(value: string | Date | null | undefined): string {
@@ -779,6 +882,24 @@ export class Reports implements OnInit {
         this.serverTimezone.set(report.serverTimezone || '');
         this.startDate = this.parseYmd(report.startDate) || this.startDate;
         this.endDate = this.parseYmd(report.endDate) || this.endDate;
+    }
+
+    private buildReportFilters() {
+        const filters: {
+            channel?: 'TPV' | 'DIRECT';
+            warehouseId?: string;
+            cashierEmail?: string;
+            customerName?: string;
+            documentNumber?: string;
+        } = {};
+
+        if (this.selectedChannel) filters.channel = this.selectedChannel;
+        if (this.selectedWarehouseId.trim()) filters.warehouseId = this.selectedWarehouseId.trim();
+        if (this.cashierEmailFilter.trim()) filters.cashierEmail = this.cashierEmailFilter.trim();
+        if (this.customerNameFilter.trim()) filters.customerName = this.customerNameFilter.trim();
+        if (this.documentNumberFilter.trim()) filters.documentNumber = this.documentNumberFilter.trim();
+
+        return filters;
     }
 
     private parseYmd(value?: string | null): Date | null {

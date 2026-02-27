@@ -7,9 +7,19 @@ export interface DetailedSale {
   createdAt: string;
   createdAtServer: string;
   status: 'PAID' | 'VOID' | string;
+  channel: 'TPV' | 'DIRECT' | string;
   total: number;
   cashierId: string;
-  cashSessionId: string;
+  cashSessionId: string | null;
+  warehouseId?: string | null;
+  warehouse?: {
+    id: string;
+    name: string;
+    code: string;
+    type: 'CENTRAL' | 'TPV' | string;
+  } | null;
+  customerName?: string | null;
+  documentNumber?: string | null;
   items: Array<{
     id: string;
     saleId: string;
@@ -62,18 +72,31 @@ export interface ServerDateInfo {
   serverNowLabel: string;
 }
 
+export interface SalesReportFilters {
+  channel?: 'TPV' | 'DIRECT' | '';
+  warehouseId?: string;
+  cashierEmail?: string;
+  customerName?: string;
+  documentNumber?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class ReportsService {
-  private readonly API_URL = 'http://localhost:3021/api/reports';
+  private readonly API_URL = '/api/reports';
 
   constructor(private http: HttpClient) {}
 
-  getSalesReport(startDate?: string, endDate?: string): Observable<SalesReport> {
+  getSalesReport(startDate?: string, endDate?: string, filters?: SalesReportFilters): Observable<SalesReport> {
     let params = new HttpParams();
     if (startDate) params = params.set('startDate', startDate);
     if (endDate) params = params.set('endDate', endDate);
+    if (filters?.channel) params = params.set('channel', filters.channel);
+    if (filters?.warehouseId) params = params.set('warehouseId', filters.warehouseId);
+    if (filters?.cashierEmail) params = params.set('cashierEmail', filters.cashierEmail.trim());
+    if (filters?.customerName) params = params.set('customerName', filters.customerName.trim());
+    if (filters?.documentNumber) params = params.set('documentNumber', filters.documentNumber.trim());
     return this.http.get<SalesReport>(`${this.API_URL}/sales`, { params });
   }
 

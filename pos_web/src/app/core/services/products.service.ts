@@ -75,7 +75,7 @@ export interface UpdateProductDto {
   providedIn: 'root'
 })
 export class ProductsService {
-  private readonly API_URL = 'http://localhost:3021/api/products';
+  private readonly API_URL = '/api/products';
 
   constructor(private http: HttpClient) {}
 

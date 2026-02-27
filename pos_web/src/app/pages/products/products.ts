@@ -494,7 +494,7 @@ export class Products implements OnInit {
     ];
 
     // URL base del API para las imágenes
-    readonly IMAGE_BASE_URL = 'http://localhost:3021';
+    readonly IMAGE_BASE_URL = '';
 
     cols: Column[] = [
         { field: 'name', header: 'Nombre' },

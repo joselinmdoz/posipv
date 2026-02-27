@@ -17,8 +17,8 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const port = Number(cfg.get<string>("PORT") || 3001);
-  await app.listen(port, 'localhost');
-  console.log(`✅ API en http://localhost:${port}/api`);
+  await app.listen(port, "0.0.0.0");
+  console.log(`✅ API escuchando en 0.0.0.0:${port}/api`);
 }
 
 bootstrap();

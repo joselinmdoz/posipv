@@ -23,6 +23,7 @@ export interface Denomination {
   id: string;
   value: number;
   enabled: boolean;
+  currency: SystemCurrencyCode;
 }
 
 export type SystemCurrencyCode = 'CUP' | 'USD';
@@ -49,7 +50,7 @@ export interface ExchangeRateRecord {
   providedIn: 'root'
 })
 export class SettingsService {
-  private readonly API_URL = 'http://localhost:3021/api/settings';
+  private readonly API_URL = '/api/settings';
 
   constructor(private http: HttpClient) {}
 
@@ -78,7 +79,7 @@ export class SettingsService {
     currency?: string;
     warehouseId?: string;
     paymentMethods?: string[];
-    denominations?: Array<{ value: number; enabled: boolean }>;
+    denominations?: Array<{ value: number; enabled: boolean; currency?: SystemCurrencyCode }>;
   }): Observable<RegisterSettings> {
     return this.http.put<RegisterSettings>(`${this.API_URL}/register/${registerId}`, data);
   }
@@ -91,11 +92,15 @@ export class SettingsService {
     return this.http.put(`${this.API_URL}/payment-methods`, methods);
   }
 
-  listDenominations(): Observable<Denomination[]> {
-    return this.http.get<Denomination[]>(`${this.API_URL}/denominations`);
+  listDenominations(filters?: { registerId?: string; currency?: SystemCurrencyCode }): Observable<Denomination[]> {
+    const params = new URLSearchParams();
+    if (filters?.registerId) params.set('registerId', filters.registerId);
+    if (filters?.currency) params.set('currency', filters.currency);
+    const query = params.toString();
+    return this.http.get<Denomination[]>(`${this.API_URL}/denominations${query ? `?${query}` : ''}`);
   }
 
-  saveDenominations(denominations: { value: number; enabled: boolean }[]): Observable<any> {
+  saveDenominations(denominations: { value: number; enabled: boolean; currency?: SystemCurrencyCode }[]): Observable<any> {
     return this.http.put(`${this.API_URL}/denominations`, denominations);
   }
 }

@@ -2,8 +2,8 @@ import path from 'node:path'
 import { defineConfig } from 'prisma/config'
 import dotenv from 'dotenv'
 
-// Cargar variables de entorno
-dotenv.config()
+// Cargar variables de entorno en silencio para no contaminar salidas CLI (migrate diff --script)
+dotenv.config({ quiet: true })
 
 export default defineConfig({
   schema: path.join(__dirname, 'prisma', 'schema.prisma'),

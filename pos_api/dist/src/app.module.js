@@ -29,6 +29,8 @@ const product_types_module_1 = require("./modules/product-types/product-types.mo
 const product_categories_module_1 = require("./modules/product-categories/product-categories.module");
 const measurement_unit_types_module_1 = require("./modules/measurement-unit-types/measurement-unit-types.module");
 const measurement_units_module_1 = require("./modules/measurement-units/measurement-units.module");
+const direct_sales_module_1 = require("./modules/direct-sales/direct-sales.module");
+const customers_module_1 = require("./modules/customers/customers.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -58,6 +60,8 @@ exports.AppModule = AppModule = __decorate([
             product_categories_module_1.ProductCategoriesModule,
             measurement_unit_types_module_1.MeasurementUnitTypesModule,
             measurement_units_module_1.MeasurementUnitsModule,
+            direct_sales_module_1.DirectSalesModule,
+            customers_module_1.CustomersModule,
         ],
     })
 ], AppModule);

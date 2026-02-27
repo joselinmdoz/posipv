@@ -16,6 +16,7 @@ import { ProductCategories } from './app/pages/product-categories/product-catego
 import { MeasurementUnits } from './app/pages/measurement-units/measurement-units';
 import { Denominations } from './app/pages/denominations/denominations';
 import { TpvManagement } from './app/pages/tpv-management/tpv-management';
+import { DirectSales } from './app/pages/direct-sales/direct-sales';
 import { inject } from '@angular/core';
 import { AuthService } from './app/core/services/auth.service';
 import { Router } from '@angular/router';
@@ -52,6 +53,7 @@ export const appRoutes: Routes = [
             { path: 'warehouses', component: Warehouses },
             { path: 'tpv', component: Tpv },
             { path: 'tpv-management', component: TpvManagement },
+            { path: 'direct-sales', component: DirectSales },
             { path: 'settings', component: Settings },
             { path: 'denominations', component: Denominations },
             { path: 'reports', component: Reports },

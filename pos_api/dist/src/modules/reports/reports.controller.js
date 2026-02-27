@@ -23,8 +23,14 @@ let ReportsController = class ReportsController {
     getServerDate() {
         return this.reportsService.getServerDateInfo();
     }
-    async getSalesReport(startDate, endDate) {
-        return this.reportsService.getSalesReport(startDate, endDate);
+    async getSalesReport(startDate, endDate, channel, warehouseId, cashierEmail, customerName, documentNumber) {
+        return this.reportsService.getSalesReport(startDate, endDate, {
+            channel,
+            warehouseId,
+            cashierEmail,
+            customerName,
+            documentNumber,
+        });
     }
 };
 exports.ReportsController = ReportsController;
@@ -38,8 +44,13 @@ __decorate([
     (0, common_1.Get)("sales"),
     __param(0, (0, common_1.Query)("startDate")),
     __param(1, (0, common_1.Query)("endDate")),
+    __param(2, (0, common_1.Query)("channel")),
+    __param(3, (0, common_1.Query)("warehouseId")),
+    __param(4, (0, common_1.Query)("cashierEmail")),
+    __param(5, (0, common_1.Query)("customerName")),
+    __param(6, (0, common_1.Query)("documentNumber")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ReportsController.prototype, "getSalesReport", null);
 exports.ReportsController = ReportsController = __decorate([

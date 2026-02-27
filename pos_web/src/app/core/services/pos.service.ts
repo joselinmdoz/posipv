@@ -62,7 +62,7 @@ export interface Payment {
   providedIn: 'root'
 })
 export class PosService {
-  private readonly API_URL = 'http://localhost:3021/api';
+  private readonly API_URL = '/api';
 
   // State signals
   private _currentSession = signal<CashSession | null>(null);

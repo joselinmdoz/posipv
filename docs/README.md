@@ -50,6 +50,21 @@
   - retorno a `/tpv-management` al cerrar caja,
   - movimientos de inventario IN/OUT desde TPV.
 
+## Novedades 2026-02-26
+
+- Nuevo módulo de **Ventas Directas** (`/direct-sales`) para vender desde almacenes **no-TPV** sin apertura/cierre de caja.
+- Nuevo backend `direct-sales`:
+  - `GET /api/direct-sales/warehouse/:warehouseId/products`
+  - `POST /api/direct-sales`
+  - `GET /api/direct-sales/:saleId/ticket`
+- Modelo `Sale` extendido para soportar ambos canales:
+  - `channel` (`TPV` | `DIRECT`)
+  - `cashSessionId` ahora opcional
+  - `warehouseId`, `customerName`, `documentNumber`
+- Documentación actualizada en:
+  - `docs/API/endpoints.md`
+  - `docs/ModelosDatos/prisma.md`
+
 ---
 
 ## Inicio Rápido

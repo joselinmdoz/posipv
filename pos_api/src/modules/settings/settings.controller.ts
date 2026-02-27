@@ -12,6 +12,7 @@ class PaymentMethodSettingDto {
 class DenominationSettingDto {
   @IsNumber() value!: number;
   @IsBoolean() enabled!: boolean;
+  @IsOptional() @IsString() @IsIn(["CUP", "USD"]) currency?: "CUP" | "USD";
 }
 
 class RegisterSettingsDto {
@@ -70,8 +71,11 @@ export class SettingsController {
   }
 
   @Get("denominations")
-  listDenominations() {
-    return this.service.listDenominations();
+  listDenominations(
+    @Query("registerId") registerId?: string,
+    @Query("currency") currency?: "CUP" | "USD",
+  ) {
+    return this.service.listDenominations({ registerId, currency });
   }
 
   @Put("denominations")

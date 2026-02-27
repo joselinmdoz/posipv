@@ -1,70 +1,87 @@
 # Modelos de Datos - Prisma Schema
 
-## Enumeraciones
+## Enumeraciones principales
 
-### Role
-Roles de usuario en el sistema.
+### `Role`
 ```prisma
 enum Role {
-  ADMIN      // Administrador con acceso completo
-  CASHIER   // Cajero con acceso limitado
+  ADMIN
+  CASHIER
 }
 ```
 
-### CashSessionStatus
-Estado de una sesión de caja.
+### `CashSessionStatus`
 ```prisma
 enum CashSessionStatus {
-  OPEN   // Caja abierta
-  CLOSED // Caja cerrada
+  OPEN
+  CLOSED
 }
 ```
 
-### SaleStatus
-Estado de una venta.
+### `SaleStatus`
 ```prisma
 enum SaleStatus {
-  PAID  // Pagada
-  VOID  // Anulada
+  PAID
+  VOID
 }
 ```
 
-### PaymentMethod
-Métodos de pago disponibles.
+### `SaleChannel`
+```prisma
+enum SaleChannel {
+  TPV
+  DIRECT
+}
+```
+
+### `PaymentMethod`
 ```prisma
 enum PaymentMethod {
-  CASH     // Efectivo
-  CARD     // Tarjeta
-  TRANSFER // Transferencia
-  OTHER    // Otro
+  CASH
+  CARD
+  TRANSFER
+  OTHER
 }
 ```
 
-### WarehouseType
-Tipo de almacén.
+### `CurrencyCode`
+```prisma
+enum CurrencyCode {
+  CUP
+  USD
+}
+```
+
+### `WarehouseType`
 ```prisma
 enum WarehouseType {
-  CENTRAL // Almacén central
-  TPV     // Almacén de punto de venta
+  CENTRAL
+  TPV
 }
 ```
 
-### StockMovementType
-Tipo de movimiento de stock.
+### `StockMovementType`
 ```prisma
 enum StockMovementType {
-  IN       // Entrada
-  OUT      // Salida
-  TRANSFER // Transferencia
+  IN
+  OUT
+  TRANSFER
+}
+```
+
+### `IPVType`
+```prisma
+enum IPVType {
+  INITIAL
+  FINAL
 }
 ```
 
 ---
 
-## Modelos
+## Entidades principales
 
-### User
-Usuario del sistema.
+### `User`
 ```prisma
 model User {
   id           String   @id @default(cuid())
@@ -79,14 +96,7 @@ model User {
 }
 ```
 
-**Relaciones:**
-- Un usuario puede tener múltiples sesiones de caja
-- Un usuario puede tener múltiples ventas
-
----
-
-### Register
-Caja registradora del POS.
+### `Register` (TPV)
 ```prisma
 model Register {
   id        String   @id @default(cuid())
@@ -101,15 +111,7 @@ model Register {
 }
 ```
 
-**Relaciones:**
-- Un register puede tener múltiples sesiones de caja
-- Un register puede tener una configuración
-- Un register puede tener un almacén asociado
-
----
-
-### CashSession
-Sesión de caja (apertura/cierre).
+### `CashSession`
 ```prisma
 model CashSession {
   id            String            @id @default(cuid())
@@ -126,59 +128,68 @@ model CashSession {
   openedById String
   openedBy   User     @relation(fields: [openedById], references: [id])
 
-  sales Sale[]
+  sales            Sale[]
+  inventoryReports InventoryReport[]
 }
 ```
 
----
-
-### Product
-Producto en el inventario.
+### `Product`
 ```prisma
 model Product {
   id        String   @id @default(cuid())
   name      String
-  sku       String?  @unique
+  codigo    String?  @unique
   barcode   String?  @unique
   price     Decimal  @db.Decimal(12,2)
   cost      Decimal? @db.Decimal(12,2)
-  unit      String?  // Unidad de medida
-  image     String?  // URL o path de la imagen
+  currency  CurrencyCode @default(CUP)
+  image     String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  items SaleItem[]
-  stock Stock[]
-  stockMovements StockMovement[]
+  productTypeId     String?
+  productCategoryId String?
+  measurementUnitId String?
+
+  items                SaleItem[]
+  stock                Stock[]
+  stockMovements       StockMovement[]
+  inventoryReportItems InventoryReportItem[]
 }
 ```
 
----
-
-### Sale
-Venta realizada.
+### `Sale` (actualizada para TPV + Directa)
 ```prisma
 model Sale {
-  id          String     @id @default(cuid())
-  createdAt   DateTime   @default(now())
-  status      SaleStatus @default(PAID)
-  total       Decimal    @db.Decimal(12,2)
+  id             String      @id @default(cuid())
+  createdAt      DateTime    @default(now())
+  status         SaleStatus  @default(PAID)
+  channel        SaleChannel @default(TPV)
+  total          Decimal     @db.Decimal(12,2)
+  customerName   String?
+  documentNumber String?     @unique
 
-  cashierId   String
-  cashier     User       @relation(fields: [cashierId], references: [id])
+  cashierId String
+  cashier   User @relation(fields: [cashierId], references: [id])
 
-  cashSessionId String
-  cashSession   CashSession @relation(fields: [cashSessionId], references: [id])
+  cashSessionId String?
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id])
 
-  items     SaleItem[]
-  payments  Payment[]
+  warehouseId String?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+
+  items    SaleItem[]
+  payments Payment[]
 }
 ```
 
----
+Notas:
+- `channel = TPV` para ventas desde punto de venta con sesión de caja.
+- `channel = DIRECT` para ventas directas sin caja TPV/IPV.
+- `cashSessionId` ahora es opcional para soportar ventas directas.
+- `warehouseId` permite trazabilidad de salida de inventario por almacén.
 
-### SaleItem
-Ítem individual de una venta.
+### `SaleItem`
 ```prisma
 model SaleItem {
   id        String   @id @default(cuid())
@@ -193,49 +204,47 @@ model SaleItem {
 }
 ```
 
----
-
-### Payment
-Pago de una venta.
+### `Payment`
 ```prisma
 model Payment {
-  id       String        @id @default(cuid())
-  saleId   String
-  sale     Sale          @relation(fields: [saleId], references: [id])
+  id                   String        @id @default(cuid())
+  saleId               String
+  sale                 Sale          @relation(fields: [saleId], references: [id])
 
-  method   PaymentMethod
-  amount   Decimal       @db.Decimal(12,2)
+  method               PaymentMethod
+  amount               Decimal       @db.Decimal(12,2)
+  currency             CurrencyCode  @default(CUP)
+  amountOriginal       Decimal       @db.Decimal(12,2)
+  exchangeRateUsdToCup Decimal?      @db.Decimal(12,6)
+  exchangeRateRecordId String?
+  exchangeRateRecord   ExchangeRateRecord? @relation(fields: [exchangeRateRecordId], references: [id])
 }
 ```
 
----
-
-### Warehouse
-Almacén para gestión de inventario.
+### `Warehouse`
 ```prisma
 model Warehouse {
-  id        String         @id @default(cuid())
+  id        String        @id @default(cuid())
   name      String
-  code      String         @unique
-  type      WarehouseType  @default(TPV)
-  active    Boolean        @default(true)
-  createdAt DateTime       @default(now())
+  code      String        @unique
+  type      WarehouseType @default(TPV)
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
 
   registerId String?   @unique
   register   Register? @relation(fields: [registerId], references: [id])
 
   registerSettings RegisterSettings[]
 
-  stock Stock[]
-  fromMovements StockMovement[] @relation("FromWarehouse")
-  toMovements   StockMovement[] @relation("ToWarehouse")
+  stock            Stock[]
+  fromMovements    StockMovement[] @relation("FromWarehouse")
+  toMovements      StockMovement[] @relation("ToWarehouse")
+  inventoryReports InventoryReport[]
+  sales            Sale[]
 }
 ```
 
----
-
-### Stock
-Inventario por producto y almacén.
+### `Stock`
 ```prisma
 model Stock {
   id          String   @id @default(cuid())
@@ -252,10 +261,7 @@ model Stock {
 }
 ```
 
----
-
-### StockMovement
-Movimiento de inventario.
+### `StockMovement`
 ```prisma
 model StockMovement {
   id              String            @id @default(cuid())
@@ -268,25 +274,21 @@ model StockMovement {
   qty             Int
 
   fromWarehouseId String?
-  fromWarehouse   Warehouse?        @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  fromWarehouse   Warehouse? @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
 
   toWarehouseId   String?
-  toWarehouse     Warehouse?        @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  toWarehouse     Warehouse? @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
 
   reason          String?
 }
 ```
 
----
-
-### RegisterSettings
-Configuración de una caja registradora.
+### `RegisterSettings` y `Denomination`
 ```prisma
 model RegisterSettings {
   id                  String   @id @default(cuid())
   registerId          String   @unique
   register            Register @relation(fields: [registerId], references: [id])
-
   defaultOpeningFloat Decimal  @db.Decimal(12,2) @default(0)
   currency            String   @default("USD")
   warehouseId         String?
@@ -297,51 +299,58 @@ model RegisterSettings {
   paymentMethods PaymentMethodSetting[]
   denominations  Denomination[]
 }
-```
 
----
-
-### PaymentMethodSetting
-Métodos de pago configurados por caja.
-```prisma
-model PaymentMethodSetting {
-  id                String  @id @default(cuid())
-  code              String  @unique
-  name              String
-  enabled           Boolean @default(true)
-  registerSettingsId String?
-  registerSettings   RegisterSettings? @relation(fields: [registerSettingsId], references: [id])
-}
-```
-
----
-
-### Denomination
-Denominaciones de efectivo configuradas por caja.
-```prisma
 model Denomination {
-  id                String  @id @default(cuid())
-  value             Decimal @db.Decimal(12,2)
-  enabled           Boolean @default(true)
+  id                 String       @id @default(cuid())
+  value              Decimal      @db.Decimal(12,2)
+  enabled            Boolean      @default(true)
+  currency           CurrencyCode @default(CUP)
   registerSettingsId String?
   registerSettings   RegisterSettings? @relation(fields: [registerSettingsId], references: [id])
+
+  @@index([registerSettingsId, currency])
+  @@unique([registerSettingsId, currency, value])
 }
 ```
 
----
+### `SystemSettings` y `ExchangeRateRecord`
+```prisma
+model SystemSettings {
+  id                   String         @id
+  defaultCurrency      CurrencyCode   @default(CUP)
+  enabledCurrencies    CurrencyCode[] @default([CUP, USD])
+  exchangeRateUsdToCup Decimal        @db.Decimal(12,6) @default(1)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
 
-## Diagramas de Relación
+model ExchangeRateRecord {
+  id            String       @id @default(cuid())
+  baseCurrency  CurrencyCode @default(USD)
+  quoteCurrency CurrencyCode @default(CUP)
+  rate          Decimal      @db.Decimal(12,6)
+  source        String?      @default("SYSTEM_SETTINGS")
+  createdAt     DateTime     @default(now())
 
-### Flujo de Venta
-```
-User → CashSession → Sale → SaleItem → Product
-                         ↓
-                      Payment
+  payments      Payment[]
+}
 ```
 
-### Flujo de Inventario
-```
-Warehouse → Stock → Product
-     ↓
-StockMovement
+### `InventoryReport` (IPV por sesión TPV)
+```prisma
+model InventoryReport {
+  id           String   @id @default(cuid())
+  type         IPVType
+  createdAt    DateTime @default(now())
+  totalValue   Decimal  @db.Decimal(12,2) @default(0)
+  note         String?
+
+  cashSessionId String
+  cashSession   CashSession @relation(fields: [cashSessionId], references: [id])
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  items       InventoryReportItem[]
+}
 ```

@@ -114,7 +114,7 @@ import { forkJoin } from 'rxjs';
 
                                 <div class="tpv-product-media">
                                     @if (product.image) {
-                                        <img [src]="'http://localhost:3021' + product.image" class="tpv-product-image" />
+                                        <img [src]="product.image" class="tpv-product-image" />
                                     } @else {
                                         <div class="tpv-product-placeholder">
                                             <i class="pi pi-image"></i>
@@ -263,7 +263,7 @@ import { forkJoin } from 'rxjs';
                             <div class="tpv-close-denom-grid">
                                 @for (line of closeDenominationLines; track line.id) {
                                     <div class="tpv-close-denom-row">
-                                        <span class="tpv-close-denom-value">{{ line.value | currency }}</span>
+                                        <span class="tpv-close-denom-value">{{ line.value | currency: line.currency }}</span>
                                         <p-inputnumber
                                             [(ngModel)]="line.qty"
                                             [min]="0"
@@ -275,13 +275,13 @@ import { forkJoin } from 'rxjs';
                                             (ngModelChange)="onCloseDenominationQtyChange(line)"
                                             inputStyleClass="tpv-close-denom-input"
                                         />
-                                        <strong class="tpv-close-denom-subtotal">{{ (line.value * (line.qty || 0)) | currency }}</strong>
+                                        <strong class="tpv-close-denom-subtotal">{{ (line.value * (line.qty || 0)) | currency: line.currency }}</strong>
                                     </div>
                                 }
                             </div>
                         } @else {
                             <div class="text-sm text-orange-600">
-                                No hay denominaciones activas configuradas.
+                                No hay denominaciones activas configuradas para {{ closeCashCurrency }}.
                             </div>
                         }
                     </div>
@@ -707,7 +707,8 @@ export class Tpv implements OnInit {
     sessionIpvLoading = signal<boolean>(false);
     closeSummary = signal<CashSessionSummary | null>(null);
     closeSummaryLoading = signal<boolean>(false);
-    closeDenominationLines: Array<{ id: string; value: number; qty: number }> = [];
+    closeDenominationLines: Array<{ id: string; value: number; qty: number; currency: SystemCurrencyCode }> = [];
+    readonly closeCashCurrency: SystemCurrencyCode = 'CUP';
 
     constructor(
         public posService: PosService,
@@ -895,11 +896,11 @@ export class Tpv implements OnInit {
 
         forkJoin({
             summary: this.posService.getSessionSummary(session.id),
-            denominations: this.settingsService.listDenominations()
+            registerSettings: this.settingsService.getRegisterSettings(session.registerId)
         }).subscribe({
-            next: ({ summary, denominations }) => {
+            next: ({ summary, registerSettings }) => {
                 this.closeSummary.set(summary);
-                this.closeDenominationLines = this.buildCloseDenominationLines(denominations);
+                this.closeDenominationLines = this.buildCloseDenominationLines(registerSettings.denominations || []);
                 this.closeSummaryLoading.set(false);
             },
             error: (err) => {
@@ -978,11 +979,12 @@ export class Tpv implements OnInit {
 
     private buildCloseDenominationLines(denominations: Denomination[]) {
         return denominations
-            .filter((d) => d.enabled)
+            .filter((d) => d.enabled && d.currency === this.closeCashCurrency)
             .sort((a, b) => Number(b.value) - Number(a.value))
             .map((d) => ({
                 id: d.id || d.value.toString(),
                 value: this.roundMoney(Number(d.value)),
+                currency: d.currency,
                 qty: 0,
             }));
     }
