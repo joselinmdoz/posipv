@@ -2,14 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
-import { SettingsService } from "../settings/settings.service";
 
 @Injectable()
 export class SalesService {
-  constructor(
-    private prisma: PrismaService,
-    private settingsService: SettingsService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async listSessionProducts(cashSessionId: string) {
     const session = await this.prisma.cashSession.findUnique({
@@ -18,6 +14,7 @@ export class SalesService {
         register: {
           include: {
             warehouse: true,
+            settings: true,
           },
         },
       },
@@ -28,12 +25,16 @@ export class SalesService {
     if (!session.register.warehouse?.id) {
       throw new BadRequestException("El TPV no tiene almacén asociado.");
     }
+    const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
 
     const stock = await this.prisma.stock.findMany({
       where: {
         warehouseId: session.register.warehouse.id,
         qty: { gt: 0 },
-        product: { active: true },
+        product: {
+          active: true,
+          currency: registerCurrency,
+        },
       },
       include: {
         product: {
@@ -60,6 +61,7 @@ export class SalesService {
         register: {
           include: {
             warehouse: true,
+            settings: true,
           },
         },
       },
@@ -70,11 +72,10 @@ export class SalesService {
       throw new BadRequestException("El TPV no tiene almacén asociado.");
     }
     const tpvWarehouseId = session.register.warehouse.id;
+    const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
 
     if (!dto.items?.length) throw new BadRequestException("Sin items.");
     if (!dto.payments?.length) throw new BadRequestException("Sin pagos.");
-
-    const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
 
     const qtyByProduct = new Map<string, number>();
     for (const item of dto.items) {
@@ -96,6 +97,11 @@ export class SalesService {
 
     if (stockRows.length !== productIds.length) {
       throw new BadRequestException("Hay productos inválidos, inactivos o sin stock en el TPV.");
+    }
+    if (stockRows.some((row) => row.product.currency !== registerCurrency)) {
+      throw new BadRequestException(
+        `El TPV está configurado en ${registerCurrency}. Solo puede vender productos en esa moneda.`
+      );
     }
 
     const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
@@ -119,23 +125,21 @@ export class SalesService {
 
     const normalizedPayments = dto.payments.map((rawPayment: any) => {
       const currency = this.normalizeCurrency(rawPayment.currency);
+      if (currency !== registerCurrency) {
+        throw new BadRequestException(
+          `El TPV está configurado en ${registerCurrency}. Todos los pagos deben registrarse en esa moneda.`
+        );
+      }
       const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
       const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
-
-      let amountBase = amountOriginal;
-      const exchangeRateUsdToCup: Prisma.Decimal = dec(rateSnapshot.rate.toString());
-
-      if (currency === CurrencyCode.USD) {
-        amountBase = dec(amountOriginal.mul(exchangeRateUsdToCup).toFixed(2));
-      }
 
       return {
         method: rawPayment.method,
         currency,
         amountOriginal,
-        amount: amountBase,
-        exchangeRateUsdToCup,
-        exchangeRateRecordId: rateSnapshot.rateRecordId,
+        amount: amountOriginal,
+        exchangeRateUsdToCup: null,
+        exchangeRateRecordId: null,
       };
     });
 
@@ -162,7 +166,7 @@ export class SalesService {
               amount: dec(p.amount) as any,
               currency: p.currency,
               amountOriginal: dec(p.amountOriginal) as any,
-              exchangeRateUsdToCup: dec(p.exchangeRateUsdToCup) as any,
+              exchangeRateUsdToCup: null,
               exchangeRateRecordId: p.exchangeRateRecordId || null,
             })),
           },
@@ -206,6 +210,13 @@ export class SalesService {
     if (raw === CurrencyCode.CUP) return CurrencyCode.CUP;
     if (raw === CurrencyCode.USD) return CurrencyCode.USD;
     throw new BadRequestException("Moneda de pago inválida.");
+  }
+
+  private resolveRegisterCurrency(currencyInput?: string | null): CurrencyCode {
+    const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
+    if (raw === CurrencyCode.CUP) return CurrencyCode.CUP;
+    if (raw === CurrencyCode.USD) return CurrencyCode.USD;
+    return CurrencyCode.CUP;
   }
 
   private parsePositiveAmount(input: string, message: string): Prisma.Decimal {

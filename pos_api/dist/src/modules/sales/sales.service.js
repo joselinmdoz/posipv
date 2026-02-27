@@ -14,11 +14,9 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const decimal_1 = require("../../common/decimal");
-const settings_service_1 = require("../settings/settings.service");
 let SalesService = class SalesService {
-    constructor(prisma, settingsService) {
+    constructor(prisma) {
         this.prisma = prisma;
-        this.settingsService = settingsService;
     }
     async listSessionProducts(cashSessionId) {
         const session = await this.prisma.cashSession.findUnique({
@@ -27,6 +25,7 @@ let SalesService = class SalesService {
                 register: {
                     include: {
                         warehouse: true,
+                        settings: true,
                     },
                 },
             },
@@ -38,11 +37,15 @@ let SalesService = class SalesService {
         if (!session.register.warehouse?.id) {
             throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
         }
+        const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
         const stock = await this.prisma.stock.findMany({
             where: {
                 warehouseId: session.register.warehouse.id,
                 qty: { gt: 0 },
-                product: { active: true },
+                product: {
+                    active: true,
+                    currency: registerCurrency,
+                },
             },
             include: {
                 product: {
@@ -67,6 +70,7 @@ let SalesService = class SalesService {
                 register: {
                     include: {
                         warehouse: true,
+                        settings: true,
                     },
                 },
             },
@@ -79,11 +83,11 @@ let SalesService = class SalesService {
             throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
         }
         const tpvWarehouseId = session.register.warehouse.id;
+        const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
         if (!dto.items?.length)
             throw new common_1.BadRequestException("Sin items.");
         if (!dto.payments?.length)
             throw new common_1.BadRequestException("Sin pagos.");
-        const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
         const qtyByProduct = new Map();
         for (const item of dto.items) {
             const currentQty = qtyByProduct.get(item.productId) || 0;
@@ -103,6 +107,9 @@ let SalesService = class SalesService {
         if (stockRows.length !== productIds.length) {
             throw new common_1.BadRequestException("Hay productos inválidos, inactivos o sin stock en el TPV.");
         }
+        if (stockRows.some((row) => row.product.currency !== registerCurrency)) {
+            throw new common_1.BadRequestException(`El TPV está configurado en ${registerCurrency}. Solo puede vender productos en esa moneda.`);
+        }
         const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
         for (const [productId, requestedQty] of qtyByProduct.entries()) {
             const stock = stockByProduct.get(productId);
@@ -121,20 +128,18 @@ let SalesService = class SalesService {
         });
         const normalizedPayments = dto.payments.map((rawPayment) => {
             const currency = this.normalizeCurrency(rawPayment.currency);
+            if (currency !== registerCurrency) {
+                throw new common_1.BadRequestException(`El TPV está configurado en ${registerCurrency}. Todos los pagos deben registrarse en esa moneda.`);
+            }
             const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
             const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
-            let amountBase = amountOriginal;
-            const exchangeRateUsdToCup = (0, decimal_1.dec)(rateSnapshot.rate.toString());
-            if (currency === client_1.CurrencyCode.USD) {
-                amountBase = (0, decimal_1.dec)(amountOriginal.mul(exchangeRateUsdToCup).toFixed(2));
-            }
             return {
                 method: rawPayment.method,
                 currency,
                 amountOriginal,
-                amount: amountBase,
-                exchangeRateUsdToCup,
-                exchangeRateRecordId: rateSnapshot.rateRecordId,
+                amount: amountOriginal,
+                exchangeRateUsdToCup: null,
+                exchangeRateRecordId: null,
             };
         });
         const paySum = normalizedPayments.reduce((acc, p) => acc.add((0, decimal_1.dec)(p.amount)), new client_1.Prisma.Decimal(0));
@@ -157,7 +162,7 @@ let SalesService = class SalesService {
                             amount: (0, decimal_1.dec)(p.amount),
                             currency: p.currency,
                             amountOriginal: (0, decimal_1.dec)(p.amountOriginal),
-                            exchangeRateUsdToCup: (0, decimal_1.dec)(p.exchangeRateUsdToCup),
+                            exchangeRateUsdToCup: null,
                             exchangeRateRecordId: p.exchangeRateRecordId || null,
                         })),
                     },
@@ -199,6 +204,14 @@ let SalesService = class SalesService {
             return client_1.CurrencyCode.USD;
         throw new common_1.BadRequestException("Moneda de pago inválida.");
     }
+    resolveRegisterCurrency(currencyInput) {
+        const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
+        if (raw === client_1.CurrencyCode.CUP)
+            return client_1.CurrencyCode.CUP;
+        if (raw === client_1.CurrencyCode.USD)
+            return client_1.CurrencyCode.USD;
+        return client_1.CurrencyCode.CUP;
+    }
     parsePositiveAmount(input, message) {
         try {
             const value = (0, decimal_1.dec)(input);
@@ -238,7 +251,6 @@ let SalesService = class SalesService {
 exports.SalesService = SalesService;
 exports.SalesService = SalesService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        settings_service_1.SettingsService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], SalesService);
 //# sourceMappingURL=sales.service.js.map

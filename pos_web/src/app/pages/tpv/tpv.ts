@@ -13,7 +13,7 @@ import { TagModule } from 'primeng/tag';
 import { MenuItem, MessageService } from 'primeng/api';
 import { CashSessionSummary, Payment, PosService, SaleItem } from '@/app/core/services/pos.service';
 import { Product, ProductsService } from '@/app/core/services/products.service';
-import { Denomination, PaymentMethodSetting, SettingsService, SystemCurrencyCode, SystemSettings } from '@/app/core/services/settings.service';
+import { Denomination, PaymentMethodSetting, SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 import { CreateStockMovementDto, WarehousesService } from '@/app/core/services/warehouses.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
 import { forkJoin } from 'rxjs';
@@ -125,7 +125,7 @@ import { forkJoin } from 'rxjs';
                                 <div class="tpv-product-content">
                                     <div class="tpv-product-meta">{{ product.codigo || product.barcode || 'Sin identificador' }}</div>
                                     <div class="tpv-product-footer">
-                                        <strong>{{ product.price | currency }}</strong>
+                                        <strong>{{ product.price | currency: (product.currency || paymentBaseCurrency()) }}</strong>
                                         <span class="tpv-add-chip">
                                             <i class="pi pi-plus"></i>
                                             Agregar
@@ -159,14 +159,14 @@ import { forkJoin } from 'rxjs';
                         <article class="tpv-cart-item">
                             <div class="tpv-cart-item-main">
                                 <div class="tpv-cart-item-name">{{ item.productName }}</div>
-                                <div class="tpv-cart-item-price">{{ item.price | currency }} x {{ item.qty }}</div>
+                                <div class="tpv-cart-item-price">{{ item.price | currency: paymentBaseCurrency() }} x {{ item.qty }}</div>
                             </div>
                             <div class="tpv-cart-item-controls">
                                 <p-button icon="pi pi-minus" [rounded]="true" [text]="true" severity="secondary" (onClick)="decreaseQty(item)" />
                                 <span>{{ item.qty }}</span>
                                 <p-button icon="pi pi-plus" [rounded]="true" [text]="true" severity="secondary" (onClick)="increaseQty(item)" />
                             </div>
-                            <div class="tpv-cart-item-subtotal">{{ item.subtotal | currency }}</div>
+                            <div class="tpv-cart-item-subtotal">{{ item.subtotal | currency: paymentBaseCurrency() }}</div>
                             <p-button icon="pi pi-trash" [rounded]="true" [text]="true" severity="danger" (onClick)="removeFromCart(item)" />
                         </article>
                     }
@@ -182,7 +182,7 @@ import { forkJoin } from 'rxjs';
                 <div class="tpv-cart-footer">
                     <div class="tpv-totals">
                         <span>Total:</span>
-                        <strong>{{ cartTotal() | currency }}</strong>
+                        <strong>{{ cartTotal() | currency: paymentBaseCurrency() }}</strong>
                     </div>
 
                     <div class="tpv-actions">
@@ -208,7 +208,7 @@ import { forkJoin } from 'rxjs';
             <div class="flex flex-col gap-4">
                 <div>
                     <label class="block mb-2">Fondo inicial</label>
-                    <p-inputnumber [(ngModel)]="openingAmount" mode="currency" currency="USD" locale="en-US" class="w-full" />
+                    <p-inputnumber [(ngModel)]="openingAmount" mode="currency" [currency]="paymentBaseCurrency()" locale="en-US" class="w-full" />
                 </div>
                 <div>
                     <label class="block mb-2">Nota</label>
@@ -237,11 +237,11 @@ import { forkJoin } from 'rxjs';
                         </div>
                         <div class="tpv-close-card">
                             <span>Total de ventas</span>
-                            <strong>{{ closeSummary()!.totalSales | currency }}</strong>
+                            <strong>{{ closeSummary()!.totalSales | currency: paymentBaseCurrency() }}</strong>
                         </div>
                         <div class="tpv-close-card">
                             <span>Efectivo esperado</span>
-                            <strong>{{ closeExpectedCash() | currency }}</strong>
+                            <strong>{{ closeExpectedCash() | currency: paymentBaseCurrency() }}</strong>
                         </div>
                     </div>
 
@@ -251,7 +251,7 @@ import { forkJoin } from 'rxjs';
                             @for (item of closePaymentMethodRows(); track item.code) {
                                 <div class="tpv-close-method-row">
                                     <span>{{ item.label }}</span>
-                                    <strong>{{ item.amount | currency }}</strong>
+                                    <strong>{{ item.amount | currency: paymentBaseCurrency() }}</strong>
                                 </div>
                             }
                         </div>
@@ -289,12 +289,12 @@ import { forkJoin } from 'rxjs';
                     <div class="tpv-close-balance">
                         <div>
                             <span>Contado por cajero:</span>
-                            <strong>{{ closeCountedCash() | currency }}</strong>
+                            <strong>{{ closeCountedCash() | currency: paymentBaseCurrency() }}</strong>
                         </div>
                         <div>
                             <span>Diferencia:</span>
                             <strong [class.text-green-600]="closeCashDifference() === 0" [class.text-red-600]="closeCashDifference() !== 0">
-                                {{ closeCashDifference() | currency }}
+                                {{ closeCashDifference() | currency: paymentBaseCurrency() }}
                             </strong>
                         </div>
                     </div>
@@ -329,8 +329,7 @@ import { forkJoin } from 'rxjs';
                     </div>
                 </div>
                 <div class="text-sm text-gray-600">
-                    Monedas habilitadas: <strong>{{ paymentEnabledCurrencies.join(', ') }}</strong> |
-                    Tasa activa: <strong>1 USD = {{ paymentRateUsdToCup }} CUP</strong>
+                    Moneda de este TPV: <strong>{{ paymentBaseCurrency() }}</strong>
                 </div>
 
                 <div class="tpv-payment-actions">
@@ -367,30 +366,16 @@ import { forkJoin } from 'rxjs';
                                     class="w-full"
                                 />
                             </div>
-                            <div class="tpv-payment-line-currency">
-                                <p-select
-                                    [options]="paymentCurrencyOptions"
-                                    [(ngModel)]="line.currency"
-                                    (ngModelChange)="onPaymentCurrencyChanged(i, $event)"
-                                    optionLabel="label"
-                                    optionValue="value"
-                                    appendTo="body"
-                                    class="w-full"
-                                />
-                            </div>
                             <div class="tpv-payment-line-amount" (click)="onAmountFieldInteraction($event)" (touchend)="onAmountFieldInteraction($event)">
                                 <p-inputnumber
                                     [(ngModel)]="line.amount"
                                     mode="currency"
-                                    [currency]="line.currency"
+                                    [currency]="paymentBaseCurrency()"
                                     locale="en-US"
                                     [min]="0"
                                     inputStyleClass="tpv-amount-input"
                                     class="w-full"
                                 />
-                            </div>
-                            <div class="tpv-payment-line-base text-xs text-gray-600">
-                                {{ paymentLineBaseAmount(line) | currency: paymentBaseCurrency() }}
                             </div>
                             <div class="tpv-payment-line-fill">
                                 <p-button
@@ -538,22 +523,12 @@ import { forkJoin } from 'rxjs';
                             <span>Total de salidas</span>
                             <strong>{{ sessionIpvReport()!.totals.outs }}</strong>
                         </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total efectivo</span>
-                            <strong>{{ sessionIpvReport()!.paymentTotals.CASH | currency }}</strong>
-                        </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total tarjeta</span>
-                            <strong>{{ sessionIpvReport()!.paymentTotals.CARD | currency }}</strong>
-                        </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total transferencia</span>
-                            <strong>{{ sessionIpvReport()!.paymentTotals.TRANSFER | currency }}</strong>
-                        </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total otros</span>
-                            <strong>{{ sessionIpvReport()!.paymentTotals.OTHER | currency }}</strong>
-                        </div>
+                        @for (item of sessionIpvPaymentSummaryRows(); track item.code) {
+                            <div class="tpv-ipv-summary-item">
+                                <span>Total {{ item.label.toLowerCase() }}</span>
+                                <strong>{{ item.amount | currency: paymentBaseCurrency() }}</strong>
+                            </div>
+                        }
                     </div>
 
                     <div class="tpv-ipv-table-wrap">
@@ -591,8 +566,8 @@ import { forkJoin } from 'rxjs';
                                             <td class="text-right font-semibold">{{ line.sales }}</td>
                                             <td class="text-right">{{ line.total }}</td>
                                             <td class="text-right font-semibold">{{ line.final }}</td>
-                                            <td class="text-right">{{ line.price | currency }}</td>
-                                            <td class="text-right font-semibold">{{ line.amount | currency }}</td>
+                                            <td class="text-right">{{ line.price | currency: paymentBaseCurrency() }}</td>
+                                            <td class="text-right font-semibold">{{ line.amount | currency: paymentBaseCurrency() }}</td>
                                         </tr>
                                     }
                                 }
@@ -600,7 +575,7 @@ import { forkJoin } from 'rxjs';
                             <tfoot>
                                 <tr>
                                     <td colspan="8" class="text-right">Total Importe</td>
-                                    <td class="text-right">{{ sessionIpvReport()!.totals.amount | currency }}</td>
+                                    <td class="text-right">{{ sessionIpvReport()!.totals.amount | currency: paymentBaseCurrency() }}</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -650,12 +625,7 @@ export class Tpv implements OnInit {
     }> = [];
     private paymentLineSeq = 1;
     paymentDefaultCurrency: SystemCurrencyCode = 'CUP';
-    paymentEnabledCurrencies: SystemCurrencyCode[] = ['CUP', 'USD'];
-    paymentRateUsdToCup = 1;
-    paymentCurrencyOptions: Array<{ label: string; value: SystemCurrencyCode }> = [
-        { label: 'CUP', value: 'CUP' },
-        { label: 'USD', value: 'USD' }
-    ];
+    paymentEnabledCurrencies: SystemCurrencyCode[] = ['CUP'];
 
     movementProductOptions: Array<{ label: string; value: string }> = [];
     movementProductsCatalog: Product[] = [];
@@ -708,7 +678,7 @@ export class Tpv implements OnInit {
     closeSummary = signal<CashSessionSummary | null>(null);
     closeSummaryLoading = signal<boolean>(false);
     closeDenominationLines: Array<{ id: string; value: number; qty: number; currency: SystemCurrencyCode }> = [];
-    readonly closeCashCurrency: SystemCurrencyCode = 'CUP';
+    closeCashCurrency: SystemCurrencyCode = 'CUP';
 
     constructor(
         public posService: PosService,
@@ -723,7 +693,7 @@ export class Tpv implements OnInit {
 
     ngOnInit() {
         this.setDefaultPaymentMethods();
-        this.loadSystemPaymentSettings();
+        this.applyRegisterCurrency('CUP');
         this.clearProducts();
         this.handleNavigationParams();
         this.loadRegisters();
@@ -734,7 +704,7 @@ export class Tpv implements OnInit {
         this.posService.listSessionProducts(cashSessionId).subscribe({
             next: (products) => {
                 this.products.set(products);
-                this.filteredProducts.set(products);
+                this.filterProducts();
             },
             error: (err) => {
                 this.clearProducts();
@@ -775,6 +745,7 @@ export class Tpv implements OnInit {
     onRegisterChange(preferredAction?: 'open' | 'continue') {
         this.posService.clearCart();
         this.clearProducts();
+        this.applyRegisterCurrency('CUP');
         this.registerWarehouseId = '';
         this.registerWarehouseName = '';
 
@@ -813,15 +784,18 @@ export class Tpv implements OnInit {
         } else {
             this.posService.setCurrentSession(null);
             this.setDefaultPaymentMethods();
+            this.applyRegisterCurrency('CUP');
         }
     }
 
     filterProducts() {
         const query = this.searchQuery.toLowerCase();
         const filtered = this.products().filter(p => 
-            p.name.toLowerCase().includes(query) || 
-            (p.codigo && p.codigo.toLowerCase().includes(query)) ||
-            (p.barcode && p.barcode.toLowerCase().includes(query))
+            this.isCurrencyAllowed(p.currency) && (
+                p.name.toLowerCase().includes(query) || 
+                (p.codigo && p.codigo.toLowerCase().includes(query)) ||
+                (p.barcode && p.barcode.toLowerCase().includes(query))
+            )
         );
         this.filteredProducts.set(filtered);
     }
@@ -829,6 +803,14 @@ export class Tpv implements OnInit {
     addToCart(product: Product) {
         if (!this.posService.currentSession()) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Debe abrir la caja primero' });
+            return;
+        }
+        if (!this.isCurrencyAllowed(product.currency)) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Moneda no permitida',
+                detail: `Este TPV solo permite ventas en ${this.paymentBaseCurrency()}`
+            });
             return;
         }
 
@@ -944,12 +926,35 @@ export class Tpv implements OnInit {
     closePaymentMethodRows() {
         const summary = this.closeSummary();
         if (!summary) return [];
-        return [
-            { code: 'CASH', label: 'Efectivo', amount: Number(summary.paymentTotals.CASH || 0) },
-            { code: 'CARD', label: 'Tarjeta', amount: Number(summary.paymentTotals.CARD || 0) },
-            { code: 'TRANSFER', label: 'Transferencia', amount: Number(summary.paymentTotals.TRANSFER || 0) },
-            { code: 'OTHER', label: 'Otro', amount: Number(summary.paymentTotals.OTHER || 0) }
-        ];
+        const fallbackMethods: Array<{ label: string; value: Payment['method'] }> = this.paymentMethodCatalog
+            .filter((item) => item.defaultEnabled)
+            .map(({ label, value }) => ({ label, value }));
+        const methods = this.paymentMethods.length > 0 ? this.paymentMethods : fallbackMethods;
+
+        return methods.map((method) => ({
+            code: method.value,
+            label: method.label,
+            amount: Number(summary.paymentTotals?.[method.value] || 0)
+        }));
+    }
+
+    sessionIpvPaymentSummaryRows() {
+        const report = this.sessionIpvReport();
+        if (!report) return [];
+        return this.sessionIpvPaymentSummaryRowsFromReport(report);
+    }
+
+    private sessionIpvPaymentSummaryRowsFromReport(report: SessionIvpReport) {
+        const fallbackMethods: Array<{ label: string; value: Payment['method'] }> = this.paymentMethodCatalog
+            .filter((item) => item.defaultEnabled)
+            .map(({ label, value }) => ({ label, value }));
+        const methods = this.paymentMethods.length > 0 ? this.paymentMethods : fallbackMethods;
+
+        return methods.map((method) => ({
+            code: method.value,
+            label: method.label,
+            amount: Number(report.paymentTotals?.[method.value] || 0)
+        }));
     }
 
     closeExpectedCash(): number {
@@ -1287,8 +1292,7 @@ export class Tpv implements OnInit {
             return;
         }
 
-        const pdfLines = this.buildSessionIpvPdfLines(report);
-        const pdfBlob = this.buildSimplePdfBlob(pdfLines);
+        const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report);
         this.downloadBlob(
             pdfBlob,
             `ipv-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
@@ -1367,11 +1371,13 @@ export class Tpv implements OnInit {
         this.settingsService.getRegisterSettings(registerId).subscribe({
             next: (settings) => {
                 if (this.selectedRegisterId !== registerId) return;
+                this.applyRegisterCurrency(settings.currency);
                 this.applyRegisterPaymentMethods(settings.paymentMethods || []);
                 this.resolveRegisterWarehouse(registerId, settings.warehouseId || '');
             },
             error: () => {
                 if (this.selectedRegisterId !== registerId) return;
+                this.applyRegisterCurrency('CUP');
                 this.setDefaultPaymentMethods();
                 this.resolveRegisterWarehouse(registerId, '');
             }
@@ -1474,7 +1480,7 @@ export class Tpv implements OnInit {
                 id: this.paymentLineSeq++,
                 method: defaultMethod,
                 currency: this.paymentDefaultCurrency,
-                amount: this.roundMoney(this.fromBaseAmount(this.cartTotal(), this.paymentDefaultCurrency))
+                amount: this.roundMoney(this.cartTotal())
             }
         ];
     }
@@ -1493,7 +1499,11 @@ export class Tpv implements OnInit {
 
         const invalidCurrency = this.paymentLines.find((line) => !this.isCurrencyAllowed(line.currency));
         if (invalidCurrency) {
-            this.messageService.add({ severity: 'warn', summary: 'Moneda inválida', detail: 'Hay líneas con moneda no habilitada en configuración general' });
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Moneda inválida',
+                detail: `Todas las líneas de pago deben registrarse en ${this.paymentBaseCurrency()}`
+            });
             return false;
         }
 
@@ -1532,56 +1542,27 @@ export class Tpv implements OnInit {
         return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     }
 
-    private loadSystemPaymentSettings() {
-        this.settingsService.getSystemSettings().subscribe({
-            next: (settings) => this.applySystemPaymentSettings(settings),
-            error: () => {
-                this.paymentDefaultCurrency = 'CUP';
-                this.paymentEnabledCurrencies = ['CUP', 'USD'];
-                this.paymentRateUsdToCup = 1;
-                this.refreshPaymentCurrencyOptions();
-            }
-        });
-    }
-
-    private applySystemPaymentSettings(settings: SystemSettings) {
-        this.paymentDefaultCurrency = (settings.defaultCurrency || 'CUP') as SystemCurrencyCode;
-        this.paymentEnabledCurrencies = Array.isArray(settings.enabledCurrencies) && settings.enabledCurrencies.length
-            ? (settings.enabledCurrencies as SystemCurrencyCode[])
-            : ['CUP', 'USD'];
-        this.paymentRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
-        if (!Number.isFinite(this.paymentRateUsdToCup) || this.paymentRateUsdToCup <= 0) {
-            this.paymentRateUsdToCup = 1;
-        }
-
-        if (!this.paymentEnabledCurrencies.includes(this.paymentDefaultCurrency)) {
-            this.paymentDefaultCurrency = this.paymentEnabledCurrencies[0];
-        }
-
-        this.refreshPaymentCurrencyOptions();
+    private applyRegisterCurrency(registerCurrency?: string | null) {
+        const normalized = this.normalizeRegisterCurrency(registerCurrency);
+        this.paymentDefaultCurrency = normalized;
+        this.paymentEnabledCurrencies = [normalized];
+        this.closeCashCurrency = normalized;
         this.sanitizePaymentLines();
+        this.filterProducts();
     }
 
-    private refreshPaymentCurrencyOptions() {
-        this.paymentCurrencyOptions = this.paymentEnabledCurrencies.map((code) => ({
-            label: code,
-            value: code
-        }));
+    private normalizeRegisterCurrency(value?: string | null): SystemCurrencyCode {
+        const normalized = (value || '').toString().trim().toUpperCase();
+        return normalized === 'USD' ? 'USD' : 'CUP';
     }
 
-    private toBaseAmount(amount: number, currency: SystemCurrencyCode): number {
+    private toBaseAmount(amount: number, _currency: SystemCurrencyCode): number {
         if (!Number.isFinite(amount) || amount <= 0) return 0;
-        if (currency === 'USD') {
-            return this.roundMoney(amount * this.paymentRateUsdToCup);
-        }
         return this.roundMoney(amount);
     }
 
-    private fromBaseAmount(baseAmount: number, currency: SystemCurrencyCode): number {
+    private fromBaseAmount(baseAmount: number, _currency: SystemCurrencyCode): number {
         if (!Number.isFinite(baseAmount) || baseAmount <= 0) return 0;
-        if (currency === 'USD') {
-            return this.roundMoney(baseAmount / this.paymentRateUsdToCup);
-        }
         return this.roundMoney(baseAmount);
     }
 
@@ -1715,22 +1696,8 @@ export class Tpv implements OnInit {
         });
     }
 
-    onPaymentCurrencyChanged(index: number, currency: SystemCurrencyCode) {
-        const line = this.paymentLines[index];
-        if (!line || !this.isCurrencyAllowed(currency)) return;
-
-        const baseAmount = this.toBaseAmount(Number(line.amount || 0), line.currency);
-        line.currency = currency;
-        line.amount = this.roundMoney(this.fromBaseAmount(baseAmount, currency));
-        this.paymentLines = [...this.paymentLines];
-    }
-
-    paymentLineBaseAmount(line: { amount: number | null; currency: SystemCurrencyCode }): number {
-        return this.roundMoney(this.toBaseAmount(Number(line.amount || 0), line.currency));
-    }
-
     paymentBaseCurrency(): SystemCurrencyCode {
-        return 'CUP';
+        return this.paymentDefaultCurrency;
     }
 
     private isPaymentMethodAlreadyUsed(method: Payment['method']): boolean {
@@ -1836,38 +1803,260 @@ export class Tpv implements OnInit {
         return rows;
     }
 
-    private buildSessionIpvPdfLines(report: SessionIvpReport): string[] {
-        const lines: string[] = [
-            'REPORTE IPV DE SESION',
-            '',
-            `TPV: ${report.register.name}`,
-            `Fecha apertura: ${this.formatDateTime(report.openedAt)}`,
-            '',
-            'RESUMEN',
-            `Total de ventas: ${report.totals.sales}`,
-            `Total de entradas: ${report.totals.entries}`,
-            `Total de salidas: ${report.totals.outs}`,
-            `Total efectivo: ${report.paymentTotals.CASH.toFixed(2)}`,
-            `Total tarjeta: ${report.paymentTotals.CARD.toFixed(2)}`,
-            `Total transferencia: ${report.paymentTotals.TRANSFER.toFixed(2)}`,
-            `Total otros: ${report.paymentTotals.OTHER.toFixed(2)}`,
-            '',
-            'DETALLE DE PRODUCTOS',
-            'Producto | Cod | Ini | Ent | Sal | Ven | Tot | Fin | Precio | Importe'
-        ];
+    private buildSessionIpvProfessionalPdfBlob(report: SessionIvpReport): Blob {
+        const pages: string[] = [];
+        let rowIndex = 0;
+        let forceTotalsPage = false;
 
-        for (const line of report.lines) {
-            lines.push(
-                this.truncateForPdf(
-                    `${line.name} | ${line.codigo || '-'} | ${line.initial} | ${line.entries} | ${line.outs} | ${line.sales} | ${line.total} | ${line.final} | ${line.price.toFixed(2)} | ${line.amount.toFixed(2)}`,
-                    115
-                )
-            );
+        while (rowIndex < report.lines.length || forceTotalsPage || pages.length === 0) {
+            const page = this.buildSessionIpvProfessionalPdfPage({
+                report,
+                paymentRows: this.sessionIpvPaymentSummaryRowsFromReport(report),
+                rowIndex,
+                pageNumber: pages.length + 1,
+                isFirstPage: pages.length === 0,
+                forceTotalsPage
+            });
+
+            pages.push(page.content);
+            rowIndex = page.nextRowIndex;
+            forceTotalsPage = !page.totalsDrawn && rowIndex >= report.lines.length;
+
+            if (forceTotalsPage && page.rowsDrawn === 0) {
+                // Salvaguarda para evitar bucle infinito si no hay espacio utilizable.
+                forceTotalsPage = false;
+            }
         }
 
-        lines.push('');
-        lines.push(`TOTAL IMPORTE: ${report.totals.amount.toFixed(2)}`);
-        return lines;
+        return this.buildPdfFromContentPages(pages);
+    }
+
+    private buildSessionIpvProfessionalPdfPage(params: {
+        report: SessionIvpReport;
+        paymentRows: Array<{ code: string; label: string; amount: number }>;
+        rowIndex: number;
+        pageNumber: number;
+        isFirstPage: boolean;
+        forceTotalsPage: boolean;
+    }): { content: string; nextRowIndex: number; totalsDrawn: boolean; rowsDrawn: number } {
+        const { report, paymentRows, rowIndex, pageNumber, isFirstPage, forceTotalsPage } = params;
+
+        const pageWidth = 595;
+        const pageHeight = 842;
+        const marginX = 24;
+        const headerTop = 24;
+        const contentWidth = pageWidth - marginX * 2;
+        const footerTop = 808;
+        const tableHeaderHeight = 18;
+        const tableRowHeight = 16;
+        const tableMaxTop = 780;
+
+        const columns: Array<{ key: string; label: string; width: number; align: 'left' | 'right' }> = [
+            { key: 'name', label: 'Producto', width: 150, align: 'left' },
+            { key: 'codigo', label: 'Cod', width: 55, align: 'left' },
+            { key: 'initial', label: 'Ini', width: 32, align: 'right' },
+            { key: 'entries', label: 'Ent', width: 32, align: 'right' },
+            { key: 'outs', label: 'Sal', width: 32, align: 'right' },
+            { key: 'sales', label: 'Ven', width: 32, align: 'right' },
+            { key: 'total', label: 'Tot', width: 32, align: 'right' },
+            { key: 'final', label: 'Fin', width: 32, align: 'right' },
+            { key: 'price', label: 'Precio', width: 65, align: 'right' },
+            { key: 'amount', label: 'Importe', width: 85, align: 'right' }
+        ];
+
+        const ops: string[] = [];
+        const generatedAt = this.formatDateTime(new Date().toISOString());
+
+        const toPdfY = (top: number) => pageHeight - top;
+        const color = (rgb: [number, number, number]) => rgb.map((v) => (v / 255).toFixed(3)).join(' ');
+        const safeText = (value: string) => this.escapePdfText(this.toAscii(value));
+
+        const drawRect = (
+            x: number,
+            top: number,
+            width: number,
+            height: number,
+            fill?: [number, number, number],
+            stroke?: [number, number, number]
+        ) => {
+            const y = pageHeight - top - height;
+            if (fill) ops.push(`${color(fill)} rg`);
+            if (stroke) ops.push(`${color(stroke)} RG`);
+            ops.push(`${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+        };
+
+        const drawLine = (x1: number, top1: number, x2: number, top2: number, stroke: [number, number, number], lineWidth = 1) => {
+            ops.push(`${lineWidth.toFixed(2)} w`);
+            ops.push(`${color(stroke)} RG`);
+            ops.push(`${x1.toFixed(2)} ${toPdfY(top1).toFixed(2)} m ${x2.toFixed(2)} ${toPdfY(top2).toFixed(2)} l S`);
+        };
+
+        const drawText = (
+            value: string,
+            x: number,
+            topBaseline: number,
+            options?: { font?: 'F1' | 'F2'; size?: number; color?: [number, number, number]; align?: 'left' | 'right'; maxChars?: number }
+        ) => {
+            const font = options?.font || 'F1';
+            const size = options?.size || 10;
+            const textColor: [number, number, number] = options?.color || [33, 37, 41];
+            const align = options?.align || 'left';
+            const maxChars = options?.maxChars || 200;
+            const raw = value || '';
+            const fitted = raw.length <= maxChars ? raw : `${raw.slice(0, Math.max(0, maxChars - 3))}...`;
+            const safe = safeText(fitted);
+            const estimateWidth = safe.length * (size * (font === 'F2' ? 0.54 : 0.5));
+            const textX = align === 'right' ? x - estimateWidth : x;
+
+            ops.push('BT');
+            ops.push(`/${font} ${size} Tf`);
+            ops.push(`${color(textColor)} rg`);
+            ops.push(`${textX.toFixed(2)} ${toPdfY(topBaseline).toFixed(2)} Td`);
+            ops.push(`(${safe}) Tj`);
+            ops.push('ET');
+        };
+
+        drawRect(marginX, headerTop, contentWidth, 42, [16, 38, 84], [16, 38, 84]);
+        drawText('REPORTE IPV DE SESION', marginX + 12, headerTop + 26, { font: 'F2', size: 15, color: [255, 255, 255] });
+        drawText(`Generado: ${generatedAt}`, pageWidth - marginX - 12, headerTop + 26, { size: 9, color: [235, 241, 255], align: 'right' });
+        drawText(`Pagina ${pageNumber}`, pageWidth - marginX - 12, headerTop + 38, { size: 8, color: [208, 221, 255], align: 'right' });
+
+        let topCursor = headerTop + 54;
+
+        if (isFirstPage) {
+            drawRect(marginX, topCursor, contentWidth, 58, [245, 248, 252], [214, 221, 229]);
+            drawText(`TPV: ${report.register.name} (${report.register.code})`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
+            drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 34, { size: 10, color: [68, 84, 106] });
+            drawText(`Almacen: ${report.warehouse.name} (${report.warehouse.code})`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
+            topCursor += 72;
+
+            drawText('Resumen Ejecutivo', marginX, topCursor + 12, { font: 'F2', size: 11, color: [27, 44, 94] });
+            topCursor += 20;
+
+            const summaryRows = [
+                { label: 'Total de ventas', value: report.totals.sales.toString() },
+                { label: 'Total de entradas', value: report.totals.entries.toString() },
+                { label: 'Total de salidas', value: report.totals.outs.toString() },
+                ...paymentRows.map((row) => ({ label: `Total ${row.label.toLowerCase()}`, value: this.roundMoney(row.amount).toFixed(2) })),
+                { label: 'Importe total', value: this.roundMoney(report.totals.amount).toFixed(2) }
+            ];
+
+            const boxWidth = (contentWidth - 16) / 2;
+            const lineHeight = 14;
+            const perBox = Math.ceil(summaryRows.length / 2);
+            const boxHeight = perBox * lineHeight + 16;
+
+            drawRect(marginX, topCursor, boxWidth, boxHeight, [251, 253, 255], [214, 221, 229]);
+            drawRect(marginX + boxWidth + 16, topCursor, boxWidth, boxHeight, [251, 253, 255], [214, 221, 229]);
+
+            for (let i = 0; i < summaryRows.length; i++) {
+                const row = summaryRows[i];
+                const isRight = i >= perBox;
+                const localIndex = isRight ? i - perBox : i;
+                const rowTop = topCursor + 16 + localIndex * lineHeight;
+                const xBase = isRight ? marginX + boxWidth + 16 : marginX;
+                drawText(row.label, xBase + 10, rowTop, { size: 9, color: [66, 82, 102], maxChars: 28 });
+                drawText(row.value, xBase + boxWidth - 10, rowTop, { font: 'F2', size: 9, align: 'right' });
+            }
+
+            topCursor += boxHeight + 22;
+        } else {
+            drawRect(marginX, topCursor, contentWidth, 34, [247, 250, 254], [220, 228, 236]);
+            drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 16, { font: 'F2', size: 9 });
+            drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 28, { size: 9, color: [68, 84, 106] });
+            topCursor += 46;
+        }
+
+        const tableTop = Math.max(topCursor, 164);
+        let rowTop = tableTop;
+        drawRect(marginX, rowTop, contentWidth, tableHeaderHeight, [228, 236, 248], [160, 177, 204]);
+
+        let columnX = marginX;
+        for (const column of columns) {
+            const textX = column.align === 'right' ? columnX + column.width - 6 : columnX + 6;
+            drawText(column.label, textX, rowTop + 12, {
+                font: 'F2',
+                size: 8,
+                color: [30, 54, 96],
+                align: column.align,
+                maxChars: column.key === 'name' ? 18 : 12
+            });
+            drawLine(columnX, rowTop, columnX, rowTop + tableHeaderHeight, [160, 177, 204], 0.6);
+            columnX += column.width;
+        }
+        drawLine(marginX + contentWidth, rowTop, marginX + contentWidth, rowTop + tableHeaderHeight, [160, 177, 204], 0.6);
+
+        rowTop += tableHeaderHeight;
+
+        let currentIndex = rowIndex;
+        let rowsDrawn = 0;
+        while (currentIndex < report.lines.length && rowTop + tableRowHeight <= tableMaxTop) {
+            const line = report.lines[currentIndex];
+            if (rowsDrawn % 2 === 0) {
+                drawRect(marginX, rowTop, contentWidth, tableRowHeight, [250, 252, 255], [230, 235, 242]);
+            } else {
+                drawRect(marginX, rowTop, contentWidth, tableRowHeight, [255, 255, 255], [230, 235, 242]);
+            }
+
+            const rowValues: Record<string, string> = {
+                name: line.name || '-',
+                codigo: line.codigo || '-',
+                initial: `${line.initial}`,
+                entries: `${line.entries}`,
+                outs: `${line.outs}`,
+                sales: `${line.sales}`,
+                total: `${line.total}`,
+                final: `${line.final}`,
+                price: this.roundMoney(line.price).toFixed(2),
+                amount: this.roundMoney(line.amount).toFixed(2)
+            };
+
+            let x = marginX;
+            for (const column of columns) {
+                const maxChars = column.key === 'name' ? 30 : column.key === 'codigo' ? 12 : 10;
+                const textX = column.align === 'right' ? x + column.width - 6 : x + 6;
+                drawText(rowValues[column.key], textX, rowTop + 11, {
+                    size: 8.2,
+                    align: column.align,
+                    maxChars
+                });
+                drawLine(x, rowTop, x, rowTop + tableRowHeight, [230, 235, 242], 0.5);
+                x += column.width;
+            }
+            drawLine(marginX + contentWidth, rowTop, marginX + contentWidth, rowTop + tableRowHeight, [230, 235, 242], 0.5);
+
+            rowTop += tableRowHeight;
+            currentIndex += 1;
+            rowsDrawn += 1;
+        }
+
+        let totalsDrawn = false;
+        if ((currentIndex >= report.lines.length || forceTotalsPage) && rowTop + tableRowHeight <= tableMaxTop) {
+            drawRect(marginX, rowTop, contentWidth, tableRowHeight, [226, 244, 235], [146, 178, 163]);
+            drawText('TOTAL IMPORTE', marginX + contentWidth - 140, rowTop + 11, { font: 'F2', size: 8.6, align: 'right' });
+            drawText(this.roundMoney(report.totals.amount).toFixed(2), marginX + contentWidth - 6, rowTop + 11, {
+                font: 'F2',
+                size: 8.6,
+                align: 'right'
+            });
+            totalsDrawn = true;
+        }
+
+        drawLine(marginX, footerTop - 10, pageWidth - marginX, footerTop - 10, [208, 216, 228], 0.7);
+        drawText(
+            `Reporte IPV | ${report.register.code} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
+            marginX,
+            footerTop + 4,
+            { size: 8, color: [93, 109, 130], maxChars: 95 }
+        );
+        drawText(`Pagina ${pageNumber}`, pageWidth - marginX, footerTop + 4, { size: 8, color: [93, 109, 130], align: 'right' });
+
+        return {
+            content: ops.join('\n'),
+            nextRowIndex: currentIndex,
+            totalsDrawn,
+            rowsDrawn
+        };
     }
 
     private buildXlsxSheet(rows: Array<Array<string | number>>): string {
@@ -1982,6 +2171,55 @@ export class Tpv implements OnInit {
             const pageId = pageIds[index];
             const contentId = contentIds[index];
             objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+            objects[contentId] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+        }
+
+        let pdf = '%PDF-1.4\n';
+        const offsets: number[] = [0];
+
+        for (let i = 1; i < objects.length; i++) {
+            if (!objects[i]) continue;
+            offsets[i] = pdf.length;
+            pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
+        }
+
+        const xrefStart = pdf.length;
+        pdf += `xref\n0 ${objects.length}\n`;
+        pdf += '0000000000 65535 f \n';
+
+        for (let i = 1; i < objects.length; i++) {
+            const offset = offsets[i] || 0;
+            pdf += `${offset.toString().padStart(10, '0')} 00000 n \n`;
+        }
+
+        pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+        return new Blob([pdf], { type: 'application/pdf' });
+    }
+
+    private buildPdfFromContentPages(contentPages: string[]): Blob {
+        const pages = contentPages.length > 0 ? contentPages : [''];
+        const objects: string[] = [];
+        const pageIds: number[] = [];
+        const contentIds: number[] = [];
+        let objectId = 5;
+
+        for (let index = 0; index < pages.length; index++) {
+            pageIds.push(objectId++);
+            contentIds.push(objectId++);
+        }
+
+        objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+        objects[2] = `<< /Type /Pages /Count ${pages.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`;
+        objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+        objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+
+        for (let index = 0; index < pages.length; index++) {
+            const content = pages[index] || '';
+            const pageId = pageIds[index];
+            const contentId = contentIds[index];
+            objects[pageId] =
+                `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] ` +
+                `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`;
             objects[contentId] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
         }
 

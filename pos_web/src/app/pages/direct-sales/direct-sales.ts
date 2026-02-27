@@ -380,6 +380,131 @@ interface NewCustomerForm {
             </ng-template>
         </p-dialog>
 
+        <p-dialog
+            header="Clientes"
+            [(visible)]="customerDialog"
+            [modal]="true"
+            [style]="{ width: '1080px' }"
+            [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }"
+            (onShow)="onCustomerDialogShow()"
+        >
+            <div class="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-4">
+                <div class="flex flex-col gap-3">
+                    <div class="flex gap-2">
+                        <input
+                            pInputText
+                            [(ngModel)]="customerSearch"
+                            class="w-full"
+                            placeholder="Buscar por nombre, identificación, teléfono o email"
+                            (keydown.enter)="loadCustomers()"
+                        />
+                        <p-button icon="pi pi-search" label="Buscar" severity="secondary" [outlined]="true" [loading]="customersLoading()" (onClick)="loadCustomers()" />
+                    </div>
+
+                    <p-table [value]="customers()" [paginator]="true" [rows]="8" [loading]="customersLoading()">
+                        <ng-template #header>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Identificación</th>
+                                <th class="text-right">Compras</th>
+                                <th class="text-right">Total</th>
+                                <th class="text-center">Opciones</th>
+                            </tr>
+                        </ng-template>
+                        <ng-template #body let-customer>
+                            <tr>
+                                <td>{{ customer.name }}</td>
+                                <td>{{ customer.identification }}</td>
+                                <td class="text-right">{{ customer.purchasesCount }}</td>
+                                <td class="text-right">{{ customer.totalAmount | currency:'CUP' }}</td>
+                                <td class="text-center">
+                                    <div class="flex justify-center gap-1">
+                                        <p-button icon="pi pi-chart-line" [rounded]="true" [text]="true" severity="secondary" (onClick)="openCustomerHistory(customer)" />
+                                        <p-button icon="pi pi-check" [rounded]="true" [text]="true" severity="success" (onClick)="selectCustomer(customer)" />
+                                    </div>
+                                </td>
+                            </tr>
+                        </ng-template>
+                        <ng-template #emptymessage>
+                            <tr>
+                                <td colspan="5" class="text-center">No hay clientes para mostrar.</td>
+                            </tr>
+                        </ng-template>
+                    </p-table>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <div class="flex flex-wrap gap-2">
+                        <p-button
+                            [label]="showNewCustomerForm ? 'Cancelar nuevo cliente' : 'Nuevo cliente'"
+                            [icon]="showNewCustomerForm ? 'pi pi-times' : 'pi pi-user-plus'"
+                            severity="secondary"
+                            [outlined]="true"
+                            (onClick)="toggleNewCustomerForm()"
+                        />
+                    </div>
+
+                    @if (showNewCustomerForm) {
+                        <div class="border rounded p-3 bg-gray-50 flex flex-col gap-2">
+                            <h4 class="m-0">Crear cliente</h4>
+                            <input pInputText [(ngModel)]="newCustomer.name" placeholder="Nombre completo" />
+                            <input pInputText [(ngModel)]="newCustomer.identification" placeholder="Identificación" />
+                            <input pInputText [(ngModel)]="newCustomer.phone" placeholder="Teléfono (opcional)" />
+                            <input pInputText [(ngModel)]="newCustomer.email" placeholder="Email (opcional)" />
+                            <input pInputText [(ngModel)]="newCustomer.address" placeholder="Dirección (opcional)" />
+                            <div class="flex justify-end">
+                                <p-button label="Guardar cliente" icon="pi pi-save" [loading]="creatingCustomer()" (onClick)="createCustomer()" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="border rounded p-3 min-h-64">
+                        <h4 class="m-0 mb-2">Historial del cliente</h4>
+                        @if (customerHistoryLoading()) {
+                            <div class="text-sm text-gray-500">Cargando historial...</div>
+                        } @else if (selectedCustomerHistory()) {
+                            <div class="text-sm mb-2">
+                                <div><b>{{ selectedCustomerHistory()!.customer.name }}</b> ({{ selectedCustomerHistory()!.customer.identification }})</div>
+                                <div class="text-gray-600">
+                                    Compras: {{ selectedCustomerHistory()!.summary.purchasesCount }}
+                                    <span class="mx-1">|</span>
+                                    Total: {{ selectedCustomerHistory()!.summary.totalAmount | currency:'CUP' }}
+                                </div>
+                            </div>
+                            <p-table [value]="selectedCustomerHistory()!.recentSales" [rows]="5">
+                                <ng-template #header>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Canal</th>
+                                        <th class="text-right">Total</th>
+                                    </tr>
+                                </ng-template>
+                                <ng-template #body let-sale>
+                                    <tr>
+                                        <td>{{ sale.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                                        <td>{{ sale.channel }}</td>
+                                        <td class="text-right">{{ sale.total | currency:'CUP' }}</td>
+                                    </tr>
+                                </ng-template>
+                                <ng-template #emptymessage>
+                                    <tr>
+                                        <td colspan="3" class="text-center">Este cliente aún no tiene ventas.</td>
+                                    </tr>
+                                </ng-template>
+                            </p-table>
+                        } @else {
+                            <div class="text-sm text-gray-500">Seleccione un cliente y pulse historial para ver su detalle.</div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <ng-template #footer>
+                <p-button label="Cerrar" icon="pi pi-times" text (onClick)="customerDialog = false" />
+            </ng-template>
+        </p-dialog>
+
+        <p-confirmdialog />
         <p-toast />
     `
 })
@@ -388,9 +513,18 @@ export class DirectSales implements OnInit, AfterViewInit {
     products = signal<DirectSaleProduct[]>([]);
     filteredProducts = signal<DirectSaleProduct[]>([]);
     cart = signal<CartLine[]>([]);
+    selectedCustomer = signal<Customer | null>(null);
+    customers = signal<Customer[]>([]);
+    customersLoading = signal(false);
+    customerDialog = false;
+    customerSearch = '';
+    selectedCustomerHistory = signal<CustomerHistory | null>(null);
+    customerHistoryLoading = signal(false);
+    showNewCustomerForm = false;
+    creatingCustomer = signal(false);
+    newCustomer: NewCustomerForm = this.getEmptyNewCustomerForm();
 
     selectedWarehouseId = '';
-    customerName = '';
     search = '';
 
     paymentLines: PaymentLine[] = [];
@@ -425,8 +559,10 @@ export class DirectSales implements OnInit, AfterViewInit {
     constructor(
         private readonly warehousesService: WarehousesService,
         private readonly directSalesService: DirectSalesService,
+        private readonly customersService: CustomersService,
         private readonly settingsService: SettingsService,
-        private readonly messageService: MessageService
+        private readonly messageService: MessageService,
+        private readonly confirmationService: ConfirmationService
     ) {}
 
     ngOnInit(): void {
@@ -492,6 +628,126 @@ export class DirectSales implements OnInit, AfterViewInit {
         });
     }
 
+    openCustomerDialog() {
+        this.customerDialog = true;
+    }
+
+    onCustomerDialogShow() {
+        this.loadCustomers();
+        const current = this.selectedCustomer();
+        if (current) {
+            this.openCustomerHistory(current);
+        } else {
+            this.selectedCustomerHistory.set(null);
+        }
+    }
+
+    loadCustomers() {
+        this.customersLoading.set(true);
+        this.customersService.list({
+            q: this.customerSearch?.trim() || undefined,
+            active: true,
+            limit: 200
+        }).subscribe({
+            next: (rows) => {
+                this.customers.set(rows || []);
+                this.customersLoading.set(false);
+            },
+            error: () => {
+                this.customers.set([]);
+                this.customersLoading.set(false);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudieron cargar los clientes.'
+                });
+            }
+        });
+    }
+
+    openCustomerHistory(customer: Customer) {
+        this.customerHistoryLoading.set(true);
+        this.customersService.getHistory(customer.id).subscribe({
+            next: (history) => {
+                this.selectedCustomerHistory.set(history);
+                this.customerHistoryLoading.set(false);
+            },
+            error: () => {
+                this.selectedCustomerHistory.set(null);
+                this.customerHistoryLoading.set(false);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo cargar el historial del cliente.'
+                });
+            }
+        });
+    }
+
+    selectCustomer(customer: Customer) {
+        this.selectedCustomer.set(customer);
+        this.customerDialog = false;
+        this.messageService.add({
+            severity: 'success',
+            summary: 'Cliente seleccionado',
+            detail: `${customer.name} (${customer.identification})`
+        });
+    }
+
+    clearSelectedCustomer() {
+        this.selectedCustomer.set(null);
+        this.selectedCustomerHistory.set(null);
+    }
+
+    toggleNewCustomerForm() {
+        this.showNewCustomerForm = !this.showNewCustomerForm;
+        if (!this.showNewCustomerForm) {
+            this.newCustomer = this.getEmptyNewCustomerForm();
+        }
+    }
+
+    createCustomer() {
+        const payload = {
+            name: this.newCustomer.name?.trim(),
+            identification: this.newCustomer.identification?.trim(),
+            phone: this.newCustomer.phone?.trim() || undefined,
+            email: this.newCustomer.email?.trim() || undefined,
+            address: this.newCustomer.address?.trim() || undefined
+        };
+
+        if (!payload.name || !payload.identification) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Datos incompletos',
+                detail: 'Nombre e identificación son obligatorios.'
+            });
+            return;
+        }
+
+        this.creatingCustomer.set(true);
+        this.customersService.create(payload).subscribe({
+            next: () => {
+                this.creatingCustomer.set(false);
+                this.messageService.add({
+                    severity: 'success',
+                    summary: 'Cliente creado',
+                    detail: 'El cliente fue creado correctamente.'
+                });
+                this.newCustomer = this.getEmptyNewCustomerForm();
+                this.showNewCustomerForm = false;
+                this.loadCustomers();
+            },
+            error: (err) => {
+                this.creatingCustomer.set(false);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: err?.error?.message || 'No se pudo crear el cliente.'
+                });
+            }
+        });
+    }
+
     onWarehouseChange() {
         this.cart.set([]);
         this.search = '';
@@ -516,6 +772,28 @@ export class DirectSales implements OnInit, AfterViewInit {
                     detail: err?.error?.message || 'No se pudo cargar el stock del almacén.'
                 });
             }
+        });
+    }
+
+    confirmClearTicket() {
+        this.confirmationService.confirm({
+            header: 'Limpiar ticket',
+            message: 'Se eliminarán todos los productos y líneas de pago actuales. ¿Desea continuar?',
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Sí, limpiar',
+            rejectLabel: 'Cancelar',
+            acceptButtonStyleClass: 'p-button-danger',
+            accept: () => this.clearTicket()
+        });
+    }
+
+    clearTicket() {
+        this.cart.set([]);
+        this.initPaymentLines();
+        this.messageService.add({
+            severity: 'info',
+            summary: 'Ticket limpiado',
+            detail: 'Se eliminaron los productos del ticket actual.'
         });
     }
 
@@ -641,7 +919,7 @@ export class DirectSales implements OnInit, AfterViewInit {
 
         const payload = {
             warehouseId: this.selectedWarehouseId,
-            customerName: this.customerName?.trim() || undefined,
+            customerId: this.selectedCustomer()?.id || undefined,
             items: this.cart().map((line) => ({
                 productId: line.productId,
                 qty: line.qty
@@ -670,7 +948,6 @@ export class DirectSales implements OnInit, AfterViewInit {
                 });
 
                 this.cart.set([]);
-                this.customerName = '';
                 this.initPaymentLines();
                 this.onWarehouseChange();
             },
@@ -692,7 +969,7 @@ export class DirectSales implements OnInit, AfterViewInit {
         const lines: string[] = [];
         lines.push(`COMPROBANTE: ${ticket.documentNumber || ticket.saleId}`);
         lines.push(`FECHA: ${new Date(ticket.createdAt).toLocaleString('es-ES')}`);
-        lines.push(`CLIENTE: ${ticket.customerName || 'N/A'}`);
+        lines.push(`CLIENTE: ${ticket.customerName || 'N/A'}${ticket.customer?.identification ? ` (${ticket.customer.identification})` : ''}`);
         lines.push(`CAJERO: ${ticket.cashier.email}`);
         lines.push(`ALMACEN: ${ticket.warehouse?.name || '-'} (${ticket.warehouse?.code || '-'})`);
         lines.push('');
@@ -768,5 +1045,15 @@ export class DirectSales implements OnInit, AfterViewInit {
             return Number((baseAmount / this.exchangeRateUsdToCup).toFixed(2));
         }
         return Number(baseAmount.toFixed(2));
+    }
+
+    private getEmptyNewCustomerForm(): NewCustomerForm {
+        return {
+            name: '',
+            identification: '',
+            phone: '',
+            email: '',
+            address: ''
+        };
     }
 }
