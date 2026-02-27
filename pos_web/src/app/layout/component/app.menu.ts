@@ -31,7 +31,7 @@ export class AppMenu {
                 label: 'Gestión',
                 icon: 'pi pi-fw pi-briefcase',
                 items: [
-                    { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'] },
+                    
                     { label: 'Productos', icon: 'pi pi-fw pi-box', routerLink: ['/products'] },
                     { label: 'Tipos de Producto', icon: 'pi pi-fw pi-tag', routerLink: ['/product-types'] },
                     { label: 'Categorías', icon: 'pi pi-fw pi-folder', routerLink: ['/product-categories'] },
@@ -39,7 +39,6 @@ export class AppMenu {
                     { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'] },
                     { label: 'TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'] },
                     { label: 'Ventas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'] },
-                    { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
                     { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'] }
                 ]
             },
@@ -49,6 +48,14 @@ export class AppMenu {
                 items: [
                     { label: 'Ventas', icon: 'pi pi-fw pi-chart-line', routerLink: ['/reports'] },
                     { label: 'Inventario (IPV)', icon: 'pi pi-fw pi-list', routerLink: ['/inventory-reports'] }
+                ]
+            },
+             {
+                label: 'Administración',
+                icon: 'pi pi-chart-bar',
+                items: [
+                 { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'] },
+                { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
                 ]
             },
             // {
