@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { BehaviorSubject, Observable, tap } from 'rxjs';
 
 export interface RegisterSettings {
   id: string;
@@ -33,6 +33,8 @@ export interface SystemSettings {
   defaultCurrency: SystemCurrencyCode;
   enabledCurrencies: SystemCurrencyCode[];
   exchangeRateUsdToCup: number;
+  systemName: string;
+  systemLogoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,19 +53,30 @@ export interface ExchangeRateRecord {
 })
 export class SettingsService {
   private readonly API_URL = '/api/settings';
+  private readonly systemSettingsState = new BehaviorSubject<SystemSettings | null>(null);
 
   constructor(private http: HttpClient) {}
 
   getSystemSettings(): Observable<SystemSettings> {
-    return this.http.get<SystemSettings>(`${this.API_URL}/system`);
+    return this.http.get<SystemSettings>(`${this.API_URL}/system`).pipe(
+      tap((settings) => this.systemSettingsState.next(settings))
+    );
   }
 
   saveSystemSettings(data: {
     defaultCurrency?: SystemCurrencyCode;
     enabledCurrencies?: SystemCurrencyCode[];
     exchangeRateUsdToCup?: number;
+    systemName?: string;
+    systemLogoUrl?: string | null;
   }): Observable<SystemSettings> {
-    return this.http.put<SystemSettings>(`${this.API_URL}/system`, data);
+    return this.http.put<SystemSettings>(`${this.API_URL}/system`, data).pipe(
+      tap((settings) => this.systemSettingsState.next(settings))
+    );
+  }
+
+  watchSystemSettings(): Observable<SystemSettings | null> {
+    return this.systemSettingsState.asObservable();
   }
 
   listExchangeRates(limit = 50): Observable<ExchangeRateRecord[]> {

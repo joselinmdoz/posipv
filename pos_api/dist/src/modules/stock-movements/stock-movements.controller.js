@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const stock_movements_service_1 = require("./stock-movements.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const class_validator_1 = require("class-validator");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class CreateStockMovementDto {
 }
 __decorate([
@@ -56,6 +58,9 @@ let StockMovementsController = class StockMovementsController {
     create(dto) {
         return this.service.create(dto);
     }
+    remove(movementId) {
+        return this.service.delete(movementId);
+    }
 };
 exports.StockMovementsController = StockMovementsController;
 __decorate([
@@ -71,11 +76,22 @@ __decorate([
 ], StockMovementsController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
+    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)("stock-movements.manage"),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [CreateStockMovementDto]),
     __metadata("design:returntype", void 0)
 ], StockMovementsController.prototype, "create", null);
+__decorate([
+    (0, common_1.Delete)(":id"),
+    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)("stock-movements.delete"),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], StockMovementsController.prototype, "remove", null);
 exports.StockMovementsController = StockMovementsController = __decorate([
     (0, common_1.Controller)("stock-movements"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

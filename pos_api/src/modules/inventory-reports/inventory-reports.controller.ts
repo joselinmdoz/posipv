@@ -1,4 +1,5 @@
 import {
+  Delete,
   Controller,
   Get,
   Post,
@@ -11,6 +12,8 @@ import { InventoryReportsService } from './inventory-reports.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { Permissions } from '../auth/permissions.decorator';
 
 interface CreateReportDto {
   cashSessionId: string;
@@ -73,5 +76,21 @@ export class InventoryReportsController {
   @Roles('ADMIN', 'CASHIER')
   async findOne(@Param('id') id: string) {
     return this.inventoryReportsService.findOne(id);
+  }
+
+  @Delete('session/:cashSessionId')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('inventory-reports.delete')
+  async removeBySession(@Param('cashSessionId') cashSessionId: string) {
+    return this.inventoryReportsService.deleteBySession(cashSessionId);
+  }
+
+  @Delete(':id')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('inventory-reports.delete')
+  async remove(@Param('id') id: string) {
+    return this.inventoryReportsService.delete(id);
   }
 }

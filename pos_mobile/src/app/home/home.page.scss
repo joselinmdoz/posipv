@@ -1,0 +1,16 @@
+.status {
+  margin-top: 12px;
+  font-weight: 600;
+  color: var(--ion-color-success);
+}
+
+.status.error {
+  color: var(--ion-color-danger);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}

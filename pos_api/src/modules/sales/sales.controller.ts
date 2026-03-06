@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SalesService } from "./sales.service";
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrencyCode, PaymentMethod } from "@prisma/client";
+import { PermissionsGuard } from "../auth/permissions.guard";
+import { Permissions } from "../auth/permissions.decorator";
 
 class ItemDto {
   @IsString() productId!: string;
@@ -44,5 +46,12 @@ export class SalesController {
   @Post()
   create(@Req() req: any, @Body() dto: CreateSaleDto) {
     return this.service.createSale(req.user.userId, dto);
+  }
+
+  @Delete(":id")
+  @UseGuards(PermissionsGuard)
+  @Permissions("sales.delete")
+  remove(@Req() req: any, @Param("id") saleId: string) {
+    return this.service.deleteSale(saleId, req.user.userId);
   }
 }

@@ -9,12 +9,15 @@ type SystemSettingsPayload = Partial<{
   defaultCurrency: SystemCurrencyCode;
   enabledCurrencies: SystemCurrencyCode[];
   exchangeRateUsdToCup: number;
+  systemName: string;
+  systemLogoUrl: string | null;
 }>;
 
 @Injectable()
 export class SettingsService {
   private readonly systemSettingsId = "default";
   private readonly supportedCurrencies: SystemCurrencyCode[] = ["CUP", "USD"];
+  private readonly maxSystemLogoLength = 1_000_000;
 
   constructor(private prisma: PrismaService) {}
 
@@ -30,6 +33,8 @@ export class SettingsService {
           defaultCurrency: "CUP",
           enabledCurrencies: ["CUP", "USD"],
           exchangeRateUsdToCup: dec("1"),
+          systemName: "POS System",
+          systemLogoUrl: null,
         },
       });
     }
@@ -54,6 +59,10 @@ export class SettingsService {
     if (!Number.isFinite(exchangeRateUsdToCup) || exchangeRateUsdToCup <= 0) {
       throw new BadRequestException("La tasa de cambio debe ser mayor a 0.");
     }
+    const systemName = this.normalizeSystemName(payload.systemName ?? current.systemName);
+    const systemLogoUrl = this.normalizeSystemLogoUrl(
+      payload.systemLogoUrl !== undefined ? payload.systemLogoUrl : current.systemLogoUrl,
+    );
 
     const rateDecimal = dec(exchangeRateUsdToCup.toString());
     const hasRateChanged = !dec(current.exchangeRateUsdToCup).equals(rateDecimal);
@@ -65,11 +74,15 @@ export class SettingsService {
         defaultCurrency,
         enabledCurrencies,
         exchangeRateUsdToCup: rateDecimal,
+        systemName,
+        systemLogoUrl,
       },
       update: {
         defaultCurrency,
         enabledCurrencies,
         exchangeRateUsdToCup: rateDecimal,
+        systemName,
+        systemLogoUrl,
       },
     });
 
@@ -110,6 +123,8 @@ export class SettingsService {
           defaultCurrency: "CUP",
           enabledCurrencies: ["CUP", "USD"],
           exchangeRateUsdToCup: dec("1"),
+          systemName: "POS System",
+          systemLogoUrl: null,
         },
       });
     }
@@ -438,6 +453,18 @@ export class SettingsService {
     }
 
     return normalized;
+  }
+
+  private normalizeSystemName(value: unknown): string {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) return "POS System";
+    return normalized.slice(0, 120);
+  }
+
+  private normalizeSystemLogoUrl(value: unknown): string | null {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) return null;
+    return normalized.slice(0, this.maxSystemLogoLength);
   }
 
   private async ensureInitialExchangeRateRecord(rate: Prisma.Decimal | number | string) {

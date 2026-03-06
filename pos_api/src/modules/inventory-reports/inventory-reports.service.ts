@@ -77,6 +77,45 @@ export class InventoryReportsService {
     });
   }
 
+  async delete(id: string) {
+    const report = await this.prisma.inventoryReport.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!report) throw new NotFoundException("Reporte IPV no encontrado.");
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.inventoryReportItem.deleteMany({
+        where: { inventoryReportId: id },
+      });
+      await tx.inventoryReport.delete({
+        where: { id },
+      });
+      return { ok: true, deletedReportId: id };
+    });
+  }
+
+  async deleteBySession(cashSessionId: string) {
+    const reports = await this.prisma.inventoryReport.findMany({
+      where: { cashSessionId },
+      select: { id: true },
+    });
+    if (!reports.length) {
+      throw new NotFoundException("No existen reportes IPV para la sesión indicada.");
+    }
+
+    const reportIds = reports.map((report) => report.id);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.inventoryReportItem.deleteMany({
+        where: { inventoryReportId: { in: reportIds } },
+      });
+      await tx.inventoryReport.deleteMany({
+        where: { id: { in: reportIds } },
+      });
+      return { ok: true, cashSessionId, deletedReports: reportIds.length };
+    });
+  }
+
   async getLatestBySession(cashSessionId: string, type?: IPVType) {
     const where: any = { cashSessionId };
     if (type) where.type = type;

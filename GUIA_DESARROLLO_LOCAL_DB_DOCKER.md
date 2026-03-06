@@ -2,6 +2,10 @@
 
 Objetivo: correr solo PostgreSQL en Docker y trabajar `pos_api` y `pos_web` directamente en tu máquina, sin afectar producción.
 
+iniciar web
+npm run start -- --proxy-config proxy.local.json
+iniciar api 
+npm run start:dev
 ## 1) Aislamiento respecto a produccion
 - Desarrollo usa:
   - `docker-compose.dev.yml`

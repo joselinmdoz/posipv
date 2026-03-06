@@ -31,6 +31,8 @@ const measurement_unit_types_module_1 = require("./modules/measurement-unit-type
 const measurement_units_module_1 = require("./modules/measurement-units/measurement-units.module");
 const direct_sales_module_1 = require("./modules/direct-sales/direct-sales.module");
 const customers_module_1 = require("./modules/customers/customers.module");
+const employees_module_1 = require("./modules/employees/employees.module");
+const user_permissions_module_1 = require("./modules/user-permissions/user-permissions.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -62,6 +64,8 @@ exports.AppModule = AppModule = __decorate([
             measurement_units_module_1.MeasurementUnitsModule,
             direct_sales_module_1.DirectSalesModule,
             customers_module_1.CustomersModule,
+            employees_module_1.EmployeesModule,
+            user_permissions_module_1.UserPermissionsModule,
         ],
     })
 ], AppModule);

@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const warehouses_service_1 = require("./warehouses.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const class_validator_1 = require("class-validator");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class CreateWarehouseDto {
 }
 __decorate([
@@ -34,6 +36,13 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateWarehouseDto.prototype, "type", void 0);
+class ResetStockDto {
+}
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ResetStockDto.prototype, "reason", void 0);
 let WarehousesController = class WarehousesController {
     constructor(service) {
         this.service = service;
@@ -55,6 +64,9 @@ let WarehousesController = class WarehousesController {
     }
     delete(id) {
         return this.service.delete(id);
+    }
+    resetStock(id, dto) {
+        return this.service.resetStock(id, dto.reason);
     }
 };
 exports.WarehousesController = WarehousesController;
@@ -95,11 +107,23 @@ __decorate([
 ], WarehousesController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
+    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)("warehouses.delete"),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], WarehousesController.prototype, "delete", null);
+__decorate([
+    (0, common_1.Post)(':id/reset-stock'),
+    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)("warehouses.reset-stock"),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, ResetStockDto]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "resetStock", null);
 exports.WarehousesController = WarehousesController = __decorate([
     (0, common_1.Controller)("warehouses"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

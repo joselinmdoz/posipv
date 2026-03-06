@@ -10,15 +10,17 @@ import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { ToastModule } from 'primeng/toast';
 import { SplitButtonModule } from 'primeng/splitbutton';
-import { MenuItem, MessageService } from 'primeng/api';
+import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { ConfirmationService, MenuItem, MessageService } from 'primeng/api';
 import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/reports.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
+import { AuthService } from '@/app/core/services/auth.service';
 
 @Component({
     selector: 'app-reports',
     standalone: true,
-    imports: [CommonModule, FormsModule, ButtonModule, DatePickerModule, InputTextModule, SelectModule, TableModule, CardModule, DialogModule, ToastModule, SplitButtonModule],
-    providers: [MessageService],
+    imports: [CommonModule, FormsModule, ButtonModule, DatePickerModule, InputTextModule, SelectModule, TableModule, CardModule, DialogModule, ToastModule, SplitButtonModule, ConfirmDialogModule],
+    providers: [MessageService, ConfirmationService],
     template: `
         <div class="p-4">
             <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
@@ -186,6 +188,15 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
                                         severity="secondary"
                                         (onClick)="openSaleDetail(sale)"
                                     />
+                                    @if (canDeleteSales()) {
+                                        <p-button
+                                            icon="pi pi-trash"
+                                            [rounded]="true"
+                                            [text]="true"
+                                            severity="danger"
+                                            (onClick)="deleteSale(sale)"
+                                        />
+                                    }
                                 </td>
                             </tr>
                         </ng-template>
@@ -294,6 +305,7 @@ import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.ser
         </p-dialog>
 
         <p-toast />
+        <p-confirmdialog />
     `
 })
 export class Reports implements OnInit {
@@ -334,7 +346,9 @@ export class Reports implements OnInit {
     constructor(
         private reportsService: ReportsService,
         private warehousesService: WarehousesService,
-        private messageService: MessageService
+        private messageService: MessageService,
+        private confirmationService: ConfirmationService,
+        private authService: AuthService
     ) {}
 
     ngOnInit() {
@@ -465,6 +479,54 @@ export class Reports implements OnInit {
         this.saleDetailDialog = true;
     }
 
+    canDeleteSales() {
+        return this.authService.hasPermission('sales.delete');
+    }
+
+    deleteSale(sale: DetailedSale) {
+        if (!this.canDeleteSales()) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Sin permisos',
+                detail: 'No tiene permisos para eliminar ventas.'
+            });
+            return;
+        }
+
+        this.confirmationService.confirm({
+            header: 'Eliminar venta',
+            icon: 'pi pi-exclamation-triangle',
+            message: 'Esta acción eliminará la venta y revertirá el stock. ¿Desea continuar?',
+            acceptLabel: 'Eliminar',
+            rejectLabel: 'Cancelar',
+            acceptButtonStyleClass: 'p-button-danger',
+            rejectButtonStyleClass: 'p-button-outlined p-button-secondary',
+            accept: () => {
+                this.reportsService.deleteSale(sale.id).subscribe({
+                    next: () => {
+                        this.messageService.add({
+                            severity: 'success',
+                            summary: 'Venta eliminada',
+                            detail: 'La venta fue eliminada correctamente.'
+                        });
+                        if (this.selectedSale()?.id === sale.id) {
+                            this.selectedSale.set(null);
+                            this.saleDetailDialog = false;
+                        }
+                        this.refreshCurrentReport();
+                    },
+                    error: (err) => {
+                        this.messageService.add({
+                            severity: 'error',
+                            summary: 'Error',
+                            detail: err?.error?.message || 'No se pudo eliminar la venta.'
+                        });
+                    }
+                });
+            }
+        });
+    }
+
     lineSubtotal(item: { qty: number; price: number }) {
         return Number(item.qty || 0) * Number(item.price || 0);
     }
@@ -532,6 +594,14 @@ export class Reports implements OnInit {
         }
 
         return rows;
+    }
+
+    private refreshCurrentReport() {
+        if (this.startDate && this.endDate) {
+            this.generateReport();
+            return;
+        }
+        this.loadServerTodayReport();
     }
 
     private buildSalesPdfLines(report: SalesReport): string[] {

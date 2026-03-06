@@ -97,6 +97,18 @@ __decorate([
     (0, class_validator_1.Min)(0.000001),
     __metadata("design:type", Number)
 ], SystemSettingsDto.prototype, "exchangeRateUsdToCup", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(120),
+    __metadata("design:type", String)
+], SystemSettingsDto.prototype, "systemName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(1000000),
+    __metadata("design:type", String)
+], SystemSettingsDto.prototype, "systemLogoUrl", void 0);
 let SettingsController = class SettingsController {
     constructor(service) {
         this.service = service;

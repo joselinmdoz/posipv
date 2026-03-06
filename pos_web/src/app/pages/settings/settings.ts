@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputNumberModule } from 'primeng/inputnumber';
+import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
 import { ToastModule } from 'primeng/toast';
 import { CardModule } from 'primeng/card';
@@ -13,7 +14,7 @@ import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings
 @Component({
     selector: 'app-settings',
     standalone: true,
-    imports: [CommonModule, FormsModule, ButtonModule, InputNumberModule, SelectModule, ToastModule, CardModule, ToggleSwitchModule],
+    imports: [CommonModule, FormsModule, ButtonModule, InputNumberModule, InputTextModule, SelectModule, ToastModule, CardModule, ToggleSwitchModule],
     providers: [MessageService],
     template: `
         <div class="p-4 settings-page">
@@ -23,6 +24,25 @@ import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <p-card header="Moneda y Tasa de Cambio">
                     <div class="flex flex-col gap-4">
+                        <div>
+                            <label class="block mb-2 font-medium">Nombre del sistema</label>
+                            <input pInputText [(ngModel)]="systemName" class="w-full" maxlength="120" placeholder="Ej: POS IPV" />
+                        </div>
+
+                        <div>
+                            <label class="block mb-2 font-medium">Logo (URL/ruta o archivo)</label>
+                            <input pInputText [(ngModel)]="systemLogoUrl" class="w-full" placeholder="Ej: /assets/logo.png o https://..." />
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <input #logoFileInput type="file" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="onLogoFileSelected($event)" />
+                                <p-button type="button" size="small" icon="pi pi-upload" label="Subir archivo" severity="secondary" [outlined]="true" (onClick)="logoFileInput.click()" />
+                                <p-button type="button" size="small" icon="pi pi-times" label="Quitar logo" severity="secondary" [outlined]="true" (onClick)="clearLogo()" [disabled]="!systemLogoUrl.trim()" />
+                            </div>
+                            @if (logoFileName) {
+                                <small class="text-gray-600 block mt-2">Archivo cargado: {{ logoFileName }}</small>
+                            }
+                            <small class="text-gray-500 block mt-2">Si lo dejas vacío se usa el logo por defecto. Formatos: PNG, JPG, WEBP, SVG (máx {{ logoMaxFileMb }}MB).</small>
+                        </div>
+
                         <div>
                             <label class="block mb-2 font-medium">Moneda por defecto</label>
                             <p-select
@@ -76,6 +96,15 @@ import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings
                     <div class="flex flex-col gap-4 text-sm">
                         <div class="p-3 border rounded-lg bg-surface-50">
                             <div class="font-semibold mb-1">Resumen actual</div>
+                            <div>Nombre del sistema: <b>{{ systemName || 'POS System' }}</b></div>
+                            <div class="flex items-center gap-2">
+                                <span>Logo:</span>
+                                @if (systemLogoUrl.trim()) {
+                                    <img [src]="systemLogoUrl.trim()" alt="Logo sistema" style="height: 28px; max-width: 140px; object-fit: contain;" />
+                                } @else {
+                                    <b>Predeterminado</b>
+                                }
+                            </div>
                             <div>Moneda por defecto: <b>{{ defaultCurrency }}</b></div>
                             <div>Monedas habilitadas: <b>{{ enabledCurrenciesPreview() }}</b></div>
                             <div>Tasa activa: <b>1 USD = {{ exchangeRateUsdToCup || 0 }} CUP</b></div>
@@ -138,6 +167,10 @@ export class Settings implements OnInit {
     enabledCUP = true;
     enabledUSD = true;
     exchangeRateUsdToCup = 1;
+    systemName = 'POS System';
+    systemLogoUrl = '';
+    logoFileName = '';
+    readonly logoMaxFileMb = 1;
     exchangeRateHistory = signal<ExchangeRateRecord[]>([]);
 
     currencyValidationMessage = signal('');
@@ -181,7 +214,9 @@ export class Settings implements OnInit {
             .saveSystemSettings({
                 defaultCurrency: this.defaultCurrency,
                 enabledCurrencies: this.getEnabledCurrencies(),
-                exchangeRateUsdToCup: Number(this.exchangeRateUsdToCup || 0)
+                exchangeRateUsdToCup: Number(this.exchangeRateUsdToCup || 0),
+                systemName: this.systemName?.trim() || 'POS System',
+                systemLogoUrl: this.systemLogoUrl?.trim() || null
             })
             .subscribe({
                 next: (saved) => {
@@ -222,11 +257,19 @@ export class Settings implements OnInit {
         if (!this.exchangeRateUsdToCup || Number(this.exchangeRateUsdToCup) <= 0) {
             return true;
         }
+        if (!this.systemName?.trim()) {
+            return true;
+        }
         return !!this.currencyValidationMessage();
     }
 
     enabledCurrenciesPreview() {
         return this.getEnabledCurrencies().join(', ');
+    }
+
+    clearLogo() {
+        this.systemLogoUrl = '';
+        this.logoFileName = '';
     }
 
     private applySystemSettings(settings: SystemSettings) {
@@ -235,6 +278,9 @@ export class Settings implements OnInit {
         this.enabledCUP = enabled.includes('CUP');
         this.enabledUSD = enabled.includes('USD');
         this.exchangeRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
+        this.systemName = (settings.systemName || 'POS System').trim() || 'POS System';
+        this.systemLogoUrl = (settings.systemLogoUrl || '').trim();
+        this.logoFileName = '';
         this.validateCurrencies();
         this.enforceDefaultCurrencyEnabled();
     }
@@ -271,6 +317,62 @@ export class Settings implements OnInit {
                 this.exchangeRateHistory.set([]);
             }
         });
+    }
+
+    onLogoFileSelected(event: Event) {
+        const input = event.target as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (!file) return;
+
+        const maxBytes = this.logoMaxFileMb * 1024 * 1024;
+        if (file.size > maxBytes) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Logo inválido',
+                detail: `El archivo supera ${this.logoMaxFileMb}MB`
+            });
+            if (input) input.value = '';
+            return;
+        }
+
+        if (!file.type.startsWith('image/')) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Logo inválido',
+                detail: 'Debes seleccionar una imagen válida'
+            });
+            if (input) input.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = typeof reader.result === 'string' ? reader.result.trim() : '';
+            if (!dataUrl) {
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo leer el archivo seleccionado'
+                });
+                return;
+            }
+            this.systemLogoUrl = dataUrl;
+            this.logoFileName = file.name;
+            this.messageService.add({
+                severity: 'success',
+                summary: 'Logo listo',
+                detail: 'Logo cargado correctamente. Guarda para aplicar al sistema.'
+            });
+        };
+        reader.onerror = () => {
+            this.messageService.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'No se pudo procesar el archivo del logo'
+            });
+        };
+        reader.readAsDataURL(file);
+        if (input) input.value = '';
     }
 
     formatDateTime(value: string | Date | null | undefined): string {

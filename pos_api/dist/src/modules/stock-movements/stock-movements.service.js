@@ -168,6 +168,44 @@ let StockMovementsService = class StockMovementsService {
             return movement;
         });
     }
+    async delete(movementId) {
+        const movement = await this.prisma.stockMovement.findUnique({
+            where: { id: movementId },
+            include: {
+                product: { select: { id: true, name: true } },
+                fromWarehouse: { select: { id: true, name: true } },
+                toWarehouse: { select: { id: true, name: true } },
+            },
+        });
+        if (!movement)
+            throw new common_1.NotFoundException("Movimiento no encontrado.");
+        if (this.isProtectedSystemMovement(movement.reason)) {
+            throw new common_1.BadRequestException("No se puede eliminar un movimiento generado automáticamente por ventas o procesos del sistema.");
+        }
+        return this.prisma.$transaction(async (tx) => {
+            if (movement.type === "IN") {
+                if (!movement.toWarehouseId) {
+                    throw new common_1.BadRequestException("Movimiento IN inválido: no tiene almacén de destino.");
+                }
+                await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+            }
+            else if (movement.type === "OUT") {
+                if (!movement.fromWarehouseId) {
+                    throw new common_1.BadRequestException("Movimiento OUT inválido: no tiene almacén de origen.");
+                }
+                await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
+            }
+            else if (movement.type === "TRANSFER") {
+                if (!movement.fromWarehouseId || !movement.toWarehouseId) {
+                    throw new common_1.BadRequestException("Movimiento TRANSFER inválido: faltan almacenes.");
+                }
+                await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
+                await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+            }
+            await tx.stockMovement.delete({ where: { id: movement.id } });
+            return movement;
+        });
+    }
     async adjustStock(tx, warehouseId, productId, qty) {
         const existing = await tx.stock.findUnique({
             where: { warehouseId_productId: { warehouseId, productId } },
@@ -195,6 +233,15 @@ let StockMovementsService = class StockMovementsService {
             return null;
         const trimmed = value.trim();
         return trimmed.length > 0 ? trimmed : null;
+    }
+    isProtectedSystemMovement(reason) {
+        const value = (reason || "").trim().toUpperCase();
+        if (!value)
+            return false;
+        return (value === "VENTA" ||
+            value === "VENTA_DIRECTA" ||
+            value.startsWith("ELIMINACION_VENTA:") ||
+            value.startsWith("RESET_STOCK:"));
     }
 };
 exports.StockMovementsService = StockMovementsService;

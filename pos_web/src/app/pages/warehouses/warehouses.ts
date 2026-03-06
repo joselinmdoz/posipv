@@ -23,6 +23,7 @@ import {
     StockMovement 
 } from '@/app/core/services/warehouses.service';
 import { ProductsService, Product } from '@/app/core/services/products.service';
+import { AuthService } from '@/app/core/services/auth.service';
 
 type StockColumnKey =
     | 'image'
@@ -63,8 +64,12 @@ type StockColumnKey =
     template: `
         <p-toolbar styleClass="mb-6">
             <ng-template #start>
-                <p-button label="Nuevo Almacén" icon="pi pi-plus" severity="secondary" class="mr-2" (onClick)="openNewWarehouse()" />
-                <p-button label="Nuevo Movimiento" icon="pi pi-arrow-right-arrow-left" severity="secondary" (onClick)="openNewMovement()" />
+                @if (canManageWarehouses()) {
+                    <p-button label="Nuevo Almacén" icon="pi pi-plus" severity="secondary" class="mr-2" (onClick)="openNewWarehouse()" />
+                }
+                @if (canManageMovements()) {
+                    <p-button label="Nuevo Movimiento" icon="pi pi-arrow-right-arrow-left" severity="secondary" (onClick)="openNewMovement()" />
+                }
             </ng-template>
         </p-toolbar>
 
@@ -105,10 +110,18 @@ type StockColumnKey =
                         <td>
                             <p-button icon="pi pi-eye" class="mr-2" [rounded]="true" [outlined]="true" severity="info" 
                                       (onClick)="viewStock(warehouse)" pTooltip="Ver stock" />
-                            <p-button icon="pi pi-pencil" class="mr-2" [rounded]="true" [outlined]="true" severity="success" 
-                                      (onClick)="editWarehouse(warehouse)" />
-                            <p-button icon="pi pi-trash" [rounded]="true" [outlined]="true" severity="danger" 
-                                      (onClick)="deleteWarehouse(warehouse)" />
+                            @if (canResetWarehouseStock()) {
+                                <p-button icon="pi pi-refresh" class="mr-2" [rounded]="true" [outlined]="true" severity="warn"
+                                          (onClick)="resetWarehouseStock(warehouse)" pTooltip="Resetear stock" />
+                            }
+                            @if (canManageWarehouses()) {
+                                <p-button icon="pi pi-pencil" class="mr-2" [rounded]="true" [outlined]="true" severity="success" 
+                                          (onClick)="editWarehouse(warehouse)" />
+                            }
+                            @if (canDeleteWarehouses()) {
+                                <p-button icon="pi pi-trash" [rounded]="true" [outlined]="true" severity="danger" 
+                                          (onClick)="deleteWarehouse(warehouse)" />
+                            }
                         </td>
                     </tr>
                 </ng-template>
@@ -200,6 +213,7 @@ type StockColumnKey =
                         <th>Origen</th>
                         <th>Destino</th>
                         <th>Motivo</th>
+                        <th class="text-center">Acciones</th>
                     </tr>
                 </ng-template>
                 <ng-template #body let-movement>
@@ -214,10 +228,21 @@ type StockColumnKey =
                         <td>{{ movement.fromWarehouse?.name || '-' }}</td>
                         <td>{{ movement.toWarehouse?.name || '-' }}</td>
                         <td>{{ movement.reason || '-' }}</td>
+                        <td class="text-center">
+                            @if (canDeleteMovements()) {
+                                <p-button
+                                    icon="pi pi-trash"
+                                    [rounded]="true"
+                                    [outlined]="true"
+                                    severity="danger"
+                                    (onClick)="deleteMovement(movement)"
+                                />
+                            }
+                        </td>
                     </tr>
                 </ng-template>
                 <ng-template #emptymessage>
-                    <tr><td colspan="7">No hay movimientos de stock.</td></tr>
+                    <tr><td colspan="8">No hay movimientos de stock.</td></tr>
                 </ng-template>
             </p-table>
         </div>
@@ -252,7 +277,7 @@ type StockColumnKey =
             </div>
             <ng-template #footer>
                 <p-button label="Cancelar" icon="pi pi-times" text (onClick)="hideWarehouseDialog()" />
-                <p-button label="Guardar" icon="pi pi-check" (onClick)="saveWarehouse()" />
+                <p-button label="Guardar" icon="pi pi-check" [disabled]="!canManageWarehouses()" (onClick)="saveWarehouse()" />
             </ng-template>
         </p-dialog>
 
@@ -511,7 +536,7 @@ type StockColumnKey =
             </div>
             <ng-template #footer>
                 <p-button label="Cancelar" icon="pi pi-times" text (onClick)="hideMovementDialog()" />
-                <p-button label="Guardar" icon="pi pi-check" [disabled]="!isMovementFormValid()" (onClick)="saveMovement()" />
+                <p-button label="Guardar" icon="pi pi-check" [disabled]="!isMovementFormValid() || !canManageMovements()" (onClick)="saveMovement()" />
             </ng-template>
         </p-dialog>
 
@@ -586,7 +611,8 @@ export class Warehouses implements OnInit {
         private warehousesService: WarehousesService,
         private productsService: ProductsService,
         private messageService: MessageService,
-        private confirmationService: ConfirmationService
+        private confirmationService: ConfirmationService,
+        private authService: AuthService
     ) {}
 
     ngOnInit() {
@@ -666,12 +692,20 @@ export class Warehouses implements OnInit {
     }
 
     openNewWarehouse() {
+        if (!this.canManageWarehouses()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar almacenes.' });
+            return;
+        }
         this.warehouse = { name: '', code: '', type: 'TPV', active: true };
         this.isEditMode.set(false);
         this.warehouseDialog = true;
     }
 
     editWarehouse(warehouse: Warehouse) {
+        if (!this.canManageWarehouses()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar almacenes.' });
+            return;
+        }
         this.selectedWarehouse = warehouse;
         this.warehouse = { ...warehouse };
         this.isEditMode.set(true);
@@ -684,6 +718,10 @@ export class Warehouses implements OnInit {
     }
 
     saveWarehouse() {
+        if (!this.canManageWarehouses()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar almacenes.' });
+            return;
+        }
         if (!this.warehouse.name || !this.warehouse.code) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Complete los campos requeridos' });
             return;
@@ -704,6 +742,10 @@ export class Warehouses implements OnInit {
     }
 
     deleteWarehouse(warehouse: Warehouse) {
+        if (!this.canDeleteWarehouses()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para eliminar almacenes.' });
+            return;
+        }
         this.confirmationService.confirm({
             message: `¿Eliminar el almacén ${warehouse.name}?`,
             header: 'Confirmar',
@@ -715,6 +757,38 @@ export class Warehouses implements OnInit {
                         this.loadWarehouses();
                     },
                     error: () => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar' })
+                });
+            }
+        });
+    }
+
+    resetWarehouseStock(warehouse: Warehouse) {
+        if (!this.canResetWarehouseStock()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para resetear stock.' });
+            return;
+        }
+        this.confirmationService.confirm({
+            message: `Se pondrá en cero el stock del almacén ${warehouse.name}. ¿Desea continuar?`,
+            header: 'Resetear stock',
+            icon: 'pi pi-exclamation-triangle',
+            accept: () => {
+                this.warehousesService.resetWarehouseStock(warehouse.id, `Reset manual ${new Date().toISOString()}`).subscribe({
+                    next: (result) => {
+                        this.messageService.add({
+                            severity: 'success',
+                            summary: 'Stock reseteado',
+                            detail: `Productos afectados: ${result.resetProducts}. Cantidad total: ${result.resetQty}.`
+                        });
+                        this.loadMovements();
+                        if (this.selectedWarehouse?.id === warehouse.id && this.stockDialog) {
+                            this.viewStock(warehouse);
+                        }
+                    },
+                    error: (err) => this.messageService.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: err?.error?.message || 'No se pudo resetear el stock'
+                    })
                 });
             }
         });
@@ -732,6 +806,10 @@ export class Warehouses implements OnInit {
     }
 
     openNewMovement() {
+        if (!this.canManageMovements()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar movimientos.' });
+            return;
+        }
         this.movement = { type: 'IN', productId: '', qty: 1, fromWarehouseId: '', toWarehouseId: '', reason: '' };
         this.movementDialog = true;
     }
@@ -771,6 +849,10 @@ export class Warehouses implements OnInit {
     }
 
     saveMovement() {
+        if (!this.canManageMovements()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar movimientos.' });
+            return;
+        }
         if (!this.movement.productId) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Seleccione un producto' });
             return;
@@ -822,6 +904,56 @@ export class Warehouses implements OnInit {
                 detail: err?.error?.message || 'Error al registrar movimiento'
             })
         });
+    }
+
+    deleteMovement(movement: StockMovement) {
+        if (!this.canDeleteMovements()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para eliminar movimientos.' });
+            return;
+        }
+
+        this.confirmationService.confirm({
+            message: 'Se eliminará el movimiento y se revertirá su impacto en el stock. ¿Desea continuar?',
+            header: 'Eliminar movimiento',
+            icon: 'pi pi-exclamation-triangle',
+            accept: () => {
+                this.warehousesService.deleteMovement(movement.id).subscribe({
+                    next: () => {
+                        this.messageService.add({
+                            severity: 'success',
+                            summary: 'Movimiento eliminado',
+                            detail: 'El movimiento fue eliminado correctamente.'
+                        });
+                        this.loadMovements();
+                    },
+                    error: (err) => this.messageService.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: err?.error?.message || 'No se pudo eliminar el movimiento'
+                    })
+                });
+            }
+        });
+    }
+
+    canManageWarehouses() {
+        return this.authService.hasPermission('warehouses.manage');
+    }
+
+    canDeleteWarehouses() {
+        return this.authService.hasPermission('warehouses.delete');
+    }
+
+    canResetWarehouseStock() {
+        return this.authService.hasPermission('warehouses.reset-stock');
+    }
+
+    canManageMovements() {
+        return this.authService.hasPermission('stock-movements.manage');
+    }
+
+    canDeleteMovements() {
+        return this.authService.hasPermission('stock-movements.delete');
     }
 
     getMovementTypeLabel(type: string): string {

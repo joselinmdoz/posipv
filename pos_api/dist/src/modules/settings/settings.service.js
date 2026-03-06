@@ -18,6 +18,7 @@ let SettingsService = class SettingsService {
         this.prisma = prisma;
         this.systemSettingsId = "default";
         this.supportedCurrencies = ["CUP", "USD"];
+        this.maxSystemLogoLength = 1_000_000;
     }
     async getSystemSettings() {
         let settings = await this.prisma.systemSettings.findUnique({
@@ -30,6 +31,8 @@ let SettingsService = class SettingsService {
                     defaultCurrency: "CUP",
                     enabledCurrencies: ["CUP", "USD"],
                     exchangeRateUsdToCup: (0, decimal_1.dec)("1"),
+                    systemName: "POS System",
+                    systemLogoUrl: null,
                 },
             });
         }
@@ -47,6 +50,8 @@ let SettingsService = class SettingsService {
         if (!Number.isFinite(exchangeRateUsdToCup) || exchangeRateUsdToCup <= 0) {
             throw new common_1.BadRequestException("La tasa de cambio debe ser mayor a 0.");
         }
+        const systemName = this.normalizeSystemName(payload.systemName ?? current.systemName);
+        const systemLogoUrl = this.normalizeSystemLogoUrl(payload.systemLogoUrl !== undefined ? payload.systemLogoUrl : current.systemLogoUrl);
         const rateDecimal = (0, decimal_1.dec)(exchangeRateUsdToCup.toString());
         const hasRateChanged = !(0, decimal_1.dec)(current.exchangeRateUsdToCup).equals(rateDecimal);
         const settings = await this.prisma.systemSettings.upsert({
@@ -56,11 +61,15 @@ let SettingsService = class SettingsService {
                 defaultCurrency,
                 enabledCurrencies,
                 exchangeRateUsdToCup: rateDecimal,
+                systemName,
+                systemLogoUrl,
             },
             update: {
                 defaultCurrency,
                 enabledCurrencies,
                 exchangeRateUsdToCup: rateDecimal,
+                systemName,
+                systemLogoUrl,
             },
         });
         if (hasRateChanged) {
@@ -97,6 +106,8 @@ let SettingsService = class SettingsService {
                     defaultCurrency: "CUP",
                     enabledCurrencies: ["CUP", "USD"],
                     exchangeRateUsdToCup: (0, decimal_1.dec)("1"),
+                    systemName: "POS System",
+                    systemLogoUrl: null,
                 },
             });
         }
@@ -362,6 +373,18 @@ let SettingsService = class SettingsService {
             throw new common_1.BadRequestException(`La moneda ${normalized} no está habilitada en configuración general.`);
         }
         return normalized;
+    }
+    normalizeSystemName(value) {
+        const normalized = String(value ?? "").trim();
+        if (!normalized)
+            return "POS System";
+        return normalized.slice(0, 120);
+    }
+    normalizeSystemLogoUrl(value) {
+        const normalized = String(value ?? "").trim();
+        if (!normalized)
+            return null;
+        return normalized.slice(0, this.maxSystemLogoLength);
     }
     async ensureInitialExchangeRateRecord(rate) {
         const existing = await this.prisma.exchangeRateRecord.findFirst({

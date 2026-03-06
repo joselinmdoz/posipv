@@ -1,47 +1,38 @@
-# Guia de despliegue en produccion con Docker (base vacia)
+# Guia de despliegue en produccion con Docker
+
+Esta guia cubre dos escenarios:
+- Primer despliegue (base vacia).
+- Actualizacion de version sin perder datos (base con informacion en uso).
+
+Proyecto: `posipv`  
+Compose: `docker-compose.prod.yml`  
+Entorno: `.env.prod`
 
 ## 1) Requisitos
-- Docker Engine.
+- Docker Engine 24+.
 - Docker Compose v2 (`docker compose version`).
-- Puerto `80/tcp` abierto.
+- Puertos publicados segun tu infraestructura (normalmente `80/tcp`).
+- Acceso al repo en el servidor.
 
-## 2) Consolidar migraciones en una sola `init` (recomendado si no hay datos)
-Ejecutar una sola vez:
+## 2) Variables de entorno de produccion
+Crear archivo:
 
-```bash
-cd pos_api
-npm ci
-find prisma/migrations -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
-ts=$(date +%Y%m%d%H%M%S)
-mkdir -p prisma/migrations/${ts}_init
-PRISMA_HIDE_UPDATE_MESSAGE=1 ./node_modules/.bin/prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script | awk 'BEGIN{p=0} /^-- /{p=1} p{print}' > prisma/migrations/${ts}_init/migration.sql
-sed -n '1,10p' prisma/migrations/${ts}_init/migration.sql
-cd ..
-```
-
-Verificar que en `pos_api/prisma/migrations` quede solo:
-- `${ts}_init`
-- `migration_lock.toml`
-
-## 3) Variables de entorno
 ```bash
 cp .env.prod.example .env.prod
 ```
 
-Editar `.env.prod` y definir:
+Ajustar al menos:
 - `POSTGRES_PASSWORD`
 - `JWT_SECRET`
 - `CORS_ORIGIN`
 - `SEED_ADMIN_EMAIL`
 - `SEED_ADMIN_PASSWORD`
 
-## 4) Limpieza total del despliegue anterior
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml down -v --remove-orphans
-docker volume rm -f pos_pgdata_prod pos_uploads_prod 2>/dev/null || true
-```
+Verificar que `.env.prod` no quede versionado en Git.
 
-## 5) Build y arranque desde cero
+## 3) Primer despliegue (base vacia)
+Ejecutar una sola vez en un entorno nuevo:
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec api npx prisma migrate deploy
@@ -49,63 +40,149 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec api npx pris
 docker compose --env-file .env.prod -f docker-compose.prod.yml restart api
 ```
 
-## 6) Verificacion
+Verificacion:
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=150 api
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=200 api
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec api npx prisma migrate status
 ```
 
-Probar:
-- `http://localhost/`
-- `http://localhost/health`
-- `http://localhost/api/health`
+## 4) Actualizar version SIN perder datos (recomendado)
+Este es el flujo correcto cuando ya tienes informacion en produccion.
 
-Login:
-- Email: valor de `SEED_ADMIN_EMAIL`
-- Password: valor de `SEED_ADMIN_PASSWORD`
+### 4.1 Backup previo obligatorio
+Desde la raiz del proyecto:
 
-## 7) Recuperar admin si login da 401
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec -e ADMIN_EMAIL=admin@pos.local -e ADMIN_PASS=Admin1234 api node -e 'const {PrismaClient,Role}=require("@prisma/client"); const bcrypt=require("bcryptjs"); (async()=>{const prisma=new PrismaClient(); const hash=await bcrypt.hash(process.env.ADMIN_PASS,10); await prisma.user.upsert({where:{email:process.env.ADMIN_EMAIL},update:{passwordHash:hash,role:Role.ADMIN,active:true},create:{email:process.env.ADMIN_EMAIL,passwordHash:hash,role:Role.ADMIN,active:true}}); console.log("admin listo"); await prisma.$disconnect();})().catch(e=>{console.error(e);process.exit(1);});'
+ts=$(date +%Y%m%d_%H%M%S)
+mkdir -p backups
 ```
 
-## 8) Operacion diaria
+Backup de PostgreSQL:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U pos -d pos -Fc > backups/pos_${ts}.dump
+```
+
+Backup de archivos subidos (`uploads`):
+
+```bash
+docker run --rm \
+  -v pos_uploads_prod:/data \
+  -v "$PWD/backups":/backup \
+  alpine sh -c "tar czf /backup/uploads_${ts}.tar.gz -C /data ."
+```
+
+### 4.2 Desplegar nueva version
+No uses `down -v`, no borres volumenes, no recrees migraciones.
+
+```bash
+git pull
+docker compose --env-file .env.prod -f docker-compose.prod.yml build api web
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api web
+```
+
+### 4.3 Validacion post-despliegue
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=200 api
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=150 web
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec api npx prisma migrate status
+```
+
+Endpoints de salud esperados:
+- `http://<host>/health`
+- `http://<host>/api/health`
+
+## 5) Recuperar usuario admin (si login falla)
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec \
+  -e ADMIN_EMAIL=admin@pos.local \
+  -e ADMIN_PASS=Admin1234 \
+  api node -e 'const {PrismaClient,Role}=require("@prisma/client"); const bcrypt=require("bcryptjs"); (async()=>{const prisma=new PrismaClient(); const hash=await bcrypt.hash(process.env.ADMIN_PASS,10); await prisma.user.upsert({where:{email:process.env.ADMIN_EMAIL},update:{passwordHash:hash,role:Role.ADMIN,active:true},create:{email:process.env.ADMIN_EMAIL,passwordHash:hash,role:Role.ADMIN,active:true}}); console.log("admin listo"); await prisma.$disconnect();})().catch(e=>{console.error(e);process.exit(1);});'
+```
+
+## 6) Rollback rapido (si algo sale mal)
+1. Regresar codigo a commit estable.
+2. Rebuild y levantar servicios.
+3. Si hubo cambio de esquema incompatible, restaurar backup de DB.
+
+### 6.1 Restaurar DB desde dump
+Atencion: esto sobreescribe la base actual.
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml stop api web
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  psql -U pos -d postgres -c "DROP DATABASE IF EXISTS pos;"
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  psql -U pos -d postgres -c "CREATE DATABASE pos OWNER pos;"
+cat backups/pos_<timestamp>.dump | docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  pg_restore -U pos -d pos --clean --if-exists --no-owner --no-privileges
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api web
+```
+
+### 6.2 Restaurar uploads
+
+```bash
+docker run --rm \
+  -v pos_uploads_prod:/data \
+  -v "$PWD/backups":/backup \
+  alpine sh -c "rm -rf /data/* && tar xzf /backup/uploads_<timestamp>.tar.gz -C /data"
+```
+
+## 7) Operacion diaria
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f
-docker compose --env-file .env.prod -f docker-compose.prod.yml restart
+docker compose --env-file .env.prod -f docker-compose.prod.yml restart api web
 docker compose --env-file .env.prod -f docker-compose.prod.yml down
 ```
 
-## 9) Actualizar version
-```bash
-git pull
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+## 8) Buenas practicas importantes
+- Nunca ejecutar en produccion:
+  - `docker compose ... down -v`
+  - borrado manual de volumenes `pos_pgdata_prod` y `pos_uploads_prod`
+  - recrear carpeta `prisma/migrations` en caliente
+- Aplicar migraciones siempre con `prisma migrate deploy`.
+- Mantener backups versionados por fecha (`backups/pos_YYYYmmdd_HHMMSS.dump`).
+- Validar `health` y login admin despues de cada release.
+
+## 9) Ajuste recomendado del compose (hardening)
+Actualmente el servicio `api` ejecuta `npx prisma db seed` en cada arranque:
+
+```yaml
+command: sh -c "npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js"
 ```
+
+Recomendado en produccion:
+
+```yaml
+command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
+```
+
+`seed` se ejecuta manualmente solo cuando sea necesario para no introducir cambios de datos no deseados en reinicios.
 
 ## 10) Troubleshooting rapido
-- Si `migrate deploy` falla con `P3018` y el SQL dice `syntax error at or near "Need"` o `[dotenv`:
+- Si `migrate deploy` falla:
+
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml down -v --remove-orphans
-docker volume rm -f pos_pgdata_prod pos_uploads_prod 2>/dev/null || true
-
-cd pos_api
-npm ci
-find prisma/migrations -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
-ts=$(date +%Y%m%d%H%M%S)
-mkdir -p prisma/migrations/${ts}_init
-PRISMA_HIDE_UPDATE_MESSAGE=1 ./node_modules/.bin/prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script | awk 'BEGIN{p=0} /^-- /{p=1} p{print}' > prisma/migrations/${ts}_init/migration.sql
-cd ..
-
-docker compose --env-file .env.prod -f docker-compose.prod.yml build --no-cache api
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm api npx prisma db seed
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api web
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=300 api
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm api npx prisma migrate status
 ```
-- Si alguna ruta `/api/...` devuelve `500`:
+
+- Si API responde `500`:
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec api npx prisma migrate deploy
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=200 api
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=250 api
 ```
-- Los warnings de navegador sobre `touchstart/touchmove` no causan errores 500 del backend.
+
+- Si frontend no conecta a backend:
+  - revisar `CORS_ORIGIN` en `.env.prod`
+  - revisar rutas proxy/config nginx del contenedor `web`

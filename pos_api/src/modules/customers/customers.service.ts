@@ -17,6 +17,15 @@ type CreateCustomerInput = {
   address?: string;
 };
 
+type UpdateCustomerInput = Partial<{
+  name: string;
+  identification: string;
+  phone: string;
+  email: string;
+  address: string;
+  active: boolean;
+}>;
+
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -126,6 +135,68 @@ export class CustomersService {
     }
   }
 
+  async findOne(clientId: string) {
+    const customer = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        name: true,
+        identification: true,
+        phone: true,
+        email: true,
+        address: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException("Cliente no encontrado.");
+    }
+
+    return customer;
+  }
+
+  async update(clientId: string, input: UpdateCustomerInput) {
+    await this.findOne(clientId);
+
+    const data: Prisma.ClientUpdateInput = {};
+    if (input.name !== undefined) data.name = this.normalizeRequired(input.name, "Nombre de cliente requerido.");
+    if (input.identification !== undefined) data.identification = this.normalizeRequired(input.identification, "Identificación requerida.");
+    if (input.phone !== undefined) data.phone = this.normalize(input.phone);
+    if (input.email !== undefined) data.email = this.normalize(input.email);
+    if (input.address !== undefined) data.address = this.normalize(input.address);
+    if (input.active !== undefined) data.active = Boolean(input.active);
+
+    if (Object.keys(data).length === 0) {
+      return this.findOne(clientId);
+    }
+
+    try {
+      return await this.prisma.client.update({
+        where: { id: clientId },
+        data,
+        select: {
+          id: true,
+          name: true,
+          identification: true,
+          phone: true,
+          email: true,
+          address: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Ya existe un cliente con esa identificación.");
+      }
+      throw new BadRequestException("No se pudo actualizar el cliente.");
+    }
+  }
+
   async getHistory(clientId: string) {
     const customer = await this.prisma.client.findUnique({
       where: { id: clientId },
@@ -218,7 +289,7 @@ export class CustomersService {
   }
 
   private parseActive(value?: string): boolean | null {
-    if (value === undefined || value === null || value === "") return true;
+    if (value === undefined || value === null || value === "") return null;
     if (value === "true") return true;
     if (value === "false") return false;
     throw new BadRequestException("Parámetro active inválido. Use true o false.");

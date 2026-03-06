@@ -1,0 +1,56 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>POS iPV</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <div class="login-shell">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Iniciar sesion</ion-card-title>
+        <ion-card-subtitle>Aplicacion movil</ion-card-subtitle>
+      </ion-card-header>
+
+      <ion-card-content>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+          <ion-list lines="inset">
+            <ion-item>
+              <ion-input
+                formControlName="email"
+                label="Correo"
+                labelPlacement="stacked"
+                type="email"
+                autocomplete="email"
+              ></ion-input>
+            </ion-item>
+
+            <ion-item>
+              <ion-input
+                formControlName="password"
+                label="Contrasena"
+                labelPlacement="stacked"
+                type="password"
+                autocomplete="current-password"
+              ></ion-input>
+            </ion-item>
+          </ion-list>
+
+          @if (errorMessage) {
+            <ion-text color="danger">
+              <p class="error">{{ errorMessage }}</p>
+            </ion-text>
+          }
+
+          <ion-button expand="block" type="submit" [disabled]="isSubmitting">
+            @if (isSubmitting) {
+              <ion-spinner name="dots"></ion-spinner>
+            } @else {
+              <span>Entrar</span>
+            }
+          </ion-button>
+        </form>
+      </ion-card-content>
+    </ion-card>
+  </div>
+</ion-content>

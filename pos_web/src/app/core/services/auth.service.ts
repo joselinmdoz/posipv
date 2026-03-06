@@ -6,9 +6,10 @@ import { tap, catchError, of } from 'rxjs';
 export interface LoginResponse {
   access_token: string;
   user: {
-    id: number;
+    id: string;
     email: string;
     role: string;
+    permissions: string[];
   };
 }
 
@@ -82,5 +83,19 @@ export class AuthService {
 
   getUser(): LoginResponse['user'] | null {
     return this._currentUser();
+  }
+
+  hasPermission(permission: string): boolean {
+    if (!permission) return false;
+    const user = this._currentUser();
+    if (!user) return false;
+    if (String(user.role || '').toUpperCase() === 'ADMIN') return true;
+    const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+    return permissions.includes(permission);
+  }
+
+  hasAnyPermission(permissions: string[]): boolean {
+    if (!permissions?.length) return false;
+    return permissions.some((permission) => this.hasPermission(permission));
   }
 }

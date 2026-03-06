@@ -103,7 +103,7 @@ export class Login {
                     summary: 'Success',
                     detail: 'Login successful!'
                 });
-                this.router.navigate(['/']);
+                this.router.navigate([this.resolveLandingRoute()]);
             },
             error: (error) => {
                 this.isLoading = false;
@@ -114,5 +114,21 @@ export class Login {
                 });
             }
         });
+    }
+
+    private resolveLandingRoute(): string {
+        const auth = this.authService;
+        if (auth.hasPermission('dashboard.view')) return '/';
+        if (auth.hasPermission('sales.tpv')) return '/tpv-management';
+        if (auth.hasPermission('sales.direct')) return '/direct-sales';
+        if (auth.hasPermission('reports.view')) return '/reports';
+        if (auth.hasPermission('products.view')) return '/products';
+        if (auth.hasPermission('warehouses.view')) return '/warehouses';
+        if (auth.hasPermission('customers.view')) return '/customers';
+        if (auth.hasPermission('employees.view')) return '/employees';
+        if (auth.hasPermission('users.manage')) return '/users';
+        if (auth.hasPermission('permissions.manage')) return '/users';
+        if (auth.hasPermission('settings.manage')) return '/settings';
+        return '/auth/access';
     }
 }

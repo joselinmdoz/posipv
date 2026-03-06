@@ -3,6 +3,12 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { AppMenuitem } from './app.menuitem';
+import { AuthService } from '@/app/core/services/auth.service';
+
+type AppMenuItem = MenuItem & {
+    permissions?: string[];
+    items?: AppMenuItem[];
+};
 
 @Component({
     selector: 'app-menu',
@@ -21,41 +27,44 @@ import { AppMenuitem } from './app.menuitem';
 export class AppMenu {
     model: MenuItem[] = [];
 
+    constructor(private authService: AuthService) {}
+
     ngOnInit() {
-        this.model = [
+        const baseModel: AppMenuItem[] = [
             {
                 label: 'Inicio',
-                items: [{ label: 'Dashboard', icon: 'pi pi-fw pi-home', routerLink: ['/'] }]
+                items: [{ label: 'Dashboard', icon: 'pi pi-fw pi-home', routerLink: ['/'], permissions: ['dashboard.view'] }]
             },
             {
                 label: 'Gestión',
                 icon: 'pi pi-fw pi-briefcase',
                 items: [
-                    
-                    { label: 'Productos', icon: 'pi pi-fw pi-box', routerLink: ['/products'] },
-                    { label: 'Tipos de Producto', icon: 'pi pi-fw pi-tag', routerLink: ['/product-types'] },
-                    { label: 'Categorías', icon: 'pi pi-fw pi-folder', routerLink: ['/product-categories'] },
-                    { label: 'Unidades de Medida', icon: 'pi pi-fw pi-slack', routerLink: ['/measurement-units'] },
-                    { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'] },
-                    { label: 'TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'] },
-                    { label: 'Ventas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'] },
-                    { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'] }
+                    { label: 'Productos', icon: 'pi pi-fw pi-box', routerLink: ['/products'], permissions: ['products.view'] },
+                    { label: 'Tipos de Producto', icon: 'pi pi-fw pi-tag', routerLink: ['/product-types'], permissions: ['products.manage'] },
+                    { label: 'Categorías', icon: 'pi pi-fw pi-folder', routerLink: ['/product-categories'], permissions: ['products.manage'] },
+                    { label: 'Unidades de Medida', icon: 'pi pi-fw pi-slack', routerLink: ['/measurement-units'], permissions: ['products.manage'] },
+                    { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'], permissions: ['warehouses.view'] },
+                    { label: 'TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'], permissions: ['sales.tpv', 'tpv.manage'] },
+                    { label: 'Ventas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'], permissions: ['sales.direct'] },
+                    { label: 'Clientes', icon: 'pi pi-fw pi-address-book', routerLink: ['/customers'], permissions: ['customers.view'] },
+                    { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'], permissions: ['tpv.manage'] }
                 ]
             },
             {
                 label: 'Reportes',
                 icon: 'pi pi-chart-bar',
                 items: [
-                    { label: 'Ventas', icon: 'pi pi-fw pi-chart-line', routerLink: ['/reports'] },
-                    { label: 'Inventario (IPV)', icon: 'pi pi-fw pi-list', routerLink: ['/inventory-reports'] }
+                    { label: 'Ventas', icon: 'pi pi-fw pi-chart-line', routerLink: ['/reports'], permissions: ['reports.view'] },
+                    { label: 'Inventario (IPV)', icon: 'pi pi-fw pi-list', routerLink: ['/inventory-reports'], permissions: ['reports.view'] }
                 ]
             },
              {
                 label: 'Administración',
                 icon: 'pi pi-chart-bar',
                 items: [
-                 { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'] },
-                { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'] },
+                 { label: 'Empleados', icon: 'pi pi-fw pi-id-card', routerLink: ['/employees'], permissions: ['employees.view'] },
+                 { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'], permissions: ['users.manage', 'permissions.manage'] },
+                { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'], permissions: ['settings.manage'] },
                 ]
             },
             // {
@@ -195,5 +204,37 @@ export class AppMenu {
             //     ]
             // }
         ];
+        this.model = this.filterMenuByPermissions(baseModel);
+    }
+
+    private filterMenuByPermissions(items: AppMenuItem[]): AppMenuItem[] {
+        const visibleItems: AppMenuItem[] = [];
+
+        for (const item of items) {
+            if (item.separator) {
+                visibleItems.push(item);
+                continue;
+            }
+
+            const hasPermission = !item.permissions || this.authService.hasAnyPermission(item.permissions);
+            let children: AppMenuItem[] | undefined;
+
+            if (item.items?.length) {
+                children = this.filterMenuByPermissions(item.items);
+                if (!children.length && !item.routerLink && !item.url) {
+                    continue;
+                }
+            }
+
+            const hasVisibleChildren = !!children?.length;
+            if (!hasPermission && !hasVisibleChildren) continue;
+
+            visibleItems.push({
+                ...item,
+                items: children,
+            });
+        }
+
+        return visibleItems;
     }
 }

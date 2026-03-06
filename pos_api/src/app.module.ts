@@ -23,6 +23,8 @@ import { MeasurementUnitTypesModule } from "./modules/measurement-unit-types/mea
 import { MeasurementUnitsModule } from "./modules/measurement-units/measurement-units.module";
 import { DirectSalesModule } from "./modules/direct-sales/direct-sales.module";
 import { CustomersModule } from "./modules/customers/customers.module";
+import { EmployeesModule } from "./modules/employees/employees.module";
+import { UserPermissionsModule } from "./modules/user-permissions/user-permissions.module";
 
 @Module({
   imports: [
@@ -51,6 +53,8 @@ import { CustomersModule } from "./modules/customers/customers.module";
     MeasurementUnitsModule,
     DirectSalesModule,
     CustomersModule,
+    EmployeesModule,
+    UserPermissionsModule,
   ],
 })
 export class AppModule {}

@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CustomersService } from "./customers.service";
-import { IsBooleanString, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsBooleanString, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 class CreateCustomerDto {
   @IsString() @MinLength(2) @MaxLength(120) name!: string;
@@ -9,6 +9,15 @@ class CreateCustomerDto {
   @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @IsOptional() @IsString() @MaxLength(120) email?: string;
   @IsOptional() @IsString() @MaxLength(300) address?: string;
+}
+
+class UpdateCustomerDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(120) name?: string;
+  @IsOptional() @IsString() @MinLength(3) @MaxLength(40) identification?: string;
+  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsString() @MaxLength(120) email?: string;
+  @IsOptional() @IsString() @MaxLength(300) address?: string;
+  @IsOptional() @IsBoolean() active?: boolean;
 }
 
 class ListCustomersQueryDto {
@@ -34,6 +43,16 @@ export class CustomersController {
   @Post()
   create(@Body() dto: CreateCustomerDto) {
     return this.service.create(dto);
+  }
+
+  @Get(":id")
+  findOne(@Param("id") id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Put(":id")
+  update(@Param("id") id: string, @Body() dto: UpdateCustomerDto) {
+    return this.service.update(id, dto);
   }
 
   @Get(":id/history")

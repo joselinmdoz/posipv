@@ -23,13 +23,21 @@ let AuthService = class AuthService {
         const user = await this.users.findByEmail(email);
         if (!user)
             throw new common_1.UnauthorizedException("Credenciales inválidas.");
+        if (!user.active)
+            throw new common_1.UnauthorizedException("Usuario inactivo.");
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok)
             throw new common_1.UnauthorizedException("Credenciales inválidas.");
-        const access_token = await this.jwt.signAsync({ sub: user.id, role: user.role, email: user.email });
+        const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+        const access_token = await this.jwt.signAsync({
+            sub: user.id,
+            role: user.role,
+            email: user.email,
+            permissions,
+        });
         return {
             access_token,
-            user: { id: user.id, email: user.email, role: user.role },
+            user: { id: user.id, email: user.email, role: user.role, permissions },
         };
     }
 };

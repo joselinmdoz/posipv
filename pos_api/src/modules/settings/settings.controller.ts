@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Put, Query, UseGuards } from "@nestjs/common";
 import { SettingsService } from "./settings.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 class PaymentMethodSettingDto {
   @IsString() code!: string;
@@ -28,6 +28,8 @@ class SystemSettingsDto {
   @IsOptional() @IsString() @IsIn(["CUP", "USD"]) defaultCurrency?: "CUP" | "USD";
   @IsOptional() @IsArray() @ArrayMinSize(1) @IsString({ each: true }) @IsIn(["CUP", "USD"], { each: true }) enabledCurrencies?: Array<"CUP" | "USD">;
   @IsOptional() @IsNumber() @Min(0.000001) exchangeRateUsdToCup?: number;
+  @IsOptional() @IsString() @MaxLength(120) systemName?: string;
+  @IsOptional() @IsString() @MaxLength(1000000) systemLogoUrl?: string;
 }
 
 @Controller("settings")

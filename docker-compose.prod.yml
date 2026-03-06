@@ -47,7 +47,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-CAMBIA_ESTO_POR_ALGO_LARGO_Y_SERIO_EN_PRODUCCION}
       PORT: 3021
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost,http://127.0.0.1}
-    command: sh -c "npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js"
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
     volumes:
       - pos_uploads_prod:/app/uploads
     depends_on:

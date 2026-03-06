@@ -19,6 +19,8 @@ const sales_service_1 = require("./sales.service");
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 const client_1 = require("@prisma/client");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class ItemDto {
 }
 __decorate([
@@ -79,6 +81,9 @@ let SalesController = class SalesController {
     create(req, dto) {
         return this.service.createSale(req.user.userId, dto);
     }
+    remove(req, saleId) {
+        return this.service.deleteSale(saleId, req.user.userId);
+    }
 };
 exports.SalesController = SalesController;
 __decorate([
@@ -96,6 +101,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, CreateSaleDto]),
     __metadata("design:returntype", void 0)
 ], SalesController.prototype, "create", null);
+__decorate([
+    (0, common_1.Delete)(":id"),
+    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)("sales.delete"),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", void 0)
+], SalesController.prototype, "remove", null);
 exports.SalesController = SalesController = __decorate([
     (0, common_1.Controller)("sales"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

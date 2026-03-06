@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, StockMovementType } from "@prisma/client";
+import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, SaleStatus, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
 
 @Injectable()
@@ -202,6 +202,76 @@ export class SalesService {
       }
 
       return sale;
+    });
+  }
+
+  async deleteSale(saleId: string, deletedByUserId: string) {
+    const sale = await this.prisma.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        items: true,
+        payments: true,
+      },
+    });
+    if (!sale) throw new NotFoundException("Venta no encontrada.");
+
+    return this.prisma.$transaction(async (tx) => {
+      let restockedQty = 0;
+      let restockedProducts = 0;
+
+      if (sale.status === SaleStatus.PAID) {
+        if (!sale.warehouseId) {
+          throw new BadRequestException("La venta no tiene almacén asociado para revertir stock.");
+        }
+
+        const qtyByProduct = new Map<string, number>();
+        for (const item of sale.items) {
+          qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) || 0) + Number(item.qty));
+        }
+
+        for (const [productId, qty] of qtyByProduct.entries()) {
+          await tx.stock.upsert({
+            where: {
+              warehouseId_productId: {
+                warehouseId: sale.warehouseId,
+                productId,
+              },
+            },
+            create: {
+              warehouseId: sale.warehouseId,
+              productId,
+              qty,
+            },
+            update: {
+              qty: { increment: qty },
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              type: StockMovementType.IN,
+              productId,
+              qty,
+              toWarehouseId: sale.warehouseId,
+              reason: `ELIMINACION_VENTA:${sale.documentNumber || sale.id}:${deletedByUserId}`,
+            },
+          });
+
+          restockedQty += qty;
+          restockedProducts += 1;
+        }
+      }
+
+      await tx.payment.deleteMany({ where: { saleId: sale.id } });
+      await tx.saleItem.deleteMany({ where: { saleId: sale.id } });
+      await tx.sale.delete({ where: { id: sale.id } });
+
+      return {
+        ok: true,
+        deletedSaleId: sale.id,
+        restockedProducts,
+        restockedQty,
+      };
     });
   }
 

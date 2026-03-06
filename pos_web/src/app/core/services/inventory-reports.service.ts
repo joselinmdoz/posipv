@@ -131,4 +131,14 @@ export class InventoryReportsService {
   findOne(id: string): Observable<InventoryReport> {
     return this.http.get<InventoryReport>(`${this.baseUrl}/${id}`);
   }
+
+  deleteReport(id: string): Observable<{ ok: boolean; deletedReportId: string }> {
+    return this.http.delete<{ ok: boolean; deletedReportId: string }>(`${this.baseUrl}/${id}`);
+  }
+
+  deleteSessionReport(cashSessionId: string): Observable<{ ok: boolean; cashSessionId: string; deletedReports: number }> {
+    return this.http.delete<{ ok: boolean; cashSessionId: string; deletedReports: number }>(
+      `${this.baseUrl}/session/${cashSessionId}`
+    );
+  }
 }

@@ -25,6 +25,15 @@ export interface CreateCustomerDto {
   address?: string;
 }
 
+export interface UpdateCustomerDto {
+  name?: string;
+  identification?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  active?: boolean;
+}
+
 export interface CustomerHistory {
   customer: {
     id: string;
@@ -78,6 +87,14 @@ export class CustomersService {
 
   create(payload: CreateCustomerDto): Observable<Customer> {
     return this.http.post<Customer>(this.API_URL, payload);
+  }
+
+  findOne(customerId: string): Observable<Customer> {
+    return this.http.get<Customer>(`${this.API_URL}/${customerId}`);
+  }
+
+  update(customerId: string, payload: UpdateCustomerDto): Observable<Customer> {
+    return this.http.put<Customer>(`${this.API_URL}/${customerId}`, payload);
   }
 
   getHistory(customerId: string): Observable<CustomerHistory> {

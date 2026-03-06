@@ -91,6 +91,7 @@ export interface SalesReportFilters {
 })
 export class ReportsService {
   private readonly API_URL = '/api/reports';
+  private readonly SALES_URL = '/api/sales';
 
   constructor(private http: HttpClient) {}
 
@@ -108,5 +109,11 @@ export class ReportsService {
 
   getServerDateInfo(): Observable<ServerDateInfo> {
     return this.http.get<ServerDateInfo>(`${this.API_URL}/server-date`);
+  }
+
+  deleteSale(saleId: string): Observable<{ ok: boolean; deletedSaleId: string; restockedProducts: number; restockedQty: number }> {
+    return this.http.delete<{ ok: boolean; deletedSaleId: string; restockedProducts: number; restockedQty: number }>(
+      `${this.SALES_URL}/${saleId}`
+    );
   }
 }

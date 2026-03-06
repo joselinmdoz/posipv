@@ -1,0 +1,7 @@
+{
+  "name": "pos_mobile",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}

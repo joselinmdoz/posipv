@@ -145,4 +145,15 @@ export class WarehousesService {
   createMovement(dto: CreateStockMovementDto): Observable<StockMovement> {
     return this.http.post<StockMovement>(this.MOVEMENTS_URL, dto);
   }
+
+  deleteMovement(id: string): Observable<StockMovement> {
+    return this.http.delete<StockMovement>(`${this.MOVEMENTS_URL}/${id}`);
+  }
+
+  resetWarehouseStock(id: string, reason?: string): Observable<{ ok: boolean; warehouseId: string; resetProducts: number; resetQty: number }> {
+    return this.http.post<{ ok: boolean; warehouseId: string; resetProducts: number; resetQty: number }>(
+      `${this.WAREHOUSES_URL}/${id}/reset-stock`,
+      { reason: reason?.trim() || undefined }
+    );
+  }
 }

@@ -3,10 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { DatePickerModule } from 'primeng/datepicker';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
-import { MessageService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
@@ -15,6 +16,7 @@ import { catchError, forkJoin, of } from 'rxjs';
 import { CashSession, CashSessionsService } from '@/app/core/services/cash-sessions.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
+import { AuthService } from '@/app/core/services/auth.service';
 
 type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
 
@@ -26,6 +28,7 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
         FormsModule,
         ButtonModule,
         CardModule,
+        ConfirmDialogModule,
         DatePickerModule,
         DialogModule,
         InputTextModule,
@@ -34,10 +37,11 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
         TagModule,
         ToastModule
     ],
-    providers: [MessageService],
+    providers: [MessageService, ConfirmationService],
     template: `
         <div class="p-4 flex flex-col gap-4">
             <p-toast />
+            <p-confirmdialog />
 
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -209,6 +213,15 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                         severity="secondary"
                                         (onClick)="viewReport(report)"
                                     />
+                                    @if (canDeleteIpvReports()) {
+                                        <p-button
+                                            icon="pi pi-trash"
+                                            [rounded]="true"
+                                            [text]="true"
+                                            severity="danger"
+                                            (onClick)="deleteReport(report)"
+                                        />
+                                    }
                                 </td>
                             </tr>
                         </ng-template>
@@ -245,6 +258,9 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                         </div>
                         <div class="tpv-ipv-toolbar-actions">
                             <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="refreshSelectedReport()" />
+                            @if (canDeleteIpvReports()) {
+                                <p-button icon="pi pi-trash" label="Eliminar IPV" severity="danger" [outlined]="true" (onClick)="deleteReport(selectedReport()!)" />
+                            }
                         </div>
                     </div>
 
@@ -344,6 +360,8 @@ export class InventoryReportsComponent implements OnInit {
     private readonly warehousesService = inject(WarehousesService);
     private readonly cashSessionsService = inject(CashSessionsService);
     private readonly messageService = inject(MessageService);
+    private readonly confirmationService = inject(ConfirmationService);
+    private readonly authService = inject(AuthService);
 
     readonly sessions = signal<CashSession[]>([]);
     readonly warehouses = signal<Warehouse[]>([]);
@@ -466,6 +484,54 @@ export class InventoryReportsComponent implements OnInit {
     viewReport(report: SessionIvpReport) {
         this.selectedReport.set(report);
         this.showDetail = true;
+    }
+
+    canDeleteIpvReports() {
+        return this.authService.hasPermission('inventory-reports.delete');
+    }
+
+    deleteReport(report: SessionIvpReport) {
+        if (!this.canDeleteIpvReports()) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Sin permisos',
+                detail: 'No tiene permisos para eliminar reportes IPV.'
+            });
+            return;
+        }
+
+        this.confirmationService.confirm({
+            header: 'Eliminar IPV',
+            icon: 'pi pi-exclamation-triangle',
+            message: 'Se eliminará el reporte IPV de la sesión seleccionada. ¿Desea continuar?',
+            acceptLabel: 'Eliminar',
+            rejectLabel: 'Cancelar',
+            acceptButtonStyleClass: 'p-button-danger',
+            rejectButtonStyleClass: 'p-button-outlined p-button-secondary',
+            accept: () => {
+                this.ipvService.deleteSessionReport(report.cashSessionId).subscribe({
+                    next: () => {
+                        this.reports.update((rows) => rows.filter((row) => row.cashSessionId !== report.cashSessionId));
+                        if (this.selectedReport()?.cashSessionId === report.cashSessionId) {
+                            this.selectedReport.set(null);
+                            this.showDetail = false;
+                        }
+                        this.messageService.add({
+                            severity: 'success',
+                            summary: 'IPV eliminado',
+                            detail: 'El reporte IPV fue eliminado correctamente.'
+                        });
+                    },
+                    error: (err) => {
+                        this.messageService.add({
+                            severity: 'error',
+                            summary: 'Error',
+                            detail: err?.error?.message || 'No se pudo eliminar el IPV.'
+                        });
+                    }
+                });
+            }
+        });
     }
 
     refreshSelectedReport() {

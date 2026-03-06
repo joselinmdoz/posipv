@@ -63,7 +63,7 @@ interface NewCustomerForm {
             <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
                 <div>
                     <h1 class="text-2xl font-bold m-0">Ventas Directas</h1>
-                    <p class="m-0 mt-1 text-sm text-gray-600">Ventas desde almacenes no-TPV, sin apertura/cierre de caja.</p>
+                    <p class="m-0 mt-1 text-sm text-gray-600">Ventas desde almacenes.</p>
                 </div>
                 <div class="text-sm text-gray-600">
                     Monedas habilitadas: <strong>{{ enabledCurrencies.join(', ') }}</strong>

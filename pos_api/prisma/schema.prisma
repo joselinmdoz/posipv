@@ -49,11 +49,35 @@ model User {
   email        String   @unique
   passwordHash String
   role         Role     @default(CASHIER)
+  permissions  String[] @default([])
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   cashSessions CashSession[]
   sales        Sale[]
+  employee     Employee?
+}
+
+model Employee {
+  id             String   @id @default(cuid())
+  firstName      String
+  lastName       String
+  identification String?  @unique
+  phone          String?
+  email          String?
+  position       String?
+  hireDate       DateTime?
+  salary         Decimal? @db.Decimal(12,2)
+  notes          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String?  @unique
+  user           User?    @relation(fields: [userId], references: [id])
+
+  @@index([firstName, lastName])
+  @@index([active])
 }
 
 model Register {
@@ -287,6 +311,8 @@ model SystemSettings {
   defaultCurrency        CurrencyCode @default(CUP)
   enabledCurrencies      CurrencyCode[] @default([CUP, USD])
   exchangeRateUsdToCup   Decimal  @db.Decimal(12,6) @default(1)
+  systemName             String   @default("POS System")
+  systemLogoUrl          String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
