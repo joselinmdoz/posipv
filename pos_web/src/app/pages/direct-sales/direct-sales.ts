@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, OnInit, computed, signal } from '@angular/core';
+import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -77,7 +77,7 @@ interface NewCustomerForm {
                     <div>
                         <label class="block mb-2">Almacén</label>
                         <p-select
-                            [options]="warehouseOptions"
+                            [options]="warehouseOptions()"
                             [(ngModel)]="selectedWarehouseId"
                             placeholder="Seleccione almacén"
                             class="w-full"
@@ -538,7 +538,7 @@ interface NewCustomerForm {
         <p-toast />
     `
 })
-export class DirectSales implements OnInit, AfterViewInit {
+export class DirectSales implements OnInit {
     warehouses = signal<Warehouse[]>([]);
     products = signal<DirectSaleProduct[]>([]);
     filteredProducts = signal<DirectSaleProduct[]>([]);
@@ -576,7 +576,12 @@ export class DirectSales implements OnInit, AfterViewInit {
         { label: 'Otro', value: 'OTHER' }
     ];
 
-    warehouseOptions: Array<{ label: string; value: string }> = [];
+    warehouseOptions = computed(() =>
+        this.warehouses().map((w) => ({
+            label: `${w.name} (${w.code})`,
+            value: w.id
+        }))
+    );
     currencyOptions: Array<{ label: string; value: SystemCurrencyCode }> = [
         { label: 'CUP', value: 'CUP' },
         { label: 'USD', value: 'USD' }
@@ -611,42 +616,35 @@ export class DirectSales implements OnInit, AfterViewInit {
     ) {}
 
     ngOnInit(): void {
+        this.loadSystemSettings();
         this.loadWarehouses();
         this.initPaymentLines();
-    }
-
-    ngAfterViewInit(): void {
-        this.loadSystemSettings();
     }
 
     private loadSystemSettings() {
         this.settingsService.getSystemSettings().subscribe({
             next: (settings) => {
-                setTimeout(() => {
-                    const enabled = (settings.enabledCurrencies || ['CUP', 'USD']) as SystemCurrencyCode[];
-                    this.enabledCurrencies = enabled.length ? enabled : ['CUP', 'USD'];
-                    this.defaultCurrency = (settings.defaultCurrency || this.enabledCurrencies[0] || 'CUP') as SystemCurrencyCode;
-                    if (!this.enabledCurrencies.includes(this.defaultCurrency)) {
-                        this.defaultCurrency = this.enabledCurrencies[0];
-                    }
-                    this.exchangeRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
-                    if (!Number.isFinite(this.exchangeRateUsdToCup) || this.exchangeRateUsdToCup <= 0) {
-                        this.exchangeRateUsdToCup = 1;
-                    }
-                    this.currencyOptions = this.enabledCurrencies.map((code) => ({ label: code, value: code }));
-                    this.paymentLines = this.paymentLines.map((line) => ({
-                        ...line,
-                        currency: this.enabledCurrencies.includes(line.currency) ? line.currency : this.defaultCurrency
-                    }));
-                });
+                const enabled = (settings.enabledCurrencies || ['CUP', 'USD']) as SystemCurrencyCode[];
+                this.enabledCurrencies = enabled.length ? enabled : ['CUP', 'USD'];
+                this.defaultCurrency = (settings.defaultCurrency || this.enabledCurrencies[0] || 'CUP') as SystemCurrencyCode;
+                if (!this.enabledCurrencies.includes(this.defaultCurrency)) {
+                    this.defaultCurrency = this.enabledCurrencies[0];
+                }
+                this.exchangeRateUsdToCup = Number(settings.exchangeRateUsdToCup || 1);
+                if (!Number.isFinite(this.exchangeRateUsdToCup) || this.exchangeRateUsdToCup <= 0) {
+                    this.exchangeRateUsdToCup = 1;
+                }
+                this.currencyOptions = this.enabledCurrencies.map((code) => ({ label: code, value: code }));
+                this.paymentLines = this.paymentLines.map((line) => ({
+                    ...line,
+                    currency: this.enabledCurrencies.includes(line.currency) ? line.currency : this.defaultCurrency
+                }));
             },
             error: () => {
-                setTimeout(() => {
-                    this.enabledCurrencies = ['CUP', 'USD'];
-                    this.defaultCurrency = 'CUP';
-                    this.exchangeRateUsdToCup = 1;
-                    this.currencyOptions = this.enabledCurrencies.map((code) => ({ label: code, value: code }));
-                });
+                this.enabledCurrencies = ['CUP', 'USD'];
+                this.defaultCurrency = 'CUP';
+                this.exchangeRateUsdToCup = 1;
+                this.currencyOptions = this.enabledCurrencies.map((code) => ({ label: code, value: code }));
             }
         });
     }
@@ -656,14 +654,9 @@ export class DirectSales implements OnInit, AfterViewInit {
             next: (rows) => {
                 const directWarehouses = rows.filter((w) => w.active && w.type !== 'TPV');
                 this.warehouses.set(directWarehouses);
-                this.warehouseOptions = directWarehouses.map((w) => ({
-                    label: `${w.name} (${w.code})`,
-                    value: w.id
-                }));
             },
             error: () => {
                 this.warehouses.set([]);
-                this.warehouseOptions = [];
                 this.messageService.add({
                     severity: 'error',
                     summary: 'Error',

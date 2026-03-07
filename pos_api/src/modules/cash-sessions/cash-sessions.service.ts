@@ -30,6 +30,13 @@ export class CashSessionsService {
           select: {
             id: true,
             email: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },
@@ -69,6 +76,13 @@ export class CashSessionsService {
           select: {
             id: true,
             email: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },

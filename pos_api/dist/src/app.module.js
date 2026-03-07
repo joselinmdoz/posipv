@@ -33,6 +33,8 @@ const direct_sales_module_1 = require("./modules/direct-sales/direct-sales.modul
 const customers_module_1 = require("./modules/customers/customers.module");
 const employees_module_1 = require("./modules/employees/employees.module");
 const user_permissions_module_1 = require("./modules/user-permissions/user-permissions.module");
+const accounting_module_1 = require("./modules/accounting/accounting.module");
+const purchases_module_1 = require("./modules/purchases/purchases.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -66,6 +68,8 @@ exports.AppModule = AppModule = __decorate([
             customers_module_1.CustomersModule,
             employees_module_1.EmployeesModule,
             user_permissions_module_1.UserPermissionsModule,
+            accounting_module_1.AccountingModule,
+            purchases_module_1.PurchasesModule,
         ],
     })
 ], AppModule);

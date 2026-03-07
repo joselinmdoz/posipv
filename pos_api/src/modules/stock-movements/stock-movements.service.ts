@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AccountingService } from "../accounting/accounting.service";
 
 @Injectable()
 export class StockMovementsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accountingService: AccountingService,
+  ) {}
 
   list(params?: { warehouseId?: string; from?: string; to?: string; type?: "IN" | "OUT" | "TRANSFER"; reason?: string }) {
     const where: any = {};
@@ -87,7 +91,7 @@ export class StockMovementsService {
     fromWarehouseId?: string | null;
     toWarehouseId?: string | null;
     reason?: string | null;
-  }) {
+  }, createdByUserId: string) {
     const normalized = {
       type: dto.type,
       productId: this.normalizeId(dto.productId),
@@ -177,11 +181,17 @@ export class StockMovementsService {
         await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
       }
 
+      await this.accountingService.postAutomatedStockMovementEntry(
+        tx,
+        movement.id,
+        createdByUserId,
+      );
+
       return movement;
     });
   }
 
-  async delete(movementId: string) {
+  async delete(movementId: string, deletedByUserId: string) {
     const movement = await this.prisma.stockMovement.findUnique({
       where: { id: movementId },
       include: {
@@ -216,6 +226,12 @@ export class StockMovementsService {
         await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
         await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
       }
+
+      await this.accountingService.voidAutomatedStockMovementEntry(
+        tx,
+        movement.id,
+        `ELIMINACION_MOVIMIENTO:${movement.id}:${deletedByUserId}`,
+      );
 
       await tx.stockMovement.delete({ where: { id: movement.id } });
       return movement;
@@ -259,7 +275,9 @@ export class StockMovementsService {
       value === "VENTA" ||
       value === "VENTA_DIRECTA" ||
       value.startsWith("ELIMINACION_VENTA:") ||
-      value.startsWith("RESET_STOCK:")
+      value.startsWith("RESET_STOCK:") ||
+      value.startsWith("COMPRA:") ||
+      value.startsWith("ANULACION_COMPRA:")
     );
   }
 }

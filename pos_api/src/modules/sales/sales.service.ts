@@ -2,10 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, SaleStatus, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
+import { AccountingService } from "../accounting/accounting.service";
 
 @Injectable()
 export class SalesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accountingService: AccountingService,
+  ) {}
 
   async listSessionProducts(cashSessionId: string) {
     const session = await this.prisma.cashSession.findUnique({
@@ -201,6 +205,8 @@ export class SalesService {
         });
       }
 
+      await this.accountingService.postAutomatedSaleEntries(tx, sale.id, cashierId);
+
       return sale;
     });
   }
@@ -261,6 +267,12 @@ export class SalesService {
           restockedProducts += 1;
         }
       }
+
+      await this.accountingService.voidAutomatedSaleEntries(
+        tx,
+        sale.id,
+        `ELIMINACION_VENTA:${sale.documentNumber || sale.id}:${deletedByUserId}`,
+      );
 
       await tx.payment.deleteMany({ where: { saleId: sale.id } });
       await tx.saleItem.deleteMany({ where: { saleId: sale.id } });

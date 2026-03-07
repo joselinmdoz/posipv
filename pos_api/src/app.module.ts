@@ -25,6 +25,8 @@ import { DirectSalesModule } from "./modules/direct-sales/direct-sales.module";
 import { CustomersModule } from "./modules/customers/customers.module";
 import { EmployeesModule } from "./modules/employees/employees.module";
 import { UserPermissionsModule } from "./modules/user-permissions/user-permissions.module";
+import { AccountingModule } from "./modules/accounting/accounting.module";
+import { PurchasesModule } from "./modules/purchases/purchases.module";
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { UserPermissionsModule } from "./modules/user-permissions/user-permissio
     CustomersModule,
     EmployeesModule,
     UserPermissionsModule,
+    AccountingModule,
+    PurchasesModule,
   ],
 })
 export class AppModule {}

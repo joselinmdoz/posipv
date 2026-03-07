@@ -166,6 +166,7 @@ export class AppTopbar implements OnInit {
         if (auth.hasPermission('sales.direct')) return '/direct-sales';
         if (auth.hasPermission('reports.view')) return '/reports';
         if (auth.hasPermission('products.view')) return '/products';
+        if (auth.hasPermission('accounting.view')) return '/accounting';
         return '/auth/access';
     }
 

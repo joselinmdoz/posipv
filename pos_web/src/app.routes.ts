@@ -15,9 +15,12 @@ import { ProductCategories } from './app/pages/product-categories/product-catego
 import { MeasurementUnits } from './app/pages/measurement-units/measurement-units';
 import { Denominations } from './app/pages/denominations/denominations';
 import { TpvManagement } from './app/pages/tpv-management/tpv-management';
+import { Tpv } from './app/pages/tpv/tpv';
 import { DirectSales } from './app/pages/direct-sales/direct-sales';
+import { Purchases } from './app/pages/purchases/purchases';
 import { Customers } from './app/pages/customers/customers';
 import { Employees } from './app/pages/employees/employees';
+import { Accounting } from './app/pages/accounting/accounting';
 import { inject } from '@angular/core';
 import { AuthService } from './app/core/services/auth.service';
 import { Router } from '@angular/router';
@@ -67,11 +70,13 @@ export const appRoutes: Routes = [
             { path: 'product-categories', component: ProductCategories, canActivate: [permissionGuard(['products.manage'])] },
             { path: 'measurement-units', component: MeasurementUnits, canActivate: [permissionGuard(['products.manage'])] },
             { path: 'warehouses', component: Warehouses, canActivate: [permissionGuard(['warehouses.view'])] },
-            { path: 'tpv', redirectTo: 'tpv-management', pathMatch: 'full' },
+            { path: 'tpv', component: Tpv, canActivate: [permissionGuard(['sales.tpv'])] },
             { path: 'tpv-management', component: TpvManagement, canActivate: [permissionGuard(['sales.tpv', 'tpv.manage'])] },
             { path: 'direct-sales', component: DirectSales, canActivate: [permissionGuard(['sales.direct'])] },
+            { path: 'purchases', component: Purchases, canActivate: [permissionGuard(['purchases.view', 'purchases.manage'])] },
             { path: 'customers', component: Customers, canActivate: [permissionGuard(['customers.view'])] },
             { path: 'employees', component: Employees, canActivate: [permissionGuard(['employees.view'])] },
+            { path: 'accounting', component: Accounting, canActivate: [permissionGuard(['accounting.view'])] },
             { path: 'user-permissions', redirectTo: 'users', pathMatch: 'full' },
             { path: 'settings', component: Settings, canActivate: [permissionGuard(['settings.manage'])] },
             { path: 'denominations', component: Denominations, canActivate: [permissionGuard(['tpv.manage'])] },

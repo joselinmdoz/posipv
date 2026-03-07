@@ -3,12 +3,14 @@ import { CurrencyCode, Prisma, SaleChannel, StockMovementType, WarehouseType } f
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec, moneyEq } from "../../common/decimal";
 import { SettingsService } from "../settings/settings.service";
+import { AccountingService } from "../accounting/accounting.service";
 
 @Injectable()
 export class DirectSalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async listWarehouseProducts(warehouseId: string) {
@@ -201,6 +203,8 @@ export class DirectSalesService {
           },
         });
       }
+
+      await this.accountingService.postAutomatedSaleEntries(tx, sale.id, cashierId);
 
       return sale;
     });

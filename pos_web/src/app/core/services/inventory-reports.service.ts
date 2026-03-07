@@ -38,6 +38,7 @@ export interface SessionIvpLine {
   productId: string;
   name: string;
   codigo?: string | null;
+  currency?: 'CUP' | 'USD' | string;
   initial: number;
   entries: number;
   outs: number;

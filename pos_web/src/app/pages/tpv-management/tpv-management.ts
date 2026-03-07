@@ -272,7 +272,7 @@ export class TpvManagement implements OnInit {
         }
 
         if (register.openSession) {
-            this.router.navigate(['/tpv-management'], {
+            this.router.navigate(['/tpv'], {
                 queryParams: {
                     registerId: register.id,
                     action: 'continue'
@@ -288,7 +288,7 @@ export class TpvManagement implements OnInit {
         ).subscribe({
             next: () => {
                 this.openingRegisterId.set(null);
-                this.router.navigate(['/tpv-management'], {
+                this.router.navigate(['/tpv'], {
                     queryParams: {
                         registerId: register.id,
                         action: 'continue'
@@ -301,7 +301,7 @@ export class TpvManagement implements OnInit {
                 const alreadyOpen = String(detail).toLowerCase().includes('sesión abierta') || String(detail).toLowerCase().includes('sesion abierta');
 
                 if (alreadyOpen) {
-                    this.router.navigate(['/tpv-management'], {
+                    this.router.navigate(['/tpv'], {
                         queryParams: {
                             registerId: register.id,
                             action: 'continue'

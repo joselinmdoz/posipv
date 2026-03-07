@@ -277,6 +277,7 @@ export class InventoryReportsService {
         name: true,
         codigo: true,
         price: true,
+        currency: true,
       },
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
@@ -296,6 +297,7 @@ export class InventoryReportsService {
         productId,
         name: product?.name || `Producto ${productId.slice(0, 8)}`,
         codigo: product?.codigo || null,
+        currency: product?.currency || 'CUP',
         initial: initialQty,
         entries,
         outs,

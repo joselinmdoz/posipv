@@ -19,6 +19,11 @@ export interface CashSession {
   openedBy?: {
     id: string;
     email: string;
+    employee?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+    } | null;
   };
   warehouseId?: string;
 }

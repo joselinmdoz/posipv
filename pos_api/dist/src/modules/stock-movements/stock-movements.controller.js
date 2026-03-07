@@ -55,11 +55,11 @@ let StockMovementsController = class StockMovementsController {
     list(warehouseId, from, to, type, reason) {
         return this.service.list({ warehouseId, from, to, type, reason });
     }
-    create(dto) {
-        return this.service.create(dto);
+    create(req, dto) {
+        return this.service.create(dto, req.user.userId);
     }
-    remove(movementId) {
-        return this.service.delete(movementId);
+    remove(req, movementId) {
+        return this.service.delete(movementId, req.user.userId);
     }
 };
 exports.StockMovementsController = StockMovementsController;
@@ -78,18 +78,20 @@ __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("stock-movements.manage"),
-    __param(0, (0, common_1.Body)()),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [CreateStockMovementDto]),
+    __metadata("design:paramtypes", [Object, CreateStockMovementDto]),
     __metadata("design:returntype", void 0)
 ], StockMovementsController.prototype, "create", null);
 __decorate([
     (0, common_1.Delete)(":id"),
     (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("stock-movements.delete"),
-    __param(0, (0, common_1.Param)("id")),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)("id")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", void 0)
 ], StockMovementsController.prototype, "remove", null);
 exports.StockMovementsController = StockMovementsController = __decorate([

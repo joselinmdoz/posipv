@@ -12,9 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StockMovementsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const accounting_service_1 = require("../accounting/accounting.service");
 let StockMovementsService = class StockMovementsService {
-    constructor(prisma) {
+    constructor(prisma, accountingService) {
         this.prisma = prisma;
+        this.accountingService = accountingService;
     }
     list(params) {
         const where = {};
@@ -81,7 +83,7 @@ let StockMovementsService = class StockMovementsService {
         const parsed = new Date(trimmed);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
-    async create(dto) {
+    async create(dto, createdByUserId) {
         const normalized = {
             type: dto.type,
             productId: this.normalizeId(dto.productId),
@@ -165,10 +167,11 @@ let StockMovementsService = class StockMovementsService {
                 await this.adjustStock(tx, fromWarehouseId, productId, -normalized.qty);
                 await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
             }
+            await this.accountingService.postAutomatedStockMovementEntry(tx, movement.id, createdByUserId);
             return movement;
         });
     }
-    async delete(movementId) {
+    async delete(movementId, deletedByUserId) {
         const movement = await this.prisma.stockMovement.findUnique({
             where: { id: movementId },
             include: {
@@ -202,6 +205,7 @@ let StockMovementsService = class StockMovementsService {
                 await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
                 await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
             }
+            await this.accountingService.voidAutomatedStockMovementEntry(tx, movement.id, `ELIMINACION_MOVIMIENTO:${movement.id}:${deletedByUserId}`);
             await tx.stockMovement.delete({ where: { id: movement.id } });
             return movement;
         });
@@ -241,12 +245,15 @@ let StockMovementsService = class StockMovementsService {
         return (value === "VENTA" ||
             value === "VENTA_DIRECTA" ||
             value.startsWith("ELIMINACION_VENTA:") ||
-            value.startsWith("RESET_STOCK:"));
+            value.startsWith("RESET_STOCK:") ||
+            value.startsWith("COMPRA:") ||
+            value.startsWith("ANULACION_COMPRA:"));
     }
 };
 exports.StockMovementsService = StockMovementsService;
 exports.StockMovementsService = StockMovementsService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        accounting_service_1.AccountingService])
 ], StockMovementsService);
 //# sourceMappingURL=stock-movements.service.js.map

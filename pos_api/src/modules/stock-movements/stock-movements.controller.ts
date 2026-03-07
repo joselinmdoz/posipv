@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { StockMovementsService } from "./stock-movements.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { IsEnum, IsNumber, IsOptional, IsString } from "class-validator";
@@ -33,14 +33,14 @@ export class StockMovementsController {
   @Post()
   @UseGuards(PermissionsGuard)
   @Permissions("stock-movements.manage")
-  create(@Body() dto: CreateStockMovementDto) {
-    return this.service.create(dto);
+  create(@Req() req: any, @Body() dto: CreateStockMovementDto) {
+    return this.service.create(dto, req.user.userId);
   }
 
   @Delete(":id")
   @UseGuards(PermissionsGuard)
   @Permissions("stock-movements.delete")
-  remove(@Param("id") movementId: string) {
-    return this.service.delete(movementId);
+  remove(@Req() req: any, @Param("id") movementId: string) {
+    return this.service.delete(movementId, req.user.userId);
   }
 }

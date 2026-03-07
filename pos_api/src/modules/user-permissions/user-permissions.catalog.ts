@@ -25,12 +25,22 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { code: "sales.direct", label: "Vender directo", description: "Permite registrar ventas directas.", group: "Ventas" },
   { code: "sales.void", label: "Anular ventas", description: "Permite anular/invalidar ventas.", group: "Ventas" },
   { code: "sales.delete", label: "Eliminar ventas", description: "Permite eliminar ventas y revertir stock.", group: "Ventas" },
+  { code: "purchases.view", label: "Ver compras", description: "Permite consultar compras registradas.", group: "Compras" },
+  { code: "purchases.manage", label: "Gestionar compras", description: "Permite crear, editar, confirmar y anular compras.", group: "Compras" },
+  { code: "purchases.delete", label: "Eliminar compras", description: "Permite eliminar compras en borrador.", group: "Compras" },
 
   { code: "customers.view", label: "Ver clientes", description: "Permite consultar clientes.", group: "Clientes" },
   { code: "customers.manage", label: "Gestionar clientes", description: "Permite crear/editar clientes.", group: "Clientes" },
 
   { code: "employees.view", label: "Ver empleados", description: "Permite consultar empleados.", group: "RRHH" },
   { code: "employees.manage", label: "Gestionar empleados", description: "Permite crear/editar empleados.", group: "RRHH" },
+
+  { code: "accounting.view", label: "Ver contabilidad", description: "Permite consultar cuentas, períodos y asientos.", group: "Contabilidad" },
+  { code: "accounting.manage", label: "Gestionar plan de cuentas", description: "Permite crear/editar cuentas contables.", group: "Contabilidad" },
+  { code: "accounting.periods.manage", label: "Gestionar períodos", description: "Permite abrir/cerrar/reabrir períodos fiscales.", group: "Contabilidad" },
+  { code: "accounting.post", label: "Registrar asientos", description: "Permite crear/publicar asientos contables.", group: "Contabilidad" },
+  { code: "accounting.adjust", label: "Ajustar asientos", description: "Permite anular asientos contables.", group: "Contabilidad" },
+
   { code: "users.manage", label: "Gestionar usuarios", description: "Permite crear/editar usuarios del sistema.", group: "Seguridad" },
   { code: "permissions.manage", label: "Gestionar permisos", description: "Permite asignar permisos por usuario.", group: "Seguridad" },
 ];

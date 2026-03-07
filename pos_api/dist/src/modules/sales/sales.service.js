@@ -14,9 +14,11 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const decimal_1 = require("../../common/decimal");
+const accounting_service_1 = require("../accounting/accounting.service");
 let SalesService = class SalesService {
-    constructor(prisma) {
+    constructor(prisma, accountingService) {
         this.prisma = prisma;
+        this.accountingService = accountingService;
     }
     async listSessionProducts(cashSessionId) {
         const session = await this.prisma.cashSession.findUnique({
@@ -193,6 +195,7 @@ let SalesService = class SalesService {
                     },
                 });
             }
+            await this.accountingService.postAutomatedSaleEntries(tx, sale.id, cashierId);
             return sale;
         });
     }
@@ -247,6 +250,7 @@ let SalesService = class SalesService {
                     restockedProducts += 1;
                 }
             }
+            await this.accountingService.voidAutomatedSaleEntries(tx, sale.id, `ELIMINACION_VENTA:${sale.documentNumber || sale.id}:${deletedByUserId}`);
             await tx.payment.deleteMany({ where: { saleId: sale.id } });
             await tx.saleItem.deleteMany({ where: { saleId: sale.id } });
             await tx.sale.delete({ where: { id: sale.id } });
@@ -313,6 +317,7 @@ let SalesService = class SalesService {
 exports.SalesService = SalesService;
 exports.SalesService = SalesService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        accounting_service_1.AccountingService])
 ], SalesService);
 //# sourceMappingURL=sales.service.js.map

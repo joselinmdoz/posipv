@@ -46,6 +46,7 @@ export class AppMenu {
                     { label: 'Almacenes', icon: 'pi pi-fw pi-warehouse', routerLink: ['/warehouses'], permissions: ['warehouses.view'] },
                     { label: 'TPV', icon: 'pi pi-fw pi-shop', routerLink: ['/tpv-management'], permissions: ['sales.tpv', 'tpv.manage'] },
                     { label: 'Ventas', icon: 'pi pi-fw pi-shopping-bag', routerLink: ['/direct-sales'], permissions: ['sales.direct'] },
+                    { label: 'Compras', icon: 'pi pi-fw pi-shopping-cart', routerLink: ['/purchases'], permissions: ['purchases.view', 'purchases.manage'] },
                     { label: 'Clientes', icon: 'pi pi-fw pi-address-book', routerLink: ['/customers'], permissions: ['customers.view'] },
                     { label: 'Denominaciones', icon: 'pi pi-fw pi-dollar', routerLink: ['/denominations'], permissions: ['tpv.manage'] }
                 ]
@@ -63,6 +64,7 @@ export class AppMenu {
                 icon: 'pi pi-chart-bar',
                 items: [
                  { label: 'Empleados', icon: 'pi pi-fw pi-id-card', routerLink: ['/employees'], permissions: ['employees.view'] },
+                 { label: 'Contabilidad', icon: 'pi pi-fw pi-calculator', routerLink: ['/accounting'], permissions: ['accounting.view'] },
                  { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'], permissions: ['users.manage', 'permissions.manage'] },
                 { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'], permissions: ['settings.manage'] },
                 ]
