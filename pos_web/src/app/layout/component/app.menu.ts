@@ -64,7 +64,19 @@ export class AppMenu {
                 icon: 'pi pi-chart-bar',
                 items: [
                  { label: 'Empleados', icon: 'pi pi-fw pi-id-card', routerLink: ['/employees'], permissions: ['employees.view'] },
-                 { label: 'Contabilidad', icon: 'pi pi-fw pi-calculator', routerLink: ['/accounting'], permissions: ['accounting.view'] },
+                 {
+                    label: 'Contabilidad',
+                    icon: 'pi pi-fw pi-calculator',
+                    path: '/administracion/contabilidad',
+                    items: [
+                        { label: 'Plan de Cuentas', icon: 'pi pi-fw pi-list', routerLink: ['/accounting/plan-cuentas'], permissions: ['accounting.view'] },
+                        { label: 'Períodos Fiscales', icon: 'pi pi-fw pi-calendar', routerLink: ['/accounting/periodos-fiscales'], permissions: ['accounting.view'] },
+                        { label: 'Reglas', icon: 'pi pi-fw pi-cog', routerLink: ['/accounting/reglas-contables'], permissions: ['accounting.view'] },
+                        { label: 'Asientos Contables', icon: 'pi pi-fw pi-pencil', routerLink: ['/accounting/asientos-contables'], permissions: ['accounting.view'] },
+                        { label: 'Estado de Cuentas', icon: 'pi pi-fw pi-chart-line', routerLink: ['/accounting/estado-cuentas'], permissions: ['accounting.view'] },
+                        { label: 'Reportes', icon: 'pi pi-fw pi-chart-bar', routerLink: ['/accounting/reportes'], permissions: ['accounting.view'] }
+                    ]
+                 },
                  { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'], permissions: ['users.manage', 'permissions.manage'] },
                 { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'], permissions: ['settings.manage'] },
                 ]

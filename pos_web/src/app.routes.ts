@@ -20,7 +20,12 @@ import { DirectSales } from './app/pages/direct-sales/direct-sales';
 import { Purchases } from './app/pages/purchases/purchases';
 import { Customers } from './app/pages/customers/customers';
 import { Employees } from './app/pages/employees/employees';
-import { Accounting } from './app/pages/accounting/accounting';
+import { AccountingChartOfAccounts } from './app/pages/accounting/accounting-chart-of-accounts';
+import { AccountingFiscalPeriods } from './app/pages/accounting/accounting-fiscal-periods';
+import { AccountingPostingRules } from './app/pages/accounting/accounting-posting-rules';
+import { AccountingJournalEntries } from './app/pages/accounting/accounting-journal-entries';
+import { AccountingAccountStatus } from './app/pages/accounting/accounting-account-status';
+import { AccountingReports } from './app/pages/accounting/accounting-reports';
 import { inject } from '@angular/core';
 import { AuthService } from './app/core/services/auth.service';
 import { Router } from '@angular/router';
@@ -76,7 +81,37 @@ export const appRoutes: Routes = [
             { path: 'purchases', component: Purchases, canActivate: [permissionGuard(['purchases.view', 'purchases.manage'])] },
             { path: 'customers', component: Customers, canActivate: [permissionGuard(['customers.view'])] },
             { path: 'employees', component: Employees, canActivate: [permissionGuard(['employees.view'])] },
-            { path: 'accounting', component: Accounting, canActivate: [permissionGuard(['accounting.view'])] },
+            { path: 'accounting', pathMatch: 'full', redirectTo: 'accounting/plan-cuentas' },
+            {
+                path: 'accounting/plan-cuentas',
+                component: AccountingChartOfAccounts,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
+            {
+                path: 'accounting/periodos-fiscales',
+                component: AccountingFiscalPeriods,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
+            {
+                path: 'accounting/reglas-contables',
+                component: AccountingPostingRules,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
+            {
+                path: 'accounting/asientos-contables',
+                component: AccountingJournalEntries,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
+            {
+                path: 'accounting/estado-cuentas',
+                component: AccountingAccountStatus,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
+            {
+                path: 'accounting/reportes',
+                component: AccountingReports,
+                canActivate: [permissionGuard(['accounting.view'])]
+            },
             { path: 'user-permissions', redirectTo: 'users', pathMatch: 'full' },
             { path: 'settings', component: Settings, canActivate: [permissionGuard(['settings.manage'])] },
             { path: 'denominations', component: Denominations, canActivate: [permissionGuard(['tpv.manage'])] },

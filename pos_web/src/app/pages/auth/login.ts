@@ -128,7 +128,7 @@ export class Login {
         if (auth.hasPermission('warehouses.view')) return '/warehouses';
         if (auth.hasPermission('customers.view')) return '/customers';
         if (auth.hasPermission('employees.view')) return '/employees';
-        if (auth.hasPermission('accounting.view')) return '/accounting';
+        if (auth.hasPermission('accounting.view')) return '/accounting/plan-cuentas';
         if (auth.hasPermission('users.manage')) return '/users';
         if (auth.hasPermission('permissions.manage')) return '/users';
         if (auth.hasPermission('settings.manage')) return '/settings';
