@@ -17,6 +17,7 @@ export interface Employee {
   phone: string | null;
   email: string | null;
   position: string | null;
+  image: string | null;
   hireDate: string | null;
   salary: number | null;
   notes: string | null;
@@ -34,6 +35,7 @@ export interface CreateEmployeeDto {
   phone?: string;
   email?: string;
   position?: string;
+  image?: string;
   hireDate?: string;
   salary?: string;
   notes?: string;
@@ -67,8 +69,16 @@ export class EmployeesService {
     return this.http.post<Employee>(this.API_URL, payload);
   }
 
+  createWithFormData(formData: FormData): Observable<Employee> {
+    return this.http.post<Employee>(this.API_URL, formData);
+  }
+
   update(employeeId: string, payload: UpdateEmployeeDto): Observable<Employee> {
     return this.http.put<Employee>(`${this.API_URL}/${employeeId}`, payload);
+  }
+
+  updateWithFormData(employeeId: string, formData: FormData): Observable<Employee> {
+    return this.http.put<Employee>(`${this.API_URL}/${employeeId}`, formData);
   }
 
   listAssignableUsers(excludeEmployeeId?: string): Observable<EmployeeUserRef[]> {

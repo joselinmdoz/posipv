@@ -37,7 +37,20 @@ let AuthService = class AuthService {
         });
         return {
             access_token,
-            user: { id: user.id, email: user.email, role: user.role, permissions },
+            user: {
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                permissions,
+                employee: user.employee
+                    ? {
+                        id: user.employee.id,
+                        firstName: user.employee.firstName,
+                        lastName: user.employee.lastName,
+                        image: user.employee.image || null,
+                    }
+                    : null,
+            },
         };
     }
 };

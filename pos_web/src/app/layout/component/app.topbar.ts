@@ -85,7 +85,7 @@ import { filter } from 'rxjs';
                         <div class="layout-topbar-user-menu-wrap">
                             <button
                                 type="button"
-                                class="layout-topbar-action"
+                                class="layout-topbar-action layout-topbar-user-trigger"
                                 pStyleClass="@next"
                                 enterFromClass="hidden"
                                 enterActiveClass="animate-scalein"
@@ -93,7 +93,11 @@ import { filter } from 'rxjs';
                                 leaveActiveClass="animate-fadeout"
                                 [hideOnOutsideClick]="true"
                             >
-                                <i class="pi pi-user"></i>
+                                @if (connectedUserImageUrl()) {
+                                    <img class="layout-topbar-user-avatar layout-topbar-user-trigger-avatar" [src]="connectedUserImageUrl()" alt="Empleado" (error)="onUserAvatarError()" />
+                                } @else {
+                                    <i class="pi pi-user"></i>
+                                }
                                 <span>Profile</span>
                             </button>
                             <div class="layout-topbar-profile-menu hidden">
@@ -123,6 +127,9 @@ export class AppTopbar implements OnInit {
     private destroyRef = inject(DestroyRef);
     systemName = signal('POS System');
     systemLogoUrl = signal('');
+    private readonly IMAGE_BASE_URL = '';
+    private currentUserImagePath = '';
+    private userAvatarErrored = false;
 
     ngOnInit(): void {
         this.settingsService
@@ -171,9 +178,36 @@ export class AppTopbar implements OnInit {
     }
 
     connectedUserName(): string {
+        const employee = this.authService.currentUser()?.employee;
+        const firstName = String(employee?.firstName || '').trim();
+        const lastName = String(employee?.lastName || '').trim();
+        const fullName = `${firstName} ${lastName}`.trim();
+        if (fullName) return fullName;
+
         const email = this.authService.currentUser()?.email || '';
         if (!email) return 'Usuario';
         return email.split('@')[0] || email;
+    }
+
+    connectedUserImageUrl(): string {
+        const imagePath = String(this.authService.currentUser()?.employee?.image || '').trim();
+        if (this.currentUserImagePath !== imagePath) {
+            this.currentUserImagePath = imagePath;
+            this.userAvatarErrored = false;
+        }
+        if (!imagePath || this.userAvatarErrored) return '';
+        return this.resolveImageUrl(imagePath);
+    }
+
+    onUserAvatarError() {
+        this.userAvatarErrored = true;
+    }
+
+    private resolveImageUrl(imagePath: string): string {
+        if (!imagePath) return '';
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath;
+        if (imagePath.startsWith('/')) return this.IMAGE_BASE_URL + imagePath;
+        return `${this.IMAGE_BASE_URL}/${imagePath}`;
     }
 
     goToProfile() {

@@ -79,6 +79,7 @@ export class AppMenu {
                  },
                  { label: 'Usuarios', icon: 'pi pi-fw pi-users', routerLink: ['/users'], permissions: ['users.manage', 'permissions.manage'] },
                 { label: 'Config. General', icon: 'pi pi-fw pi-cog', routerLink: ['/settings'], permissions: ['settings.manage'] },
+                { label: 'Métodos de Pago', icon: 'pi pi-fw pi-credit-card', routerLink: ['/payment-methods'], permissions: ['tpv.manage', 'settings.manage'] },
                 ]
             },
             // {

@@ -33,6 +33,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], PaymentMethodSettingDto.prototype, "enabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], PaymentMethodSettingDto.prototype, "requiresTransactionCode", void 0);
 class DenominationSettingDto {
 }
 __decorate([
@@ -192,7 +197,7 @@ __decorate([
 ], SettingsController.prototype, "saveRegisterSettings", null);
 __decorate([
     (0, common_1.Get)("payment-methods"),
-    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "settings.manage"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "sales.direct", "tpv.manage", "settings.manage"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)

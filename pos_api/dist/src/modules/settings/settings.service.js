@@ -285,9 +285,17 @@ let SettingsService = class SettingsService {
         });
     }
     async savePaymentMethods(payload) {
+        const normalizedPayload = (payload || [])
+            .map((item) => ({
+            code: this.normalizePaymentMethodCode(item.code) || (item.code || "").trim().toUpperCase(),
+            name: (item.name || "").trim(),
+            enabled: item.enabled !== false,
+            requiresTransactionCode: item.requiresTransactionCode === true,
+        }))
+            .filter((item) => !!item.code && !!item.name);
         await this.prisma.paymentMethodSetting.deleteMany();
         return this.prisma.paymentMethodSetting.createMany({
-            data: payload,
+            data: normalizedPayload,
         });
     }
     listDenominations(filters) {

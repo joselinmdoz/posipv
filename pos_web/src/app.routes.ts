@@ -86,6 +86,11 @@ export const appRoutes: Routes = [
             },
             { path: 'user-permissions', redirectTo: 'users', pathMatch: 'full' },
             { path: 'settings', loadComponent: () => import('./app/pages/settings/settings').then((m) => m.Settings), canActivate: [permissionGuard(['settings.manage'])] },
+            {
+                path: 'payment-methods',
+                loadComponent: () => import('./app/pages/payment-methods/payment-methods').then((m) => m.PaymentMethods),
+                canActivate: [permissionGuard(['tpv.manage', 'settings.manage'])]
+            },
             { path: 'denominations', loadComponent: () => import('./app/pages/denominations/denominations').then((m) => m.Denominations), canActivate: [permissionGuard(['tpv.manage'])] },
             { path: 'reports', loadComponent: () => import('./app/pages/reports/reports').then((m) => m.Reports), canActivate: [permissionGuard(['reports.view'])] },
             { path: 'inventory-reports', loadComponent: () => import('./app/pages/inventory-reports/inventory-reports').then((m) => m.InventoryReportsComponent), canActivate: [permissionGuard(['reports.view'])] },

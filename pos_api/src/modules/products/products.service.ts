@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec } from "../../common/decimal";
-import { CurrencyCode, Prisma } from "@prisma/client";
+import { CashSessionStatus, CurrencyCode, Prisma } from "@prisma/client";
 
 type CreateProductInput = {
   name: string;
@@ -75,13 +75,33 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductInput) {
     try {
+      let priceToPersist: Prisma.Decimal | undefined = undefined;
+      if (dto.price !== undefined) {
+        const currentProduct = await this.prisma.product.findUnique({
+          where: { id },
+          select: { id: true, price: true },
+        });
+
+        if (!currentProduct) {
+          throw new BadRequestException("Producto no encontrado.");
+        }
+
+        const nextPrice = dec(dto.price);
+        const currentPrice = dec(currentProduct.price);
+        if (!nextPrice.equals(currentPrice)) {
+          await this.ensurePriceChangeAllowed(id);
+        }
+
+        priceToPersist = nextPrice as any;
+      }
+
       return await this.prisma.product.update({
         where: { id },
         data: {
           name: dto.name,
           codigo: dto.codigo !== undefined ? this.asOptional(dto.codigo) : undefined,
           barcode: dto.barcode !== undefined ? this.asOptional(dto.barcode) : undefined,
-          price: dto.price ? dec(dto.price) as any : undefined,
+          price: priceToPersist,
           cost: dto.cost ? dec(dto.cost) as any : undefined,
           lowStockAlertQty: dto.lowStockAlertQty !== undefined ? this.asOptionalDecimal(dto.lowStockAlertQty) : undefined,
           allowFractionalQty: dto.allowFractionalQty,
@@ -96,6 +116,40 @@ export class ProductsService {
     } catch (error) {
       this.handlePrismaError(error);
     }
+  }
+
+  private async ensurePriceChangeAllowed(productId: string) {
+    const conflictingOpenSession = await this.prisma.cashSession.findFirst({
+      where: {
+        status: CashSessionStatus.OPEN,
+        register: {
+          warehouse: {
+            stock: {
+              some: {
+                productId,
+                qty: { gt: 0 },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        register: {
+          select: {
+            name: true,
+            code: true,
+          },
+        },
+      },
+    });
+
+    if (!conflictingOpenSession) return;
+
+    const registerLabel = conflictingOpenSession.register?.name || conflictingOpenSession.register?.code || conflictingOpenSession.id;
+    throw new BadRequestException(
+      `No se puede modificar el precio mientras exista una sesión TPV abierta con stock de este producto. TPV en conflicto: ${registerLabel}.`
+    );
   }
 
   findOne(id: string) {

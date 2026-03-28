@@ -18,10 +18,13 @@ class PayDto {
   @IsOptional() @IsString() amount?: string; // compat: monto en moneda base
   @IsOptional() @IsString() amountOriginal?: string; // monto digitado en moneda de la línea
   @IsOptional() @IsEnum(CurrencyCode) currency?: CurrencyCode;
+  @IsOptional() @IsString() transactionCode?: string;
 }
 
 class CreateSaleDto {
   @IsString() cashSessionId!: string;
+  @IsOptional() @IsString() customerId?: string;
+  @IsOptional() @IsString() customerName?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

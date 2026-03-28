@@ -84,10 +84,10 @@ let StockMovementsService = class StockMovementsService {
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
     async create(dto, createdByUserId) {
-        const normalized = {
+        let normalized = {
             type: dto.type,
             productId: this.normalizeId(dto.productId),
-            qty: Number(Number(dto.qty).toFixed(3)),
+            qty: Number(Number(dto.qty).toFixed(2)),
             fromWarehouseId: this.normalizeId(dto.fromWarehouseId),
             toWarehouseId: this.normalizeId(dto.toWarehouseId),
             reason: dto.reason?.trim() || null,
@@ -115,10 +115,13 @@ let StockMovementsService = class StockMovementsService {
         }
         const product = await this.prisma.product.findUnique({
             where: { id: productId },
-            select: { id: true, active: true },
+            select: { id: true, active: true, allowFractionalQty: true },
         });
         if (!product || !product.active) {
             throw new common_1.NotFoundException("Producto no existe o está inactivo.");
+        }
+        if (!product.allowFractionalQty && !Number.isInteger(normalized.qty)) {
+            throw new common_1.BadRequestException("Este producto solo admite cantidades enteras en movimientos.");
         }
         const warehouseIds = [normalized.fromWarehouseId, normalized.toWarehouseId].filter((id) => Boolean(id));
         if (warehouseIds.length > 0) {

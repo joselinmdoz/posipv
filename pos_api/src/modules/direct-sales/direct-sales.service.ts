@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { CurrencyCode, Prisma, SaleChannel, StockMovementType, WarehouseType } from "@prisma/client";
+import { CurrencyCode, PaymentMethod, Prisma, SaleChannel, StockMovementType, WarehouseType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec, moneyEq } from "../../common/decimal";
 import { SettingsService } from "../settings/settings.service";
@@ -48,6 +48,7 @@ export class DirectSalesService {
     if (!dto.payments?.length) throw new BadRequestException("Sin pagos.");
 
     const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
+    const paymentMethodRules = await this.resolvePaymentMethodRulesForDirectSale();
 
     const normalizedItems = dto.items.map((item: any) => ({
       productId: item.productId,
@@ -57,7 +58,7 @@ export class DirectSalesService {
     const qtyByProduct = new Map<string, number>();
     for (const item of normalizedItems) {
       const currentQty = qtyByProduct.get(item.productId) || 0;
-      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
+      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(6)));
     }
     const productIds = Array.from(qtyByProduct.keys());
 
@@ -111,10 +112,26 @@ export class DirectSalesService {
           : dec(lineTotal.toFixed(2));
 
       total = total.add(lineTotalBaseCup);
-      return { productId: i.productId, qty: i.qty, price: linePrice as any };
+      return {
+        productId: i.productId,
+        qty: i.qty,
+        price: linePrice as any,
+        costSnapshot: product.cost ?? null,
+      };
     });
 
     const normalizedPayments = dto.payments.map((rawPayment: any) => {
+      const method = this.normalizePaymentMethod(rawPayment.method);
+      const methodRule = paymentMethodRules.get(method);
+      if (!methodRule || methodRule.enabled !== true) {
+        throw new BadRequestException(`El método de pago ${method} no está habilitado.`);
+      }
+
+      const transactionCode = this.normalizeTransactionCode(rawPayment.transactionCode);
+      if (methodRule.requiresTransactionCode && !transactionCode) {
+        throw new BadRequestException(`El método ${method} requiere código de transacción.`);
+      }
+
       const currency = this.normalizeCurrency(rawPayment.currency);
       const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
       const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
@@ -126,10 +143,11 @@ export class DirectSalesService {
       }
 
       return {
-        method: rawPayment.method,
+        method,
         currency,
         amountOriginal,
         amount: amountBase,
+        transactionCode,
         exchangeRateUsdToCup,
         exchangeRateRecordId: rateSnapshot.rateRecordId,
       };
@@ -158,6 +176,7 @@ export class DirectSalesService {
               amount: dec(p.amount) as any,
               currency: p.currency,
               amountOriginal: dec(p.amountOriginal) as any,
+              transactionCode: p.transactionCode || null,
               exchangeRateUsdToCup: dec(p.exchangeRateUsdToCup) as any,
               exchangeRateRecordId: p.exchangeRateRecordId || null,
             })),
@@ -300,6 +319,7 @@ export class DirectSalesService {
         method: payment.method,
         amount: Number(payment.amount.toFixed(2)),
         amountOriginal: Number(payment.amountOriginal.toFixed(2)),
+        transactionCode: payment.transactionCode || null,
         currency: payment.currency,
         exchangeRateUsdToCup: payment.exchangeRateUsdToCup ? Number(payment.exchangeRateUsdToCup.toFixed(6)) : null,
       })),
@@ -359,6 +379,76 @@ export class DirectSalesService {
     throw new BadRequestException("Moneda de pago inválida.");
   }
 
+  private normalizePaymentMethod(methodInput: unknown): PaymentMethod {
+    const raw = String(methodInput || "").trim().toUpperCase();
+    switch (raw) {
+      case PaymentMethod.CASH:
+      case PaymentMethod.CARD:
+      case PaymentMethod.TRANSFER:
+      case PaymentMethod.OTHER:
+        return raw as PaymentMethod;
+      default:
+        throw new BadRequestException("Método de pago inválido.");
+    }
+  }
+
+  private normalizePaymentMethodCode(codeInput: unknown): PaymentMethod | null {
+    const raw = String(codeInput || "").trim().toUpperCase();
+    switch (raw) {
+      case "CASH":
+      case "EFECTIVO":
+        return PaymentMethod.CASH;
+      case "CARD":
+      case "TARJETA":
+        return PaymentMethod.CARD;
+      case "TRANSFER":
+      case "TRANSFERENCIA":
+        return PaymentMethod.TRANSFER;
+      case "OTHER":
+      case "OTRO":
+        return PaymentMethod.OTHER;
+      default:
+        return null;
+    }
+  }
+
+  private normalizeTransactionCode(value: unknown): string | null {
+    const normalized = String(value || "").trim();
+    if (!normalized) return null;
+    return normalized.slice(0, 120);
+  }
+
+  private async resolvePaymentMethodRulesForDirectSale(): Promise<Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>> {
+    const methods = await this.prisma.paymentMethodSetting.findMany({
+      where: { enabled: true },
+      select: {
+        code: true,
+        enabled: true,
+        requiresTransactionCode: true,
+      },
+    });
+
+    const map = new Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>();
+    for (const row of methods || []) {
+      if (row.enabled === false) continue;
+      const method = this.normalizePaymentMethodCode(row.code);
+      if (!method) continue;
+      map.set(method, {
+        enabled: true,
+        requiresTransactionCode: row.requiresTransactionCode === true,
+      });
+    }
+
+    if (map.size > 0) return map;
+
+    return new Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>([
+      [PaymentMethod.CASH, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.CARD, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.TRANSFER, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.OTHER, { enabled: false, requiresTransactionCode: false }],
+    ]);
+  }
+
   private parsePositiveAmount(input: string, message: string): Prisma.Decimal {
     try {
       const value = dec(input);
@@ -376,7 +466,7 @@ export class DirectSalesService {
     if (!Number.isFinite(value) || value <= 0) {
       throw new BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
     }
-    return Number(value.toFixed(3));
+    return Number(value.toFixed(6));
   }
 
   private async generateDocumentNumber(tx: Prisma.TransactionClient, channel: SaleChannel) {

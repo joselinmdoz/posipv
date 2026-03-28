@@ -101,6 +101,27 @@
         gap: 0.5rem;
     }
 
+    .layout-topbar-user-avatar {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        object-fit: cover;
+        flex: 0 0 2rem;
+        border: 1px solid var(--surface-border);
+    }
+
+    .layout-topbar-user-avatar-placeholder {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--surface-200);
+        color: var(--text-color-secondary);
+
+        i {
+            font-size: 0.95rem;
+        }
+    }
+
     .layout-topbar-user-name {
         font-size: 0.9rem;
         font-weight: 600;
@@ -113,6 +134,14 @@
 
     .layout-topbar-user-menu-wrap {
         position: relative;
+    }
+
+    .layout-topbar-user-trigger-avatar {
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid var(--surface-border);
     }
 
     .layout-topbar-profile-menu {
@@ -202,6 +231,10 @@
                 span {
                     font-weight: medium;
                     display: block;
+                }
+
+                .layout-topbar-user-trigger-avatar {
+                    margin-right: 0.5rem;
                 }
             }
         }

@@ -18,6 +18,7 @@ class DirectSalePaymentDto {
   @IsOptional() @IsString() amount?: string;
   @IsOptional() @IsString() amountOriginal?: string;
   @IsOptional() @IsEnum(CurrencyCode) currency?: CurrencyCode;
+  @IsOptional() @IsString() transactionCode?: string;
 }
 
 class CreateDirectSaleDto {

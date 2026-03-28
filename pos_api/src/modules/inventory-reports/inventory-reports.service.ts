@@ -223,6 +223,8 @@ export class InventoryReportsService {
     const entriesMap = new Map<string, number>();
     const outsMap = new Map<string, number>();
     const saleReasonRegex = /VENTA/i;
+    let entriesCount = 0;
+    let outsCount = 0;
     for (const mv of movements) {
       productIds.add(mv.productId);
       const qty = Number(mv.qty);
@@ -233,6 +235,9 @@ export class InventoryReportsService {
         (mv.type === 'TRANSFER' && mv.toWarehouseId === warehouseId);
       if (isInbound) {
         entriesMap.set(mv.productId, (entriesMap.get(mv.productId) || 0) + qty);
+      }
+      if (mv.type === 'IN' && mv.toWarehouseId === warehouseId) {
+        entriesCount += 1;
       }
 
       const isOutbound =
@@ -246,6 +251,12 @@ export class InventoryReportsService {
           outsMap.set(mv.productId, (outsMap.get(mv.productId) || 0) + qty);
         }
       }
+      if (mv.type === 'OUT' && mv.fromWarehouseId === warehouseId) {
+        const reason = (mv.reason || '').trim();
+        if (!saleReasonRegex.test(reason)) {
+          outsCount += 1;
+        }
+      }
     }
 
     const soldItems = await this.prisma.saleItem.findMany({
@@ -253,21 +264,42 @@ export class InventoryReportsService {
         sale: {
           cashSessionId,
           status: SaleStatus.PAID,
-          createdAt: {
-            gte: session.openedAt,
-            lte: sessionEnd,
-          },
         },
       },
       select: {
         productId: true,
         qty: true,
+        price: true,
+        costSnapshot: true,
       },
     });
     const salesMap = new Map<string, number>();
+    const salesAmountMap = new Map<string, number>();
+    const salesCostAmountMap = new Map<string, number>();
+    const salesMissingCostQtyMap = new Map<string, number>();
     for (const it of soldItems) {
       productIds.add(it.productId);
-      salesMap.set(it.productId, (salesMap.get(it.productId) || 0) + Number(it.qty));
+      const qty = Number(it.qty);
+      const unitPrice = Number(it.price || 0);
+      const unitCostSnapshot = it.costSnapshot != null ? Number(it.costSnapshot) : null;
+
+      salesMap.set(it.productId, Number(((salesMap.get(it.productId) || 0) + qty).toFixed(6)));
+      salesAmountMap.set(
+        it.productId,
+        Number(((salesAmountMap.get(it.productId) || 0) + qty * unitPrice).toFixed(2))
+      );
+
+      if (unitCostSnapshot != null) {
+        salesCostAmountMap.set(
+          it.productId,
+          Number(((salesCostAmountMap.get(it.productId) || 0) + qty * unitCostSnapshot).toFixed(2))
+        );
+      } else {
+        salesMissingCostQtyMap.set(
+          it.productId,
+          Number(((salesMissingCostQtyMap.get(it.productId) || 0) + qty).toFixed(6))
+        );
+      }
     }
 
     const products = await this.prisma.product.findMany({
@@ -277,6 +309,7 @@ export class InventoryReportsService {
         name: true,
         codigo: true,
         price: true,
+        cost: true,
         currency: true,
       },
     });
@@ -290,8 +323,16 @@ export class InventoryReportsService {
       const sales = Number(salesMap.get(productId) || 0);
       const total = initialQty + entries - outs;
       const final = total - sales;
-      const price = Number(product?.price || 0);
-      const amount = Number((sales * price).toFixed(2));
+      const currentProductPrice = Number(product?.price || 0);
+      const salesAmount = Number(salesAmountMap.get(productId) || 0);
+      const linePrice = sales > 0 ? Number((salesAmount / sales).toFixed(2)) : currentProductPrice;
+      const fallbackUnitCost = Number(product?.cost || 0);
+      const knownCostAmount = Number(salesCostAmountMap.get(productId) || 0);
+      const missingCostQty = Number(salesMissingCostQtyMap.get(productId) || 0);
+      const totalCostAmount = Number((knownCostAmount + (missingCostQty * fallbackUnitCost)).toFixed(2));
+      const gain = Number((salesAmount - totalCostAmount).toFixed(2));
+      const gp = sales > 0 ? Number((gain / sales).toFixed(2)) : 0;
+      const amount = Number(salesAmount.toFixed(2));
 
       return {
         productId,
@@ -304,8 +345,10 @@ export class InventoryReportsService {
         sales,
         total,
         final,
-        price,
+        price: linePrice,
         amount,
+        gp,
+        gain,
       };
     }).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -318,9 +361,20 @@ export class InventoryReportsService {
         total: acc.total + line.total,
         final: acc.final + line.final,
         amount: Number((acc.amount + line.amount).toFixed(2)),
+        profit: Number((acc.profit + line.gain).toFixed(2)),
       }),
-      { initial: 0, entries: 0, outs: 0, sales: 0, total: 0, final: 0, amount: 0 }
+      { initial: 0, entries: 0, outs: 0, sales: 0, total: 0, final: 0, amount: 0, profit: 0 }
     );
+
+    const [paymentTotals, salesCount] = await Promise.all([
+      this.getPaymentTotals(cashSessionId, session.openedAt, sessionEnd),
+      this.prisma.sale.count({
+        where: {
+          cashSessionId,
+          status: SaleStatus.PAID,
+        },
+      }),
+    ]);
 
     return {
       cashSessionId,
@@ -346,23 +400,24 @@ export class InventoryReportsService {
         code: session.register.warehouse!.code,
       },
       lines,
-      totals,
-      paymentTotals: await this.getPaymentTotals(cashSessionId, session.openedAt, sessionEnd),
+      totals: {
+        ...totals,
+        salesCount,
+        entriesCount,
+        outsCount,
+      },
+      paymentTotals,
       closed: session.status === CashSessionStatus.CLOSED,
     };
   }
 
-  private async getPaymentTotals(cashSessionId: string, from: Date, to: Date) {
+  private async getPaymentTotals(cashSessionId: string, _from: Date, _to: Date) {
     const grouped = await this.prisma.payment.groupBy({
       by: ['method'],
       where: {
         sale: {
           cashSessionId,
           status: SaleStatus.PAID,
-          createdAt: {
-            gte: from,
-            lte: to,
-          },
         },
       },
       _sum: { amount: true },

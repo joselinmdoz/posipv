@@ -10,13 +10,15 @@ import { SelectModule } from 'primeng/select';
 import { SplitButtonModule } from 'primeng/splitbutton';
 import { ToastModule } from 'primeng/toast';
 import { TagModule } from 'primeng/tag';
+import { TableModule } from 'primeng/table';
 import { MenuItem, MessageService } from 'primeng/api';
 import { CashSessionSummary, Payment, PosService, SaleItem } from '@/app/core/services/pos.service';
 import { Product, ProductsService } from '@/app/core/services/products.service';
 import { Denomination, PaymentMethodSetting, SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 import { CreateStockMovementDto, WarehousesService } from '@/app/core/services/warehouses.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
-import { forkJoin } from 'rxjs';
+import { Customer, CustomersService } from '@/app/core/services/customers.service';
+import { catchError, forkJoin, of } from 'rxjs';
 
 @Component({
     selector: 'app-tpv',
@@ -31,7 +33,8 @@ import { forkJoin } from 'rxjs';
         SelectModule,
         SplitButtonModule,
         ToastModule,
-        TagModule
+        TagModule,
+        TableModule
     ],
     providers: [MessageService],
     template: `
@@ -160,27 +163,14 @@ import { forkJoin } from 'rxjs';
 
                 <div class="tpv-cart-items">
                     @for (item of posService.cart(); track item.productId) {
-                        <article class="tpv-cart-item" [class.tpv-cart-item-zero]="item.qty <= 0">
+                        <article
+                            class="tpv-cart-item"
+                            [class.tpv-cart-item-zero]="item.qty <= 0"
+                            [class.tpv-cart-item-has-amount]="isFractionalProduct(item.productId)"
+                        >
                             <div class="tpv-cart-item-main">
                                 <div class="tpv-cart-item-name">{{ item.productName }}</div>
                                 <div class="tpv-cart-item-price">{{ item.price | currency: paymentBaseCurrency() }} x {{ formatQty(item.qty, isFractionalProduct(item.productId)) }}</div>
-                                <div class="tpv-cart-item-amount-edit">
-                                    <label>Importe</label>
-                                    <p-inputnumber
-                                        [ngModel]="item.subtotal"
-                                        [min]="0"
-                                        mode="currency"
-                                        [currency]="paymentBaseCurrency()"
-                                        locale="es-ES"
-                                        [useGrouping]="false"
-                                        (ngModelChange)="onCartAmountInputChange(item, $event)"
-                                        (onBlur)="onCartAmountInputBlur(item, $event)"
-                                        (click)="onCartFieldInteraction($event)"
-                                        (touchend)="onCartFieldInteraction($event)"
-                                        inputStyleClass="tpv-cart-amount-field"
-                                        styleClass="tpv-cart-amount-input"
-                                    />
-                                </div>
                             </div>
                             <div class="tpv-cart-item-controls">
                                 <p-button icon="pi pi-minus" [rounded]="true" [text]="true" severity="secondary" (onClick)="decreaseQty(item)" />
@@ -190,7 +180,7 @@ import { forkJoin } from 'rxjs';
                                     [max]="getAvailableQtyForCartItem(item)"
                                     [step]="isFractionalProduct(item.productId) ? 0.001 : 1"
                                     [minFractionDigits]="0"
-                                    [maxFractionDigits]="isFractionalProduct(item.productId) ? 3 : 0"
+                                    [maxFractionDigits]="isFractionalProduct(item.productId) ? 6 : 0"
                                     locale="es-ES"
                                     [useGrouping]="false"
                                     (ngModelChange)="onCartQtyInputChange(item, $event)"
@@ -202,8 +192,34 @@ import { forkJoin } from 'rxjs';
                                 />
                                 <p-button icon="pi pi-plus" [rounded]="true" [text]="true" severity="secondary" (onClick)="increaseQty(item)" />
                             </div>
+                            @if (isFractionalProduct(item.productId)) {
+                                <div class="tpv-cart-item-amount-edit">
+                                    <label>Importe</label>
+                                    <p-inputnumber
+                                        [ngModel]="item.subtotal"
+                                        [min]="0"
+                                        [step]="0.01"
+                                        [minFractionDigits]="0"
+                                        [maxFractionDigits]="2"
+                                        locale="es-ES"
+                                        [useGrouping]="false"
+                                        (onBlur)="onCartAmountInputBlur(item, $event)"
+                                        (click)="onCartFieldInteraction($event)"
+                                        (touchend)="onCartFieldInteraction($event)"
+                                        inputStyleClass="tpv-cart-amount-field"
+                                        styleClass="tpv-cart-amount-input"
+                                    />
+                                </div>
+                            }
                             <div class="tpv-cart-item-subtotal">{{ item.subtotal | currency: paymentBaseCurrency() }}</div>
-                            <p-button icon="pi pi-trash" [rounded]="true" [text]="true" severity="danger" (onClick)="removeFromCart(item)" />
+                            <p-button
+                                icon="pi pi-trash"
+                                [rounded]="true"
+                                [text]="true"
+                                severity="danger"
+                                styleClass="tpv-cart-item-remove"
+                                (onClick)="removeFromCart(item)"
+                            />
                         </article>
                     }
 
@@ -240,7 +256,7 @@ import { forkJoin } from 'rxjs';
         </div>
 
         <!-- Dialog: Abrir Caja -->
-        <p-dialog header="Abrir Caja" [(visible)]="openDialog" [modal]="true" [style]="{ width: '400px' }">
+        <p-dialog header="Abrir Caja" [(visible)]="openDialog" [modal]="true" [style]="{ width: '400px' }" [breakpoints]="{ '960px': '98vw' }">
             <div class="flex flex-col gap-4">
                 <div>
                     <label class="block mb-2">Fondo inicial</label>
@@ -258,7 +274,7 @@ import { forkJoin } from 'rxjs';
         </p-dialog>
 
         <!-- Dialog: Cerrar Caja -->
-        <p-dialog header="Cerrar Caja" [(visible)]="closeDialog" [modal]="true" [style]="{ width: '860px' }">
+        <p-dialog header="Cerrar Caja" [(visible)]="closeDialog" [modal]="true" [style]="{ width: '860px' }" [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }">
             <div class="flex flex-col gap-4">
                 @if (closeSummaryLoading()) {
                     <div class="text-center py-6 text-gray-500">
@@ -348,7 +364,7 @@ import { forkJoin } from 'rxjs';
         </p-dialog>
 
         <!-- Dialog: Pago -->
-        <p-dialog header="Procesar Pago" [(visible)]="paymentDialog" [modal]="true" [style]="{ width: '860px' }">
+        <p-dialog header="Procesar Pago" [(visible)]="paymentDialog" [modal]="true" [style]="{ width: '860px' }" [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }">
             <div class="flex flex-col gap-4 tpv-payment-modal">
                 <div class="tpv-payment-summary">
                     <div class="tpv-payment-summary-item">
@@ -366,6 +382,23 @@ import { forkJoin } from 'rxjs';
                 </div>
                 <div class="text-sm text-gray-600">
                     Moneda de este TPV: <strong>{{ paymentBaseCurrency() }}</strong>
+                </div>
+                <div class="border rounded p-3 bg-gray-50">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div class="text-sm font-medium mb-1">Cliente de la venta (opcional)</div>
+                            @if (selectedCustomer()) {
+                                <div class="font-semibold">{{ selectedCustomer()!.name }}</div>
+                                <div class="text-sm text-gray-600">ID: {{ selectedCustomer()!.identification }}</div>
+                            } @else {
+                                <div class="text-sm text-gray-500">No hay cliente seleccionado.</div>
+                            }
+                        </div>
+                        <div class="flex gap-2">
+                            <p-button label="Seleccionar cliente" icon="pi pi-user-plus" severity="secondary" [outlined]="true" (onClick)="openCustomerDialog()" />
+                            <p-button label="Quitar" icon="pi pi-times" severity="danger" [outlined]="true" [disabled]="!selectedCustomer()" (onClick)="clearSelectedCustomer()" />
+                        </div>
+                    </div>
                 </div>
 
                 <div class="tpv-payment-actions">
@@ -430,6 +463,17 @@ import { forkJoin } from 'rxjs';
                                     (onClick)="removePaymentLine(i)"
                                 />
                             </div>
+                            @if (requiresTransactionCodeForMethod(line.method)) {
+                                <div class="tpv-payment-line-transaction">
+                                    <input
+                                        pInputText
+                                        [(ngModel)]="line.transactionCode"
+                                        maxlength="120"
+                                        class="w-full"
+                                        placeholder="Código de transacción"
+                                    />
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -446,10 +490,92 @@ import { forkJoin } from 'rxjs';
         </p-dialog>
 
         <p-dialog
+            header="Seleccionar cliente"
+            [(visible)]="customerDialog"
+            [modal]="true"
+            [style]="{ width: '980px' }"
+            [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }"
+            (onShow)="onCustomerDialogShow()"
+        >
+            <div class="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-4">
+                <div class="flex flex-col gap-3">
+                    <div class="flex gap-2">
+                        <input
+                            pInputText
+                            [(ngModel)]="customerSearch"
+                            class="w-full"
+                            placeholder="Buscar por nombre, identificación, teléfono o email"
+                            (keydown.enter)="loadCustomers()"
+                        />
+                        <p-button icon="pi pi-search" label="Buscar" severity="secondary" [outlined]="true" [loading]="customersLoading()" (onClick)="loadCustomers()" />
+                    </div>
+
+                    <p-table [value]="customers()" [paginator]="true" [rows]="8" [loading]="customersLoading()" responsiveLayout="scroll">
+                        <ng-template #header>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Identificación</th>
+                                <th class="text-right">Compras</th>
+                                <th class="text-center">Seleccionar</th>
+                            </tr>
+                        </ng-template>
+                        <ng-template #body let-customer>
+                            <tr>
+                                <td>{{ customer.name }}</td>
+                                <td>{{ customer.identification }}</td>
+                                <td class="text-right">{{ customer.purchasesCount }}</td>
+                                <td class="text-center">
+                                    <p-button icon="pi pi-check" [rounded]="true" [text]="true" severity="success" (onClick)="selectCustomer(customer)" />
+                                </td>
+                            </tr>
+                        </ng-template>
+                        <ng-template #emptymessage>
+                            <tr>
+                                <td colspan="4" class="text-center">No hay clientes para mostrar.</td>
+                            </tr>
+                        </ng-template>
+                    </p-table>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <p-button
+                        [label]="showNewCustomerForm ? 'Cancelar nuevo cliente' : 'Nuevo cliente'"
+                        [icon]="showNewCustomerForm ? 'pi pi-times' : 'pi pi-user-plus'"
+                        severity="secondary"
+                        [outlined]="true"
+                        (onClick)="toggleNewCustomerForm()"
+                    />
+
+                    @if (showNewCustomerForm) {
+                        <div class="border rounded p-3 bg-gray-50 flex flex-col gap-2">
+                            <h4 class="m-0">Crear cliente</h4>
+                            <input pInputText [(ngModel)]="newCustomer.name" placeholder="Nombre completo" />
+                            <input pInputText [(ngModel)]="newCustomer.identification" placeholder="Identificación" />
+                            <input pInputText [(ngModel)]="newCustomer.phone" placeholder="Teléfono (opcional)" />
+                            <input pInputText [(ngModel)]="newCustomer.email" placeholder="Email (opcional)" />
+                            <input pInputText [(ngModel)]="newCustomer.address" placeholder="Dirección (opcional)" />
+                            <div class="flex justify-end">
+                                <p-button label="Guardar cliente" icon="pi pi-save" [loading]="creatingCustomer()" (onClick)="createCustomer()" />
+                            </div>
+                        </div>
+                    } @else {
+                        <div class="text-sm text-gray-500 border rounded p-3">
+                            Si el cliente no existe, pulsa <strong>Nuevo cliente</strong> para crearlo y seleccionarlo en esta venta.
+                        </div>
+                    }
+                </div>
+            </div>
+            <ng-template #footer>
+                <p-button label="Cerrar" icon="pi pi-times" text (onClick)="customerDialog = false" />
+            </ng-template>
+        </p-dialog>
+
+        <p-dialog
             header="Movimiento de Inventario (Sesion TPV)"
             [(visible)]="sessionMovementDialog"
             [modal]="true"
             [style]="{ width: '520px' }"
+            [breakpoints]="{ '960px': '98vw' }"
         >
             <div class="flex flex-col gap-4">
                 <div class="text-sm text-gray-600">
@@ -479,6 +605,7 @@ import { forkJoin } from 'rxjs';
                     <p-select
                         [options]="movementProductOptions"
                         [(ngModel)]="sessionMovement.productId"
+                        (ngModelChange)="onSessionMovementProductChange()"
                         optionLabel="label"
                         optionValue="value"
                         [filter]="true"
@@ -494,7 +621,19 @@ import { forkJoin } from 'rxjs';
                 </div>
                 <div class="flex flex-col gap-2">
                     <label>Cantidad *</label>
-                    <p-inputnumber [(ngModel)]="sessionMovement.qty" [min]="1" class="w-full" />
+                    <p-inputnumber
+                        [(ngModel)]="sessionMovement.qty"
+                        [min]="isSessionMovementFractionalProduct() ? 0.01 : 1"
+                        [step]="isSessionMovementFractionalProduct() ? 0.01 : 1"
+                        [minFractionDigits]="0"
+                        [maxFractionDigits]="isSessionMovementFractionalProduct() ? 2 : 0"
+                        locale="es-ES"
+                        [useGrouping]="false"
+                        class="w-full"
+                    />
+                    <small class="text-gray-500">
+                        {{ isSessionMovementFractionalProduct() ? 'Admite fracciones con coma (hasta 2 decimales).' : 'Solo valores enteros mayores a 0.' }}
+                    </small>
                 </div>
                 <div class="flex flex-col gap-2">
                     <label>Motivo</label>
@@ -553,15 +692,15 @@ import { forkJoin } from 'rxjs';
                     <div class="tpv-ipv-summary">
                         <div class="tpv-ipv-summary-item">
                             <span>Total de ventas</span>
-                            <strong>{{ sessionIpvReport()!.totals.sales }}</strong>
+                            <strong>{{ sessionIpvReport()!.totals.salesCount ?? sessionIpvReport()!.totals.sales }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de entradas</span>
-                            <strong>{{ sessionIpvReport()!.totals.entries }}</strong>
+                            <strong>{{ sessionIpvReport()!.totals.entriesCount ?? sessionIpvReport()!.totals.entries }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de salidas</span>
-                            <strong>{{ sessionIpvReport()!.totals.outs }}</strong>
+                            <strong>{{ sessionIpvReport()!.totals.outsCount ?? sessionIpvReport()!.totals.outs }}</strong>
                         </div>
                         @for (item of sessionIpvPaymentSummaryRows(); track item.code) {
                             <div class="tpv-ipv-summary-item">
@@ -662,10 +801,25 @@ export class Tpv implements OnInit {
         method: Payment['method'];
         currency: SystemCurrencyCode;
         amount: number | null;
+        transactionCode?: string;
     }> = [];
     private paymentLineSeq = 1;
     paymentDefaultCurrency: SystemCurrencyCode = 'CUP';
     paymentEnabledCurrencies: SystemCurrencyCode[] = ['CUP'];
+    selectedCustomer = signal<Customer | null>(null);
+    customers = signal<Customer[]>([]);
+    customersLoading = signal(false);
+    customerDialog = false;
+    customerSearch = '';
+    showNewCustomerForm = false;
+    creatingCustomer = signal(false);
+    newCustomer: {
+        name: string;
+        identification: string;
+        phone: string;
+        email: string;
+        address: string;
+    } = this.getEmptyNewCustomerForm();
 
     movementProductOptions: Array<{ label: string; value: string }> = [];
     movementProductsCatalog: Product[] = [];
@@ -689,15 +843,15 @@ export class Tpv implements OnInit {
         { label: 'Salida', value: 'OUT' }
     ];
 
-    private readonly paymentMethodCatalog: Array<{ label: string; value: Payment['method']; defaultEnabled: boolean }> = [
-        { label: 'Efectivo', value: 'CASH', defaultEnabled: true },
-        { label: 'Tarjeta', value: 'CARD', defaultEnabled: true },
-        { label: 'Transferencia', value: 'TRANSFER', defaultEnabled: true },
-        { label: 'Otro', value: 'OTHER', defaultEnabled: false }
+    private readonly paymentMethodCatalog: Array<{ label: string; value: Payment['method']; defaultEnabled: boolean; defaultRequiresTransactionCode: boolean }> = [
+        { label: 'Efectivo', value: 'CASH', defaultEnabled: true, defaultRequiresTransactionCode: false },
+        { label: 'Tarjeta', value: 'CARD', defaultEnabled: true, defaultRequiresTransactionCode: false },
+        { label: 'Transferencia', value: 'TRANSFER', defaultEnabled: true, defaultRequiresTransactionCode: false },
+        { label: 'Otro', value: 'OTHER', defaultEnabled: false, defaultRequiresTransactionCode: false }
     ];
-    paymentMethods: Array<{ label: string; value: Payment['method'] }> = this.paymentMethodCatalog
+    paymentMethods: Array<{ label: string; value: Payment['method']; requiresTransactionCode: boolean }> = this.paymentMethodCatalog
         .filter((item) => item.defaultEnabled)
-        .map(({ label, value }) => ({ label, value }));
+        .map(({ label, value, defaultRequiresTransactionCode }) => ({ label, value, requiresTransactionCode: defaultRequiresTransactionCode }));
     private allowedPaymentMethods = new Set<Payment['method']>(this.paymentMethods.map((item) => item.value));
     sessionIpvExportItems: MenuItem[] = [
         {
@@ -719,6 +873,7 @@ export class Tpv implements OnInit {
     closeSummaryLoading = signal<boolean>(false);
     closeDenominationLines: Array<{ id: string; value: number; qty: number; currency: SystemCurrencyCode }> = [];
     closeCashCurrency: SystemCurrencyCode = 'CUP';
+    sessionIpvConfiguredPaymentMethods: PaymentMethodSetting[] = [];
 
     constructor(
         public posService: PosService,
@@ -726,6 +881,7 @@ export class Tpv implements OnInit {
         private settingsService: SettingsService,
         private warehousesService: WarehousesService,
         private inventoryReportsService: InventoryReportsService,
+        private customersService: CustomersService,
         private route: ActivatedRoute,
         private router: Router,
         private messageService: MessageService
@@ -887,26 +1043,35 @@ export class Tpv implements OnInit {
     }
 
     onCartQtyInputChange(item: SaleItem, rawQty: number | null) {
+        if (rawQty === null || rawQty === undefined || Number.isNaN(Number(rawQty))) {
+            return;
+        }
         this.applyCartQty(item, rawQty, true);
     }
 
     onCartQtyInputBlur(item: SaleItem, event: any) {
-        const modelValue = event?.value;
-        if (modelValue !== undefined && modelValue !== null && Number.isFinite(Number(modelValue))) {
-            this.applyCartQty(item, Number(modelValue), false);
+        const modelValue = this.parseInputNumberValue(event?.value);
+        if (modelValue !== null) {
+            this.applyCartQty(item, modelValue, false);
             return;
         }
 
-        const rawInputValue = event?.originalEvent?.target?.value;
-        if (rawInputValue === null || rawInputValue === undefined || String(rawInputValue).trim() === '') {
+        const rawInputValue = this.readInputNumberRawValue(event);
+        if (rawInputValue === null) return;
+
+        if (rawInputValue.trim() === '') {
             this.posService.updateCartItemQty(item.productId, 0);
             return;
+        }
+
+        const parsedRawValue = this.parseInputNumberValue(rawInputValue);
+        if (parsedRawValue !== null) {
+            this.applyCartQty(item, parsedRawValue, false);
         }
     }
 
     onCartAmountInputChange(item: SaleItem, rawAmount: number | null) {
         if (rawAmount === null || rawAmount === undefined || Number.isNaN(Number(rawAmount))) {
-            this.posService.updateCartItemQty(item.productId, 0);
             return;
         }
         const amount = Number(rawAmount);
@@ -924,16 +1089,23 @@ export class Tpv implements OnInit {
     }
 
     onCartAmountInputBlur(item: SaleItem, event: any) {
-        const modelValue = event?.value;
-        if (modelValue !== undefined && modelValue !== null && Number.isFinite(Number(modelValue))) {
-            this.onCartAmountInputChange(item, Number(modelValue));
+        const modelValue = this.parseInputNumberValue(event?.value);
+        if (modelValue !== null) {
+            this.onCartAmountInputChange(item, modelValue);
             return;
         }
 
-        const rawInputValue = event?.originalEvent?.target?.value;
-        if (rawInputValue === null || rawInputValue === undefined || String(rawInputValue).trim() === '') {
+        const rawInputValue = this.readInputNumberRawValue(event);
+        if (rawInputValue === null) return;
+
+        if (rawInputValue.trim() === '') {
             this.posService.updateCartItemQty(item.productId, 0);
             return;
+        }
+
+        const parsedRawValue = this.parseInputNumberValue(rawInputValue);
+        if (parsedRawValue !== null) {
+            this.onCartAmountInputChange(item, parsedRawValue);
         }
     }
 
@@ -1055,10 +1227,20 @@ export class Tpv implements OnInit {
     }
 
     private sessionIpvPaymentSummaryRowsFromReport(report: SessionIvpReport) {
+        const configuredMethods = (this.sessionIpvConfiguredPaymentMethods || [])
+            .filter((method) => method.enabled !== false)
+            .map((method) => ({
+                label: String(method.name || method.code).trim() || method.code,
+                value: this.normalizePaymentMethodCode(method.code)
+            }))
+            .filter((row): row is { label: string; value: Payment['method'] } => !!row.value);
+
         const fallbackMethods: Array<{ label: string; value: Payment['method'] }> = this.paymentMethodCatalog
             .filter((item) => item.defaultEnabled)
             .map(({ label, value }) => ({ label, value }));
-        const methods = this.paymentMethods.length > 0 ? this.paymentMethods : fallbackMethods;
+        const methods = configuredMethods.length > 0
+            ? configuredMethods
+            : (this.paymentMethods.length > 0 ? this.paymentMethods : fallbackMethods);
 
         return methods.map((method) => ({
             code: method.value,
@@ -1123,6 +1305,98 @@ export class Tpv implements OnInit {
         line.qty = Math.max(0, Math.floor(Number(line.qty)));
     }
 
+    openCustomerDialog() {
+        this.customerDialog = true;
+    }
+
+    onCustomerDialogShow() {
+        this.loadCustomers();
+    }
+
+    loadCustomers() {
+        this.customersLoading.set(true);
+        this.customersService
+            .list({
+                q: this.customerSearch?.trim() || undefined,
+                active: true,
+                limit: 200
+            })
+            .subscribe({
+                next: (rows) => {
+                    this.customers.set(rows || []);
+                    this.customersLoading.set(false);
+                },
+                error: () => {
+                    this.customers.set([]);
+                    this.customersLoading.set(false);
+                    this.messageService.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: 'No se pudieron cargar los clientes.'
+                    });
+                }
+            });
+    }
+
+    selectCustomer(customer: Customer) {
+        this.selectedCustomer.set(customer);
+        this.customerDialog = false;
+        this.messageService.add({
+            severity: 'success',
+            summary: 'Cliente seleccionado',
+            detail: `${customer.name} (${customer.identification})`
+        });
+    }
+
+    clearSelectedCustomer() {
+        this.selectedCustomer.set(null);
+    }
+
+    toggleNewCustomerForm() {
+        this.showNewCustomerForm = !this.showNewCustomerForm;
+        if (!this.showNewCustomerForm) {
+            this.newCustomer = this.getEmptyNewCustomerForm();
+        }
+    }
+
+    createCustomer() {
+        const payload = {
+            name: this.newCustomer.name?.trim(),
+            identification: this.newCustomer.identification?.trim(),
+            phone: this.newCustomer.phone?.trim() || undefined,
+            email: this.newCustomer.email?.trim() || undefined,
+            address: this.newCustomer.address?.trim() || undefined
+        };
+
+        if (!payload.name || !payload.identification) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Datos incompletos',
+                detail: 'Nombre e identificación son obligatorios.'
+            });
+            return;
+        }
+
+        this.creatingCustomer.set(true);
+        this.customersService.create(payload).subscribe({
+            next: (created) => {
+                this.creatingCustomer.set(false);
+                this.newCustomer = this.getEmptyNewCustomerForm();
+                this.showNewCustomerForm = false;
+                this.loadCustomers();
+                this.selectCustomer(created);
+            },
+            error: (err) => {
+                this.creatingCustomer.set(false);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: err?.error?.message || 'No se pudo crear el cliente.'
+                });
+            }
+        });
+    }
+
     showPaymentDialog() {
         if (!this.posService.currentSession()) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Abra la caja primero' });
@@ -1148,6 +1422,7 @@ export class Tpv implements OnInit {
             (line) => !line.method || !this.isCurrencyAllowed(line.currency) || Number(line.amount || 0) <= 0
         );
         if (hasInvalidLine) return false;
+        if (this.findLineMissingTransactionCode()) return false;
         if (this.hasDuplicatePaymentMethods()) return false;
 
         return this.paymentDifference() === 0;
@@ -1169,10 +1444,16 @@ export class Tpv implements OnInit {
             .map((line) => ({
                 method: line.method,
                 amount: this.roundMoney(Number(line.amount || 0)),
-                currency: line.currency
+                currency: line.currency,
+                transactionCode: line.transactionCode?.trim() || undefined
             }));
 
-        this.posService.createSale(session.id, saleItems, payments).subscribe({
+        this.posService.createSale(
+            session.id,
+            saleItems,
+            payments,
+            this.selectedCustomer()?.id || undefined
+        ).subscribe({
             next: () => {
                 this.posService.clearCart();
                 this.loadSessionProducts(session.id);
@@ -1208,7 +1489,8 @@ export class Tpv implements OnInit {
                 id: this.paymentLineSeq++,
                 method: methodToUse,
                 currency: this.paymentDefaultCurrency,
-                amount: lineAmount
+                amount: lineAmount,
+                transactionCode: ''
             }
         ];
     }
@@ -1276,6 +1558,10 @@ export class Tpv implements OnInit {
     sessionIpvResponsibleName(): string {
         const report = this.sessionIpvReport();
         if (!report) return '-';
+        return this.resolveSessionIpvResponsibleName(report);
+    }
+
+    private resolveSessionIpvResponsibleName(report: SessionIvpReport): string {
         const name = String(report.responsible?.employeeName || '').trim();
         if (name) return name;
         return report.responsible?.email || '-';
@@ -1310,6 +1596,16 @@ export class Tpv implements OnInit {
         this.refreshMovementProductOptions();
     }
 
+    onSessionMovementProductChange() {
+        const allowFractional = this.isSessionMovementFractionalProduct();
+        const normalizedQty = this.normalizeMovementQty(this.sessionMovement.qty, allowFractional);
+        this.sessionMovement.qty = normalizedQty > 0 ? normalizedQty : 1;
+    }
+
+    isSessionMovementFractionalProduct(): boolean {
+        return this.isMovementProductFractional(this.sessionMovement.productId);
+    }
+
     getMovementAvailableQty(productId: string): number {
         return Number(this.movementStockByProduct.get(productId) || 0);
     }
@@ -1322,23 +1618,25 @@ export class Tpv implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Seleccione un producto' });
             return;
         }
-        if (!this.sessionMovement.qty || this.sessionMovement.qty <= 0) {
+
+        const allowFractionalQty = this.isMovementProductFractional(this.sessionMovement.productId);
+        const qty = this.normalizeMovementQty(this.sessionMovement.qty, allowFractionalQty);
+        if (qty <= 0) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Ingrese una cantidad valida' });
             return;
         }
-
-        const qty = Number(this.sessionMovement.qty);
+        this.sessionMovement.qty = qty;
         if (this.sessionMovement.type === 'OUT') {
             const available = this.getMovementAvailableQty(this.sessionMovement.productId);
             if (available <= 0) {
                 this.messageService.add({ severity: 'warn', summary: 'Sin stock', detail: 'El producto no tiene stock en el almacen del TPV' });
                 return;
             }
-            if (qty > available) {
+            if (qty > available + 1e-9) {
                 this.messageService.add({
                     severity: 'warn',
                     summary: 'Stock insuficiente',
-                    detail: `Solo hay ${available} unidades disponibles en el almacen del TPV`
+                    detail: `Solo hay ${this.formatQty(available, allowFractionalQty)} unidades disponibles en el almacen del TPV`
                 });
                 return;
             }
@@ -1388,13 +1686,19 @@ export class Tpv implements OnInit {
         this.sessionIpvDialog = true;
         this.sessionIpvLoading.set(true);
         this.sessionIpvReport.set(null);
-        this.inventoryReportsService.getSessionIpv(session.id).subscribe({
-            next: (report) => {
+        this.sessionIpvConfiguredPaymentMethods = [];
+        forkJoin({
+            report: this.inventoryReportsService.getSessionIpv(session.id),
+            settings: this.settingsService.getRegisterSettings(session.registerId).pipe(catchError(() => of(null)))
+        }).subscribe({
+            next: ({ report, settings }) => {
                 this.sessionIpvReport.set(report);
+                this.sessionIpvConfiguredPaymentMethods = (settings?.paymentMethods || []).filter((method) => method.enabled !== false);
                 this.sessionIpvLoading.set(false);
             },
             error: (err) => {
                 this.sessionIpvReport.set(null);
+                this.sessionIpvConfiguredPaymentMethods = [];
                 this.sessionIpvLoading.set(false);
                 this.messageService.add({
                     severity: 'error',
@@ -1449,7 +1753,7 @@ export class Tpv implements OnInit {
         if (!allowFractional) {
             return `${Math.max(0, Math.floor(safe))}`;
         }
-        return safe.toFixed(3).replace(/\.?0+$/, '');
+        return safe.toFixed(6).replace(/\.?0+$/, '');
     }
 
     isFractionalProduct(productId: string): boolean {
@@ -1470,7 +1774,7 @@ export class Tpv implements OnInit {
     }
 
     private getStepQtyForProduct(productId: string): number {
-        return this.isFractionalProduct(productId) ? 0.1 : 1;
+        return 1;
     }
 
     private normalizeAvailableQty(product?: Product): number {
@@ -1491,6 +1795,20 @@ export class Tpv implements OnInit {
             return this.roundQty(value);
         }
         return Math.max(0, Math.floor(value));
+    }
+
+    private isMovementProductFractional(productId: string): boolean {
+        if (!productId) return false;
+        return !!this.movementProductsCatalog.find((p) => p.id === productId)?.allowFractionalQty;
+    }
+
+    private normalizeMovementQty(value: unknown, allowFractional: boolean): number {
+        const parsed = this.parseInputNumberValue(value);
+        if (parsed === null || parsed <= 0) return 0;
+        if (allowFractional) {
+            return Number(parsed.toFixed(2));
+        }
+        return Math.floor(parsed);
     }
 
     private applyCartQty(item: SaleItem, rawQty: number | null | undefined, notifyIfClamped: boolean): void {
@@ -1536,6 +1854,36 @@ export class Tpv implements OnInit {
 
     private positiveCartItems(): SaleItem[] {
         return this.posService.cart().filter((item) => Number(item.qty || 0) > 0);
+    }
+
+    private parseInputNumberValue(value: unknown): number | null {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : null;
+        }
+
+        const text = String(value).trim();
+        if (!text) return null;
+        const compact = text.replace(/\s+/g, '');
+        const normalized = compact.includes(',') && compact.includes('.')
+            ? compact.replace(/\./g, '').replace(',', '.')
+            : compact.replace(',', '.');
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    private readInputNumberRawValue(event: any): string | null {
+        const directTarget = event?.target;
+        if (directTarget instanceof HTMLInputElement) {
+            return String(directTarget.value ?? '');
+        }
+
+        const originalTarget = event?.originalEvent?.target;
+        if (originalTarget instanceof HTMLInputElement) {
+            return String(originalTarget.value ?? '');
+        }
+
+        return null;
     }
 
     private loadProductsForMovements() {
@@ -1602,12 +1950,15 @@ export class Tpv implements OnInit {
     }
 
     private loadRegisterWarehouse(registerId: string) {
-        this.settingsService.getRegisterSettings(registerId).subscribe({
-            next: (settings) => {
+        forkJoin({
+            registerSettings: this.settingsService.getRegisterSettings(registerId).pipe(catchError(() => of(null))),
+            activeSystemPaymentMethods: this.settingsService.listPaymentMethods().pipe(catchError(() => of([] as PaymentMethodSetting[])))
+        }).subscribe({
+            next: ({ registerSettings, activeSystemPaymentMethods }) => {
                 if (this.selectedRegisterId !== registerId) return;
-                this.applyRegisterCurrency(settings.currency);
-                this.applyRegisterPaymentMethods(settings.paymentMethods || []);
-                this.resolveRegisterWarehouse(registerId, settings.warehouseId || '');
+                this.applyRegisterCurrency(registerSettings?.currency || 'CUP');
+                this.applyRegisterPaymentMethods(registerSettings?.paymentMethods || [], activeSystemPaymentMethods || []);
+                this.resolveRegisterWarehouse(registerId, registerSettings?.warehouseId || '');
             },
             error: () => {
                 if (this.selectedRegisterId !== registerId) return;
@@ -1714,7 +2065,8 @@ export class Tpv implements OnInit {
                 id: this.paymentLineSeq++,
                 method: defaultMethod,
                 currency: this.paymentDefaultCurrency,
-                amount: this.roundMoney(this.cartTotal())
+                amount: this.roundMoney(this.cartTotal()),
+                transactionCode: ''
             }
         ];
     }
@@ -1728,6 +2080,16 @@ export class Tpv implements OnInit {
         const invalidLine = this.paymentLines.find((line) => !line.method || Number(line.amount || 0) <= 0);
         if (invalidLine) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Todas las lineas de pago deben tener metodo y monto mayor a 0' });
+            return false;
+        }
+
+        const lineMissingCode = this.findLineMissingTransactionCode();
+        if (lineMissingCode) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Código requerido',
+                detail: `El método ${this.paymentMethodLabel(lineMissingCode.method)} requiere código de transacción`
+            });
             return false;
         }
 
@@ -1777,7 +2139,7 @@ export class Tpv implements OnInit {
     }
 
     private roundQty(value: number): number {
-        return Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+        return Math.round((Number(value) + Number.EPSILON) * 1000000) / 1000000;
     }
 
     private applyRegisterCurrency(registerCurrency?: string | null) {
@@ -1811,18 +2173,54 @@ export class Tpv implements OnInit {
         this.setPaymentMethods(defaultCodes);
     }
 
-    private applyRegisterPaymentMethods(settingsMethods: PaymentMethodSetting[]) {
-        const enabledCodes = (settingsMethods || [])
-            .filter((method) => method.enabled !== false)
-            .map((method) => this.normalizePaymentMethodCode(method.code))
-            .filter((code): code is Payment['method'] => !!code);
+    private applyRegisterPaymentMethods(settingsMethods: PaymentMethodSetting[], activeSystemMethods: PaymentMethodSetting[] = []) {
+        const metadata = new Map<Payment['method'], { label?: string; requiresTransactionCode: boolean }>();
+        const activeSystemCodes = this.collectEnabledPaymentMethodCodes(activeSystemMethods, metadata);
+        const configuredCodes = this.collectEnabledPaymentMethodCodes(settingsMethods, metadata);
 
-        if (enabledCodes.length > 0) {
-            this.setPaymentMethods(enabledCodes);
+        if (configuredCodes.length > 0) {
+            if (activeSystemCodes.length > 0) {
+                const activeSet = new Set(activeSystemCodes);
+                const configuredActiveCodes = configuredCodes.filter((code) => activeSet.has(code));
+                if (configuredActiveCodes.length > 0) {
+                    this.setPaymentMethods(configuredActiveCodes, metadata);
+                    return;
+                }
+            } else {
+                this.setPaymentMethods(configuredCodes, metadata);
+                return;
+            }
+        }
+
+        if (activeSystemCodes.length > 0) {
+            this.setPaymentMethods(activeSystemCodes, metadata);
             return;
         }
 
         this.setDefaultPaymentMethods();
+    }
+
+    private collectEnabledPaymentMethodCodes(
+        methods: PaymentMethodSetting[],
+        metadata: Map<Payment['method'], { label?: string; requiresTransactionCode: boolean }>
+    ): Payment['method'][] {
+        const codes = Array.from(
+            new Set(
+                (methods || [])
+                    .filter((method) => method.enabled !== false)
+                    .map((method) => {
+                        const code = this.normalizePaymentMethodCode(method.code);
+                        if (!code) return null;
+                        metadata.set(code, {
+                            label: String(method.name || '').trim() || undefined,
+                            requiresTransactionCode: method.requiresTransactionCode === true
+                        });
+                        return code;
+                    })
+                    .filter((code): code is Payment['method'] => !!code)
+            )
+        );
+        return codes;
     }
 
     private normalizePaymentMethodCode(code: string): Payment['method'] | null {
@@ -1845,11 +2243,21 @@ export class Tpv implements OnInit {
         }
     }
 
-    private setPaymentMethods(codes: Payment['method'][]) {
+    private setPaymentMethods(
+        codes: Payment['method'][],
+        metadata?: Map<Payment['method'], { label?: string; requiresTransactionCode: boolean }>
+    ) {
         const allowed = new Set(codes);
         this.paymentMethods = this.paymentMethodCatalog
             .filter((item) => allowed.has(item.value))
-            .map(({ label, value }) => ({ label, value }));
+            .map(({ label, value, defaultRequiresTransactionCode }) => {
+                const custom = metadata?.get(value);
+                return {
+                    label: custom?.label || label,
+                    value,
+                    requiresTransactionCode: custom?.requiresTransactionCode ?? defaultRequiresTransactionCode
+                };
+            });
 
         this.allowedPaymentMethods = new Set(this.paymentMethods.map((item) => item.value));
         this.sanitizePaymentLines();
@@ -1869,12 +2277,17 @@ export class Tpv implements OnInit {
             let next = line;
             if (!this.isPaymentMethodAllowed(line.method)) {
                 hasChanges = true;
-                next = { ...next, method: defaultMethod };
+                next = { ...next, method: defaultMethod, transactionCode: '' };
             }
 
             if (!this.isCurrencyAllowed(next.currency)) {
                 hasChanges = true;
                 next = { ...next, currency: this.paymentDefaultCurrency };
+            }
+
+            if (!this.requiresTransactionCodeForMethod(next.method) && next.transactionCode) {
+                hasChanges = true;
+                next = { ...next, transactionCode: '' };
             }
 
             return next;
@@ -1899,7 +2312,7 @@ export class Tpv implements OnInit {
         return this.paymentMethods.length > 0 ? this.paymentMethods[0].value : null;
     }
 
-    getPaymentMethodOptionsForLine(index: number): Array<{ label: string; value: Payment['method'] }> {
+    getPaymentMethodOptionsForLine(index: number): Array<{ label: string; value: Payment['method']; requiresTransactionCode: boolean }> {
         const line = this.paymentLines[index];
         if (!line) return this.paymentMethods;
 
@@ -1918,12 +2331,19 @@ export class Tpv implements OnInit {
         }
 
         if (!this.isPaymentMethodDuplicated(index, method)) {
+            if (!this.requiresTransactionCodeForMethod(method) && this.paymentLines[index]) {
+                this.paymentLines[index].transactionCode = '';
+                this.paymentLines = [...this.paymentLines];
+            }
             return;
         }
 
         const fallback = this.getFallbackPaymentMethodForLine(index, method);
         if (fallback) {
             this.paymentLines[index].method = fallback;
+            if (!this.requiresTransactionCodeForMethod(fallback)) {
+                this.paymentLines[index].transactionCode = '';
+            }
             this.paymentLines = [...this.paymentLines];
         }
 
@@ -1977,6 +2397,21 @@ export class Tpv implements OnInit {
         });
     }
 
+    requiresTransactionCodeForMethod(method: Payment['method']): boolean {
+        const option = this.paymentMethods.find((item) => item.value === method);
+        if (option) return option.requiresTransactionCode === true;
+        const fallback = this.paymentMethodCatalog.find((item) => item.value === method);
+        return fallback?.defaultRequiresTransactionCode === true;
+    }
+
+    private paymentMethodLabel(method: Payment['method']): string {
+        return this.paymentMethods.find((item) => item.value === method)?.label || method;
+    }
+
+    private findLineMissingTransactionCode() {
+        return this.paymentLines.find((line) => this.requiresTransactionCodeForMethod(line.method) && !String(line.transactionCode || '').trim()) || null;
+    }
+
     onAmountFieldInteraction(event: Event): void {
         const target = event.target as HTMLElement | null;
         const input =
@@ -2003,24 +2438,26 @@ export class Tpv implements OnInit {
     }
 
     private buildSessionIpvExportRows(report: SessionIvpReport): Array<Array<string | number>> {
+        const paymentRows = this.sessionIpvPaymentSummaryRowsFromReport(report);
         const rows: Array<Array<string | number>> = [
             ['REPORTE IPV DE SESION'],
             ['TPV', report.register.name],
             ['Fecha apertura', this.formatDateTime(report.openedAt)],
-            ['Responsable', report.responsible?.employeeName || report.responsible?.email || '-'],
+            ['Responsable', this.resolveSessionIpvResponsibleName(report)],
             [],
             ['RESUMEN'],
-            ['Total de ventas', report.totals.sales],
-            ['Total de entradas', report.totals.entries],
-            ['Total de salidas', report.totals.outs],
-            ['Total efectivo', report.paymentTotals.CASH],
-            ['Total tarjeta', report.paymentTotals.CARD],
-            ['Total transferencia', report.paymentTotals.TRANSFER],
-            ['Total otros', report.paymentTotals.OTHER],
-            [],
-            ['DETALLE DE PRODUCTOS'],
-            ['Producto', 'Codigo', 'Inicio', 'Entradas', 'Salidas', 'Ventas', 'Total', 'Final', 'Precio', 'Importe'],
+            ['Total de ventas', report.totals.salesCount ?? report.totals.sales],
+            ['Total de entradas', report.totals.entriesCount ?? report.totals.entries],
+            ['Total de salidas', report.totals.outsCount ?? report.totals.outs],
         ];
+
+        for (const paymentRow of paymentRows) {
+            rows.push([`Total ${paymentRow.label.toLowerCase()}`, Number(paymentRow.amount || 0)]);
+        }
+
+        rows.push([]);
+        rows.push(['DETALLE DE PRODUCTOS']);
+        rows.push(['Producto', 'Codigo', 'Inicio', 'Entradas', 'Salidas', 'Ventas', 'Total', 'Final', 'Precio', 'Importe']);
 
         for (const line of report.lines) {
             rows.push([
@@ -2164,19 +2601,18 @@ export class Tpv implements OnInit {
 
         if (isFirstPage) {
             drawRect(marginX, topCursor, contentWidth, 58, [245, 248, 252], [214, 221, 229]);
-            drawText(`TPV: ${report.register.name} (${report.register.code})`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
+            drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 34, { size: 10, color: [68, 84, 106] });
-            drawText(`Almacen: ${report.warehouse.name} (${report.warehouse.code})`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
-            drawText(`Responsable: ${report.responsible?.employeeName || report.responsible?.email || '-'}`, marginX + 12, topCursor + 62, { size: 10, color: [68, 84, 106] });
+            drawText(`Responsable: ${this.resolveSessionIpvResponsibleName(report)}`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
             topCursor += 86;
 
             drawText('Resumen Ejecutivo', marginX, topCursor + 12, { font: 'F2', size: 11, color: [27, 44, 94] });
             topCursor += 20;
 
             const summaryRows = [
-                { label: 'Total de ventas', value: report.totals.sales.toString() },
-                { label: 'Total de entradas', value: report.totals.entries.toString() },
-                { label: 'Total de salidas', value: report.totals.outs.toString() },
+                { label: 'Total de ventas', value: String(report.totals.salesCount ?? report.totals.sales) },
+                { label: 'Total de entradas', value: String(report.totals.entriesCount ?? report.totals.entries) },
+                { label: 'Total de salidas', value: String(report.totals.outsCount ?? report.totals.outs) },
                 ...paymentRows.map((row) => ({ label: `Total ${row.label.toLowerCase()}`, value: this.roundMoney(row.amount).toFixed(2) })),
                 { label: 'Importe total', value: this.roundMoney(report.totals.amount).toFixed(2) }
             ];
@@ -2204,7 +2640,7 @@ export class Tpv implements OnInit {
             drawRect(marginX, topCursor, contentWidth, 46, [247, 250, 254], [220, 228, 236]);
             drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 16, { font: 'F2', size: 9 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 28, { size: 9, color: [68, 84, 106] });
-            drawText(`Responsable: ${report.responsible?.employeeName || report.responsible?.email || '-'}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
+            drawText(`Responsable: ${this.resolveSessionIpvResponsibleName(report)}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
             topCursor += 58;
         }
 
@@ -2285,7 +2721,7 @@ export class Tpv implements OnInit {
 
         drawLine(marginX, footerTop - 10, pageWidth - marginX, footerTop - 10, [208, 216, 228], 0.7);
         drawText(
-            `Reporte IPV | ${report.register.code} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
+            `Reporte IPV | ${report.register.name} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
             marginX,
             footerTop + 4,
             { size: 8, color: [93, 109, 130], maxChars: 95 }
@@ -2662,5 +3098,15 @@ export class Tpv implements OnInit {
     private truncateForPdf(value: string, maxLength: number): string {
         if (value.length <= maxLength) return value;
         return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+    }
+
+    private getEmptyNewCustomerForm() {
+        return {
+            name: '',
+            identification: '',
+            phone: '',
+            email: '',
+            address: ''
+        };
     }
 }

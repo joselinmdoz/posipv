@@ -27,6 +27,7 @@ export interface CreateDirectSaleDto {
     amountOriginal: string;
     amount?: string;
     currency: SystemCurrencyCode;
+    transactionCode?: string;
   }>;
 }
 
@@ -80,6 +81,7 @@ export interface DirectSaleTicket {
     method: PaymentMethodCode;
     amount: number;
     amountOriginal: number;
+    transactionCode?: string | null;
     currency: SystemCurrencyCode;
     exchangeRateUsdToCup: number | null;
   }>;

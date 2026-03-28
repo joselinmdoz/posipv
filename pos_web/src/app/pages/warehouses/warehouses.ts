@@ -81,6 +81,7 @@ type StockColumnKey =
                 [value]="warehouses()"
                 [rows]="10"
                 [paginator]="true"
+                responsiveLayout="scroll"
                 [globalFilterFields]="['name', 'code']"
                 [tableStyle]="{ 'min-width': '50rem' }"
                 [rowHover]="true"
@@ -203,7 +204,7 @@ type StockColumnKey =
                 <p-button label="Limpiar" icon="pi pi-eraser" severity="secondary" [outlined]="true" [disabled]="loadingMovements" (onClick)="clearMovementFilters()" />
             </div>
             
-            <p-table [value]="movements()" [loading]="loadingMovements" [rows]="10" [paginator]="true" [tableStyle]="{ 'min-width': '50rem' }">
+            <p-table [value]="movements()" [loading]="loadingMovements" [rows]="10" [paginator]="true" responsiveLayout="scroll" [tableStyle]="{ 'min-width': '50rem' }">
                 <ng-template #header>
                     <tr>
                         <th>Fecha</th>
@@ -253,6 +254,7 @@ type StockColumnKey =
             [(visible)]="warehouseDialog" 
             [modal]="true" 
             [style]="{ width: '450px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [contentStyle]="{ overflow: 'visible' }"
         >
             <div class="flex flex-col gap-4">
@@ -440,8 +442,24 @@ type StockColumnKey =
 
                     <div class="flex flex-col gap-2">
                         <label class="font-medium">Cantidad *</label>
-                        <p-inputnumber [(ngModel)]="movement.qty" [min]="1" [showButtons]="true" buttonLayout="horizontal" decrementButtonClass="p-button-secondary" incrementButtonClass="p-button-secondary" incrementButtonIcon="pi pi-plus" decrementButtonIcon="pi pi-minus" />
-                        <div class="text-xs text-color-secondary">Solo valores enteros mayores a 0.</div>
+                        <p-inputnumber
+                            [(ngModel)]="movement.qty"
+                            [min]="isMovementFractionalProduct() ? 0.01 : 1"
+                            [step]="isMovementFractionalProduct() ? 0.01 : 1"
+                            [minFractionDigits]="0"
+                            [maxFractionDigits]="isMovementFractionalProduct() ? 2 : 0"
+                            [showButtons]="true"
+                            buttonLayout="horizontal"
+                            decrementButtonClass="p-button-secondary"
+                            incrementButtonClass="p-button-secondary"
+                            incrementButtonIcon="pi pi-plus"
+                            decrementButtonIcon="pi pi-minus"
+                            locale="es-ES"
+                            [useGrouping]="false"
+                        />
+                        <div class="text-xs text-color-secondary">
+                            {{ isMovementFractionalProduct() ? 'Permite fracciones con coma (hasta 2 decimales).' : 'Solo valores enteros mayores a 0.' }}
+                        </div>
                     </div>
 
                     <div class="flex flex-col gap-2 md:col-span-2">
@@ -449,6 +467,7 @@ type StockColumnKey =
                         <p-select
                             [options]="productOptions"
                             [(ngModel)]="movement.productId"
+                            (ngModelChange)="onMovementProductChange()"
                             optionLabel="label"
                             optionValue="value"
                             placeholder="Seleccione un producto"
@@ -581,6 +600,7 @@ export class Warehouses implements OnInit {
 
     warehouseOptions: any[] = [];
     productOptions: any[] = [];
+    private movementProductsCatalog = new Map<string, Product>();
     stockColumnOptions: Array<{ label: string; value: StockColumnKey }> = [
         { label: 'Imagen', value: 'image' },
         { label: 'Nombre', value: 'name' },
@@ -682,6 +702,7 @@ export class Warehouses implements OnInit {
     loadProductsForMovements() {
         this.productsService.list().subscribe({
             next: (products) => {
+                this.movementProductsCatalog = new Map(products.map((p) => [p.id, p]));
                 this.productOptions = products.map((p: Product) => ({
                     label: this.buildMovementProductLabel(p),
                     value: p.id
@@ -822,11 +843,33 @@ export class Warehouses implements OnInit {
         this.movement.reason = reason;
     }
 
+    onMovementProductChange() {
+        const allowFractional = this.isMovementFractionalProduct();
+        const normalizedQty = this.normalizeMovementQty(this.movement.qty, allowFractional);
+        this.movement.qty = normalizedQty > 0 ? normalizedQty : 1;
+    }
+
+    isMovementFractionalProduct(): boolean {
+        const productId = String(this.movement.productId || '').trim();
+        if (!productId) return false;
+        return !!this.movementProductsCatalog.get(productId)?.allowFractionalQty;
+    }
+
+    private normalizeMovementQty(value: unknown, allowFractional: boolean): number {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+        if (allowFractional) {
+            return Number(parsed.toFixed(2));
+        }
+        return Math.floor(parsed);
+    }
+
     isMovementFormValid(): boolean {
         if (!this.movement.productId) return false;
 
-        const qty = Number(this.movement.qty);
-        if (!Number.isInteger(qty) || qty <= 0) return false;
+        const allowFractional = this.isMovementFractionalProduct();
+        const qty = this.normalizeMovementQty(this.movement.qty, allowFractional);
+        if (qty <= 0) return false;
 
         if ((this.movement.type === 'OUT' || this.movement.type === 'TRANSFER') && !this.movement.fromWarehouseId) {
             return false;
@@ -862,6 +905,13 @@ export class Warehouses implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Ingrese la cantidad' });
             return;
         }
+        const allowFractional = this.isMovementFractionalProduct();
+        const qty = this.normalizeMovementQty(this.movement.qty, allowFractional);
+        if (qty <= 0) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Ingrese una cantidad válida' });
+            return;
+        }
+        this.movement.qty = qty;
 
         if ((this.movement.type === 'OUT' || this.movement.type === 'TRANSFER') && !this.movement.fromWarehouseId) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Seleccione almacén de origen' });
@@ -886,7 +936,7 @@ export class Warehouses implements OnInit {
         const payload = {
             type: this.movement.type as 'IN' | 'OUT' | 'TRANSFER',
             productId: this.movement.productId,
-            qty: Number(this.movement.qty),
+            qty,
             fromWarehouseId: this.movement.fromWarehouseId || undefined,
             toWarehouseId: this.movement.toWarehouseId || undefined,
             reason: this.movement.reason?.trim() || undefined

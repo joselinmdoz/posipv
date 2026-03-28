@@ -12,7 +12,7 @@ import { TableModule } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { DirectSaleProduct, DirectSaleTicket, DirectSalesService, PaymentMethodCode } from '@/app/core/services/direct-sales.service';
-import { SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
+import { PaymentMethodSetting, SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 import { Customer, CustomerHistory, CustomersService } from '@/app/core/services/customers.service';
 
@@ -31,6 +31,7 @@ interface PaymentLine {
     method: PaymentMethodCode;
     currency: SystemCurrencyCode;
     amount: number | null;
+    transactionCode?: string;
 }
 
 interface NewCustomerForm {
@@ -207,7 +208,7 @@ interface NewCustomerForm {
                                 </div>
                             }
                         } @else {
-                            <p-table [value]="filteredProducts()" [paginator]="true" [rows]="10">
+                            <p-table [value]="filteredProducts()" [paginator]="true" [rows]="10" responsiveLayout="scroll">
                                 <ng-template #header>
                                     <tr>
                                         <th>Producto</th>
@@ -302,11 +303,24 @@ interface NewCustomerForm {
                         <h4 class="m-0 mb-2">Pagos</h4>
                         <div class="flex flex-col gap-2 payment-lines">
                             @for (line of paymentLines; track line.id; let i = $index) {
-                                <div class="grid grid-cols-[1fr_100px_140px_40px] gap-2 items-center">
-                                    <p-select [options]="paymentMethodOptions" [(ngModel)]="line.method" class="w-full" />
-                                    <p-select [options]="currencyOptions" [(ngModel)]="line.currency" class="w-full" (onChange)="recalculateLineFromBase(i)" />
-                                    <p-inputnumber [(ngModel)]="line.amount" [min]="0" [maxFractionDigits]="2" mode="decimal" class="w-full" />
-                                    <p-button icon="pi pi-trash" [text]="true" severity="danger" [disabled]="paymentLines.length === 1" (onClick)="removePaymentLine(i)" />
+                                <div class="border rounded p-2">
+                                    <div class="grid grid-cols-[1fr_100px_140px_40px] gap-2 items-center">
+                                        <p-select [options]="paymentMethodOptions" [(ngModel)]="line.method" class="w-full" (ngModelChange)="onPaymentMethodChanged(i)" />
+                                        <p-select [options]="currencyOptions" [(ngModel)]="line.currency" class="w-full" (onChange)="recalculateLineFromBase(i)" />
+                                        <p-inputnumber [(ngModel)]="line.amount" [min]="0" [maxFractionDigits]="2" mode="decimal" class="w-full" />
+                                        <p-button icon="pi pi-trash" [text]="true" severity="danger" [disabled]="paymentLines.length === 1" (onClick)="removePaymentLine(i)" />
+                                    </div>
+                                    @if (requiresTransactionCodeForMethod(line.method)) {
+                                        <div class="mt-2">
+                                            <input
+                                                pInputText
+                                                [(ngModel)]="line.transactionCode"
+                                                class="w-full"
+                                                maxlength="120"
+                                                placeholder="Código de transacción"
+                                            />
+                                        </div>
+                                    }
                                 </div>
                             }
                         </div>
@@ -344,7 +358,7 @@ interface NewCustomerForm {
             </div>
         </div>
 
-        <p-dialog header="Comprobante de Venta" [(visible)]="ticketDialog" [modal]="true" [style]="{ width: '760px' }">
+        <p-dialog header="Comprobante de Venta" [(visible)]="ticketDialog" [modal]="true" [style]="{ width: '760px' }" [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }">
             @if (lastTicket()) {
                 <div class="flex flex-col gap-3" id="direct-sale-ticket-content">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
@@ -361,7 +375,7 @@ interface NewCustomerForm {
                         <div class="md:col-span-2"><b>Almacén:</b> {{ lastTicket()!.warehouse?.name || '-' }} ({{ lastTicket()!.warehouse?.code || '-' }})</div>
                     </div>
 
-                    <p-table [value]="lastTicket()!.items">
+                    <p-table [value]="lastTicket()!.items" responsiveLayout="scroll">
                         <ng-template #header>
                             <tr>
                                 <th>Producto</th>
@@ -380,10 +394,11 @@ interface NewCustomerForm {
                         </ng-template>
                     </p-table>
 
-                    <p-table [value]="lastTicket()!.payments">
+                    <p-table [value]="lastTicket()!.payments" responsiveLayout="scroll">
                         <ng-template #header>
                             <tr>
                                 <th>Método</th>
+                                <th>Código Tx</th>
                                 <th>Moneda</th>
                                 <th class="text-right">Monto</th>
                                 <th class="text-right">Monto Base (CUP)</th>
@@ -392,6 +407,7 @@ interface NewCustomerForm {
                         <ng-template #body let-payment>
                             <tr>
                                 <td>{{ payment.method }}</td>
+                                <td>{{ payment.transactionCode || '-' }}</td>
                                 <td>{{ payment.currency }}</td>
                                 <td class="text-right">{{ payment.amountOriginal | currency:payment.currency }}</td>
                                 <td class="text-right">{{ payment.amount | currency:'CUP' }}</td>
@@ -431,7 +447,7 @@ interface NewCustomerForm {
                         <p-button icon="pi pi-search" label="Buscar" severity="secondary" [outlined]="true" [loading]="customersLoading()" (onClick)="loadCustomers()" />
                     </div>
 
-                    <p-table [value]="customers()" [paginator]="true" [rows]="8" [loading]="customersLoading()">
+                    <p-table [value]="customers()" [paginator]="true" [rows]="8" [loading]="customersLoading()" responsiveLayout="scroll">
                         <ng-template #header>
                             <tr>
                                 <th>Nombre</th>
@@ -501,7 +517,7 @@ interface NewCustomerForm {
                                     Total: {{ selectedCustomerHistory()!.summary.totalAmount | currency:'CUP' }}
                                 </div>
                             </div>
-                            <p-table [value]="selectedCustomerHistory()!.recentSales" [rows]="5">
+                            <p-table [value]="selectedCustomerHistory()!.recentSales" [rows]="5" responsiveLayout="scroll">
                                 <ng-template #header>
                                     <tr>
                                         <th>Fecha</th>
@@ -569,12 +585,18 @@ export class DirectSales implements OnInit {
     ticketDialog = false;
     lastTicket = signal<DirectSaleTicket | null>(null);
 
-    paymentMethodOptions: Array<{ label: string; value: PaymentMethodCode }> = [
-        { label: 'Efectivo', value: 'CASH' },
-        { label: 'Tarjeta', value: 'CARD' },
-        { label: 'Transferencia', value: 'TRANSFER' },
-        { label: 'Otro', value: 'OTHER' }
+    private readonly defaultPaymentMethodCatalog: Array<{ code: PaymentMethodCode; label: string; enabled: boolean; requiresTransactionCode: boolean }> = [
+        { code: 'CASH', label: 'Efectivo', enabled: true, requiresTransactionCode: false },
+        { code: 'CARD', label: 'Tarjeta', enabled: true, requiresTransactionCode: false },
+        { code: 'TRANSFER', label: 'Transferencia', enabled: true, requiresTransactionCode: false },
+        { code: 'OTHER', label: 'Otro', enabled: false, requiresTransactionCode: false }
     ];
+    paymentMethodOptions: Array<{ label: string; value: PaymentMethodCode }> = this.defaultPaymentMethodCatalog
+        .filter((item) => item.enabled)
+        .map((item) => ({ label: item.label, value: item.code }));
+    private paymentMethodRequiresCode = new Map<PaymentMethodCode, boolean>(
+        this.defaultPaymentMethodCatalog.map((item) => [item.code, item.requiresTransactionCode])
+    );
 
     warehouseOptions = computed(() =>
         this.warehouses().map((w) => ({
@@ -617,6 +639,7 @@ export class DirectSales implements OnInit {
 
     ngOnInit(): void {
         this.loadSystemSettings();
+        this.loadPaymentMethods();
         this.loadWarehouses();
         this.initPaymentLines();
     }
@@ -645,6 +668,45 @@ export class DirectSales implements OnInit {
                 this.defaultCurrency = 'CUP';
                 this.exchangeRateUsdToCup = 1;
                 this.currencyOptions = this.enabledCurrencies.map((code) => ({ label: code, value: code }));
+            }
+        });
+    }
+
+    private loadPaymentMethods() {
+        this.settingsService.listPaymentMethods().subscribe({
+            next: (methods) => {
+                const normalized = this.normalizePaymentMethodsFromSettings(methods);
+                if (normalized.length === 0) {
+                    this.applyDefaultPaymentMethods();
+                    return;
+                }
+
+                this.paymentMethodOptions = normalized
+                    .filter((method) => method.enabled)
+                    .map((method) => ({ label: method.name, value: method.code }));
+
+                if (this.paymentMethodOptions.length === 0) {
+                    this.applyDefaultPaymentMethods();
+                    return;
+                }
+
+                this.paymentMethodRequiresCode = new Map<PaymentMethodCode, boolean>(
+                    normalized.map((method) => [method.code, method.requiresTransactionCode === true])
+                );
+
+                this.paymentLines = this.paymentLines.map((line) => {
+                    const fallbackMethod = this.paymentMethodOptions[0]?.value || 'CASH';
+                    const nextMethod = this.paymentMethodOptions.some((option) => option.value === line.method) ? line.method : fallbackMethod;
+                    const requiresCode = this.requiresTransactionCodeForMethod(nextMethod);
+                    return {
+                        ...line,
+                        method: nextMethod,
+                        transactionCode: requiresCode ? line.transactionCode || '' : ''
+                    };
+                });
+            },
+            error: () => {
+                this.applyDefaultPaymentMethods();
             }
         });
     }
@@ -922,7 +984,8 @@ export class DirectSales implements OnInit {
                 id: this.paymentLineSeq++,
                 method: baseMethod,
                 currency: this.defaultCurrency,
-                amount: 0
+                amount: 0,
+                transactionCode: ''
             }
         ];
     }
@@ -942,11 +1005,21 @@ export class DirectSales implements OnInit {
         this.paymentLines = [...this.paymentLines];
     }
 
+    onPaymentMethodChanged(index: number) {
+        const line = this.paymentLines[index];
+        if (!line) return;
+        if (!this.requiresTransactionCodeForMethod(line.method)) {
+            line.transactionCode = '';
+        }
+        this.paymentLines = [...this.paymentLines];
+    }
+
     canSubmit() {
         if (!this.selectedWarehouseId) return false;
         if (this.cart().length === 0) return false;
         if (!this.paymentLines.length) return false;
         if (this.paymentLines.some((line) => Number(line.amount || 0) <= 0)) return false;
+        if (this.findLineMissingTransactionCode()) return false;
         return this.paymentDifferenceCup() === 0;
     }
 
@@ -956,6 +1029,16 @@ export class DirectSales implements OnInit {
                 severity: 'warn',
                 summary: 'Datos incompletos',
                 detail: 'Revise almacén, productos y líneas de pago.'
+            });
+            return;
+        }
+
+        const lineMissingCode = this.findLineMissingTransactionCode();
+        if (lineMissingCode) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Código requerido',
+                detail: `El método ${this.paymentMethodLabel(lineMissingCode.method)} requiere código de transacción.`
             });
             return;
         }
@@ -971,7 +1054,8 @@ export class DirectSales implements OnInit {
                 method: line.method,
                 currency: line.currency,
                 amountOriginal: String(Number(line.amount || 0).toFixed(2)),
-                amount: String(this.toBaseAmount(Number(line.amount || 0), line.currency).toFixed(2))
+                amount: String(this.toBaseAmount(Number(line.amount || 0), line.currency).toFixed(2)),
+                transactionCode: line.transactionCode?.trim() || undefined
             }))
         };
 
@@ -1023,7 +1107,8 @@ export class DirectSales implements OnInit {
         lines.push('');
         lines.push('PAGOS');
         for (const payment of ticket.payments) {
-            lines.push(`- ${payment.method} | ${payment.amountOriginal.toFixed(2)} ${payment.currency} | Base: ${payment.amount.toFixed(2)} CUP`);
+            const txCode = payment.transactionCode ? ` | Tx: ${payment.transactionCode}` : '';
+            lines.push(`- ${payment.method} | ${payment.amountOriginal.toFixed(2)} ${payment.currency}${txCode} | Base: ${payment.amount.toFixed(2)} CUP`);
         }
         lines.push('');
         lines.push(`TOTAL: ${ticket.totals.total.toFixed(2)} CUP`);
@@ -1044,7 +1129,8 @@ export class DirectSales implements OnInit {
                 id: this.paymentLineSeq++,
                 method: this.paymentMethodOptions[0]?.value || 'CASH',
                 currency: this.defaultCurrency,
-                amount: 0
+                amount: 0,
+                transactionCode: ''
             }
         ];
     }
@@ -1164,6 +1250,47 @@ export class DirectSales implements OnInit {
 
     private normalizeDisplayCurrency(currency?: string): SystemCurrencyCode {
         return String(currency || '').trim().toUpperCase() === 'USD' ? 'USD' : 'CUP';
+    }
+
+    private applyDefaultPaymentMethods() {
+        this.paymentMethodOptions = this.defaultPaymentMethodCatalog
+            .filter((item) => item.enabled)
+            .map((item) => ({ label: item.label, value: item.code }));
+        this.paymentMethodRequiresCode = new Map<PaymentMethodCode, boolean>(
+            this.defaultPaymentMethodCatalog.map((item) => [item.code, item.requiresTransactionCode === true])
+        );
+    }
+
+    private normalizePaymentMethodsFromSettings(methods: PaymentMethodSetting[]): Array<{ code: PaymentMethodCode; name: string; enabled: boolean; requiresTransactionCode: boolean }> {
+        return (methods || [])
+            .map((row) => ({
+                code: this.normalizePaymentMethodCode(row.code),
+                name: String(row.name || '').trim(),
+                enabled: row.enabled !== false,
+                requiresTransactionCode: row.requiresTransactionCode === true
+            }))
+            .filter((row): row is { code: PaymentMethodCode; name: string; enabled: boolean; requiresTransactionCode: boolean } => !!row.code && !!row.name);
+    }
+
+    private normalizePaymentMethodCode(code: string): PaymentMethodCode | null {
+        const normalized = String(code || '').trim().toUpperCase();
+        if (normalized === 'CASH' || normalized === 'EFECTIVO') return 'CASH';
+        if (normalized === 'CARD' || normalized === 'TARJETA') return 'CARD';
+        if (normalized === 'TRANSFER' || normalized === 'TRANSFERENCIA') return 'TRANSFER';
+        if (normalized === 'OTHER' || normalized === 'OTRO') return 'OTHER';
+        return null;
+    }
+
+    requiresTransactionCodeForMethod(method: PaymentMethodCode): boolean {
+        return this.paymentMethodRequiresCode.get(method) === true;
+    }
+
+    private findLineMissingTransactionCode(): PaymentLine | null {
+        return this.paymentLines.find((line) => this.requiresTransactionCodeForMethod(line.method) && !String(line.transactionCode || '').trim()) || null;
+    }
+
+    private paymentMethodLabel(method: PaymentMethodCode): string {
+        return this.paymentMethodOptions.find((option) => option.value === method)?.label || method;
     }
 
     private getEmptyNewCustomerForm(): NewCustomerForm {

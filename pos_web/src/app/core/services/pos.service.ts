@@ -65,6 +65,7 @@ export interface Payment {
   method: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
   amount: number;
   currency?: 'CUP' | 'USD';
+  transactionCode?: string;
 }
 
 @Injectable({
@@ -174,15 +175,18 @@ export class PosService {
     return this.http.get<Product[]>(`${this.API_URL}/sales/session/${cashSessionId}/products`);
   }
 
-  createSale(cashSessionId: string, items: any[], payments: Payment[]): Observable<any> {
+  createSale(cashSessionId: string, items: any[], payments: Payment[], customerId?: string, customerName?: string): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/sales`, {
       cashSessionId,
+      customerId: customerId || undefined,
+      customerName: customerName || undefined,
       items: items.map(item => ({ productId: item.productId, qty: item.qty })),
       payments: payments.map(p => ({
         method: p.method,
         amountOriginal: p.amount.toString(),
         amount: p.amount.toString(),
-        currency: p.currency || 'CUP'
+        currency: p.currency || 'CUP',
+        transactionCode: p.transactionCode?.trim() || undefined
       }))
     });
   }
@@ -199,7 +203,7 @@ export class PosService {
   private normalizeQty(value: unknown): number {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-    return Number(parsed.toFixed(3));
+    return Number(parsed.toFixed(6));
   }
 
   private roundMoney(value: number): number {

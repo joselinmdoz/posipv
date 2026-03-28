@@ -27,7 +27,11 @@ let SalesService = class SalesService {
                 register: {
                     include: {
                         warehouse: true,
-                        settings: true,
+                        settings: {
+                            include: {
+                                paymentMethods: true,
+                            },
+                        },
                     },
                 },
             },
@@ -72,7 +76,11 @@ let SalesService = class SalesService {
                 register: {
                     include: {
                         warehouse: true,
-                        settings: true,
+                        settings: {
+                            include: {
+                                paymentMethods: true,
+                            },
+                        },
                     },
                 },
             },
@@ -84,8 +92,10 @@ let SalesService = class SalesService {
         if (!session.register.warehouse?.id) {
             throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
         }
+        const customer = await this.resolveCustomer(dto.customerId, dto.customerName);
         const tpvWarehouseId = session.register.warehouse.id;
         const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
+        const paymentMethodRules = await this.resolvePaymentMethodRulesForSale(session.register.settings?.paymentMethods || []);
         await this.assertCashierAllowedForRegister(session.registerId, cashierId, session.register.settings?.sellerEmployeeIds || []);
         if (!dto.items?.length)
             throw new common_1.BadRequestException("Sin items.");
@@ -98,7 +108,7 @@ let SalesService = class SalesService {
         const qtyByProduct = new Map();
         for (const item of normalizedItems) {
             const currentQty = qtyByProduct.get(item.productId) || 0;
-            qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
+            qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(6)));
         }
         const productIds = Array.from(qtyByProduct.keys());
         const stockRows = await this.prisma.stock.findMany({
@@ -138,12 +148,27 @@ let SalesService = class SalesService {
         let total = new client_1.Prisma.Decimal(0);
         const itemsData = normalizedItems.map((i) => {
             const price = priceMap.get(i.productId);
-            if (!price)
+            const product = productById.get(i.productId);
+            if (!price || !product)
                 throw new common_1.BadRequestException("Producto inválido.");
             total = total.add(price.mul(i.qty));
-            return { productId: i.productId, qty: i.qty, price: price };
+            return {
+                productId: i.productId,
+                qty: i.qty,
+                price: price,
+                costSnapshot: product.cost ?? null,
+            };
         });
         const normalizedPayments = dto.payments.map((rawPayment) => {
+            const method = this.normalizePaymentMethod(rawPayment.method);
+            const methodRule = paymentMethodRules.get(method);
+            if (!methodRule || methodRule.enabled !== true) {
+                throw new common_1.BadRequestException(`El método de pago ${method} no está habilitado para este TPV.`);
+            }
+            const transactionCode = this.normalizeTransactionCode(rawPayment.transactionCode);
+            if (methodRule.requiresTransactionCode && !transactionCode) {
+                throw new common_1.BadRequestException(`El método ${method} requiere código de transacción.`);
+            }
             const currency = this.normalizeCurrency(rawPayment.currency);
             if (currency !== registerCurrency) {
                 throw new common_1.BadRequestException(`El TPV está configurado en ${registerCurrency}. Todos los pagos deben registrarse en esa moneda.`);
@@ -151,10 +176,11 @@ let SalesService = class SalesService {
             const rawAmountOriginal = rawPayment.amountOriginal ?? rawPayment.amount;
             const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
             return {
-                method: rawPayment.method,
+                method,
                 currency,
                 amountOriginal,
                 amount: amountOriginal,
+                transactionCode,
                 exchangeRateUsdToCup: null,
                 exchangeRateRecordId: null,
             };
@@ -170,6 +196,8 @@ let SalesService = class SalesService {
                     cashSessionId: session.id,
                     warehouseId: tpvWarehouseId,
                     channel: client_1.SaleChannel.TPV,
+                    customerId: customer?.id || null,
+                    customerName: customer?.name || null,
                     documentNumber: await this.generateDocumentNumber(tx, client_1.SaleChannel.TPV),
                     total: total,
                     items: { create: itemsData },
@@ -179,6 +207,7 @@ let SalesService = class SalesService {
                             amount: (0, decimal_1.dec)(p.amount),
                             currency: p.currency,
                             amountOriginal: (0, decimal_1.dec)(p.amountOriginal),
+                            transactionCode: p.transactionCode || null,
                             exchangeRateUsdToCup: null,
                             exchangeRateRecordId: p.exchangeRateRecordId || null,
                         })),
@@ -285,6 +314,109 @@ let SalesService = class SalesService {
             return client_1.CurrencyCode.USD;
         throw new common_1.BadRequestException("Moneda de pago inválida.");
     }
+    normalizePaymentMethod(methodInput) {
+        const raw = String(methodInput || "").trim().toUpperCase();
+        switch (raw) {
+            case client_1.PaymentMethod.CASH:
+            case client_1.PaymentMethod.CARD:
+            case client_1.PaymentMethod.TRANSFER:
+            case client_1.PaymentMethod.OTHER:
+                return raw;
+            default:
+                throw new common_1.BadRequestException("Método de pago inválido.");
+        }
+    }
+    normalizePaymentMethodCode(codeInput) {
+        const raw = String(codeInput || "").trim().toUpperCase();
+        switch (raw) {
+            case "CASH":
+            case "EFECTIVO":
+                return client_1.PaymentMethod.CASH;
+            case "CARD":
+            case "TARJETA":
+                return client_1.PaymentMethod.CARD;
+            case "TRANSFER":
+            case "TRANSFERENCIA":
+                return client_1.PaymentMethod.TRANSFER;
+            case "OTHER":
+            case "OTRO":
+                return client_1.PaymentMethod.OTHER;
+            default:
+                return null;
+        }
+    }
+    normalizeTransactionCode(value) {
+        const normalized = String(value || "").trim();
+        if (!normalized)
+            return null;
+        return normalized.slice(0, 120);
+    }
+    async resolvePaymentMethodRulesForSale(registerPaymentMethods) {
+        const fromRegister = this.buildPaymentMethodRules(registerPaymentMethods);
+        if (fromRegister.size > 0)
+            return fromRegister;
+        const globalMethods = await this.prisma.paymentMethodSetting.findMany({
+            where: { enabled: true },
+            select: {
+                code: true,
+                enabled: true,
+                requiresTransactionCode: true,
+            },
+        });
+        const fromGlobal = this.buildPaymentMethodRules(globalMethods);
+        if (fromGlobal.size > 0)
+            return fromGlobal;
+        return new Map([
+            [client_1.PaymentMethod.CASH, { enabled: true, requiresTransactionCode: false }],
+            [client_1.PaymentMethod.CARD, { enabled: true, requiresTransactionCode: false }],
+            [client_1.PaymentMethod.TRANSFER, { enabled: true, requiresTransactionCode: false }],
+            [client_1.PaymentMethod.OTHER, { enabled: false, requiresTransactionCode: false }],
+        ]);
+    }
+    buildPaymentMethodRules(rows) {
+        const map = new Map();
+        for (const row of rows || []) {
+            if (row.enabled === false)
+                continue;
+            const method = this.normalizePaymentMethodCode(row.code);
+            if (!method)
+                continue;
+            map.set(method, {
+                enabled: true,
+                requiresTransactionCode: row.requiresTransactionCode === true,
+            });
+        }
+        return map;
+    }
+    normalizeCustomerName(input) {
+        const value = (input || "").trim();
+        return value.length ? value : null;
+    }
+    async resolveCustomer(customerId, fallbackCustomerName) {
+        const normalizedCustomerId = (customerId || "").trim();
+        if (normalizedCustomerId.length) {
+            const customer = await this.prisma.client.findUnique({
+                where: { id: normalizedCustomerId },
+                select: {
+                    id: true,
+                    name: true,
+                    active: true,
+                },
+            });
+            if (!customer || !customer.active) {
+                throw new common_1.BadRequestException("El cliente seleccionado no existe o está inactivo.");
+            }
+            return customer;
+        }
+        const fallbackName = this.normalizeCustomerName(fallbackCustomerName);
+        if (!fallbackName)
+            return null;
+        return {
+            id: null,
+            name: fallbackName,
+            active: true,
+        };
+    }
     resolveRegisterCurrency(currencyInput) {
         const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
         if (raw === client_1.CurrencyCode.CUP)
@@ -310,7 +442,7 @@ let SalesService = class SalesService {
         if (!Number.isFinite(value) || value <= 0) {
             throw new common_1.BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
         }
-        return Number(value.toFixed(3));
+        return Number(value.toFixed(6));
     }
     async generateDocumentNumber(tx, channel) {
         const prefix = channel === client_1.SaleChannel.TPV ? "TPV" : "DIR";

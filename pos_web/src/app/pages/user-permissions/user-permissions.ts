@@ -39,7 +39,7 @@ import { PermissionCatalogItem, UserPermissionsService, UserPermissionsUser } fr
                 <p-button label="Limpiar" icon="pi pi-filter-slash" severity="secondary" [outlined]="true" [disabled]="loading()" (onClick)="clearFilters()" />
             </div>
 
-            <p-table [value]="users()" [loading]="loading()" [rows]="12" [paginator]="true" dataKey="id">
+            <p-table [value]="users()" [loading]="loading()" [rows]="12" [paginator]="true" responsiveLayout="scroll" dataKey="id">
                 <ng-template #header>
                     <tr>
                         <th>Usuario</th>

@@ -485,14 +485,25 @@
 }
 
 .tpv-cart-item {
-    border: 1px solid #e2e8f0;
+    border: 1px solid #d9e2ef;
     border-radius: 0.8rem;
-    background: #f8fafc;
-    padding: 0.65rem;
+    background: #ffffff;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.05);
+    padding: 0.75rem;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.45rem 0.6rem;
+    grid-template-areas:
+        "main controls"
+        "subtotal remove";
+    gap: 0.55rem 0.7rem;
     align-items: center;
+}
+
+.tpv-cart-item.tpv-cart-item-has-amount {
+    grid-template-areas:
+        "main controls"
+        "amount amount"
+        "subtotal remove";
 }
 
 .tpv-cart-item-zero {
@@ -500,10 +511,11 @@
 }
 
 .tpv-cart-item-main {
+    grid-area: main;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.35rem;
 }
 
 .tpv-cart-item-name {
@@ -516,38 +528,47 @@
 }
 
 .tpv-cart-item-price {
-    font-size: 0.76rem;
-    color: #64748b;
-    margin-top: 0.1rem;
+    font-size: 0.75rem;
+    color: #5f6f86;
+    margin-top: 0;
 }
 
 .tpv-cart-item-amount-edit {
-    display: flex;
+    grid-area: amount;
+    display: grid;
+    grid-template-columns: auto 1fr;
     align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.2rem;
+    gap: 0.45rem;
+    margin-top: 0.1rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #e3eaf4;
+    border-radius: 0.6rem;
+    background: #f8fbff;
+    width: 100%;
 }
 
 .tpv-cart-item-amount-edit label {
-    font-size: 0.67rem;
-    color: #64748b;
+    font-size: 0.65rem;
+    color: #52627a;
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
 }
 
 .tpv-cart-item-controls {
+    grid-area: controls;
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    background: #ffffff;
+    background: #f8fbff;
     border: 1px solid #dbe3ef;
-    border-radius: 999px;
-    padding: 0.1rem 0.35rem;
+    border-radius: 0.8rem;
+    padding: 0.14rem 0.4rem;
+    justify-self: end;
 }
 
 .tpv-cart-qty-input {
-    width: 4rem;
+    width: 4.2rem;
 }
 
 .tpv-cart-qty-field {
@@ -562,7 +583,7 @@
 }
 
 .tpv-cart-amount-input {
-    width: 7.8rem;
+    width: 100%;
 }
 
 .tpv-cart-amount-field {
@@ -577,8 +598,15 @@
 }
 
 .tpv-cart-item-subtotal {
+    grid-area: subtotal;
     font-weight: 700;
     color: #0f172a;
+    justify-self: start;
+    padding-left: 0.2rem;
+}
+
+.tpv-cart-item-remove {
+    grid-area: remove;
     justify-self: end;
 }
 
@@ -689,7 +717,7 @@
     background: #ffffff;
     padding: 0.5rem;
     display: grid;
-    grid-template-columns: 40px minmax(170px, 1.2fr) 96px minmax(150px, 1fr) minmax(120px, 0.9fr) 40px 40px;
+    grid-template-columns: 40px minmax(190px, 1.2fr) minmax(170px, 1fr) 40px 40px;
     gap: 0.45rem;
     align-items: center;
 }
@@ -708,24 +736,17 @@
 }
 
 .tpv-payment-line-method,
-.tpv-payment-line-currency,
 .tpv-payment-line-amount {
     min-width: 0;
-}
-
-.tpv-payment-line-currency .p-select {
-    width: 100%;
-}
-
-.tpv-payment-line-base {
-    text-align: right;
-    white-space: nowrap;
-    font-weight: 600;
 }
 
 .tpv-payment-line-fill,
 .tpv-payment-line-remove {
     justify-self: center;
+}
+
+.tpv-payment-line-transaction {
+    grid-column: 2 / -1;
 }
 
 .tpv-close-summary-grid {
@@ -1035,10 +1056,10 @@
 
 @media (max-width: 900px) {
     .tpv-payment-line {
-        grid-template-columns: 34px minmax(150px, 1fr) 84px minmax(130px, 1fr) 36px 36px;
+        grid-template-columns: 34px minmax(140px, 1fr) minmax(130px, 1fr) 36px 36px;
         grid-template-areas:
-            "index method currency amount fill remove"
-            ". base base base base base";
+            "index method amount fill remove"
+            ". tx tx tx tx";
         row-gap: 0.35rem;
     }
 
@@ -1050,19 +1071,8 @@
         grid-area: method;
     }
 
-    .tpv-payment-line-currency {
-        grid-area: currency;
-    }
-
     .tpv-payment-line-amount {
         grid-area: amount;
-    }
-
-    .tpv-payment-line-base {
-        grid-area: base;
-        text-align: left;
-        font-size: 0.74rem;
-        white-space: normal;
     }
 
     .tpv-payment-line-fill {
@@ -1071,6 +1081,10 @@
 
     .tpv-payment-line-remove {
         grid-area: remove;
+    }
+
+    .tpv-payment-line-transaction {
+        grid-area: tx;
     }
 }
 
@@ -1119,9 +1133,8 @@
 
     .tpv-payment-line-index,
     .tpv-payment-line-method,
-    .tpv-payment-line-currency,
     .tpv-payment-line-amount,
-    .tpv-payment-line-base,
+    .tpv-payment-line-transaction,
     .tpv-payment-line-fill,
     .tpv-payment-line-remove {
         grid-area: auto;

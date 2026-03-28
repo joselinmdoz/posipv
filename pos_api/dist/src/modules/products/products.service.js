@@ -54,13 +54,29 @@ let ProductsService = class ProductsService {
     }
     async update(id, dto) {
         try {
+            let priceToPersist = undefined;
+            if (dto.price !== undefined) {
+                const currentProduct = await this.prisma.product.findUnique({
+                    where: { id },
+                    select: { id: true, price: true },
+                });
+                if (!currentProduct) {
+                    throw new common_1.BadRequestException("Producto no encontrado.");
+                }
+                const nextPrice = (0, decimal_1.dec)(dto.price);
+                const currentPrice = (0, decimal_1.dec)(currentProduct.price);
+                if (!nextPrice.equals(currentPrice)) {
+                    await this.ensurePriceChangeAllowed(id);
+                }
+                priceToPersist = nextPrice;
+            }
             return await this.prisma.product.update({
                 where: { id },
                 data: {
                     name: dto.name,
                     codigo: dto.codigo !== undefined ? this.asOptional(dto.codigo) : undefined,
                     barcode: dto.barcode !== undefined ? this.asOptional(dto.barcode) : undefined,
-                    price: dto.price ? (0, decimal_1.dec)(dto.price) : undefined,
+                    price: priceToPersist,
                     cost: dto.cost ? (0, decimal_1.dec)(dto.cost) : undefined,
                     lowStockAlertQty: dto.lowStockAlertQty !== undefined ? this.asOptionalDecimal(dto.lowStockAlertQty) : undefined,
                     allowFractionalQty: dto.allowFractionalQty,
@@ -76,6 +92,36 @@ let ProductsService = class ProductsService {
         catch (error) {
             this.handlePrismaError(error);
         }
+    }
+    async ensurePriceChangeAllowed(productId) {
+        const conflictingOpenSession = await this.prisma.cashSession.findFirst({
+            where: {
+                status: client_1.CashSessionStatus.OPEN,
+                register: {
+                    warehouse: {
+                        stock: {
+                            some: {
+                                productId,
+                                qty: { gt: 0 },
+                            },
+                        },
+                    },
+                },
+            },
+            select: {
+                id: true,
+                register: {
+                    select: {
+                        name: true,
+                        code: true,
+                    },
+                },
+            },
+        });
+        if (!conflictingOpenSession)
+            return;
+        const registerLabel = conflictingOpenSession.register?.name || conflictingOpenSession.register?.code || conflictingOpenSession.id;
+        throw new common_1.BadRequestException(`No se puede modificar el precio mientras exista una sesión TPV abierta con stock de este producto. TPV en conflicto: ${registerLabel}.`);
     }
     findOne(id) {
         return this.prisma.product.findUnique({

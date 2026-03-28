@@ -44,7 +44,7 @@ import { PERIOD_STATUS_FILTER_OPTIONS, formatDate, toInputDate } from './account
                         />
                     </div>
 
-                    <p-table [value]="filteredPeriods" [rows]="10" [paginator]="true" [rowsPerPageOptions]="[10,25,50]" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} períodos">
+                    <p-table [value]="filteredPeriods" [rows]="10" [paginator]="true" responsiveLayout="scroll" [rowsPerPageOptions]="[10,25,50]" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} períodos">
                         <ng-template #header>
                             <tr>
                                 <th>Nombre</th>
@@ -80,7 +80,7 @@ import { PERIOD_STATUS_FILTER_OPTIONS, formatDate, toInputDate } from './account
                 </div>
             </p-card>
 
-            <p-dialog [header]="editingPeriodId ? 'Editar período' : 'Nuevo período'" [(visible)]="periodDialog" [modal]="true" [style]="{ width: '520px' }" [draggable]="false" [resizable]="false">
+            <p-dialog [header]="editingPeriodId ? 'Editar período' : 'Nuevo período'" [(visible)]="periodDialog" [modal]="true" [style]="{ width: '520px' }" [breakpoints]="{ '960px': '98vw' }" [draggable]="false" [resizable]="false">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div class="md:col-span-2">
                         <label class="block mb-2">Nombre (opcional)</label>

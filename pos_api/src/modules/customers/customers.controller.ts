@@ -34,7 +34,7 @@ export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 
   @Get()
-  @Permissions("customers.view", "sales.direct")
+  @Permissions("customers.view", "sales.direct", "sales.tpv")
   list(@Query() query: ListCustomersQueryDto) {
     return this.service.list({
       q: query.q,
@@ -44,25 +44,25 @@ export class CustomersController {
   }
 
   @Post()
-  @Permissions("customers.manage", "sales.direct")
+  @Permissions("customers.manage", "sales.direct", "sales.tpv")
   create(@Body() dto: CreateCustomerDto) {
     return this.service.create(dto);
   }
 
   @Get(":id")
-  @Permissions("customers.view", "sales.direct")
+  @Permissions("customers.view", "sales.direct", "sales.tpv")
   findOne(@Param("id") id: string) {
     return this.service.findOne(id);
   }
 
   @Put(":id")
-  @Permissions("customers.manage", "sales.direct")
+  @Permissions("customers.manage", "sales.direct", "sales.tpv")
   update(@Param("id") id: string, @Body() dto: UpdateCustomerDto) {
     return this.service.update(id, dto);
   }
 
   @Get(":id/history")
-  @Permissions("customers.view", "sales.direct")
+  @Permissions("customers.view", "sales.direct", "sales.tpv")
   getHistory(@Param("id") id: string) {
     return this.service.getHistory(id);
   }

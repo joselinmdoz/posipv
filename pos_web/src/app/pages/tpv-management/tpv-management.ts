@@ -112,6 +112,7 @@ interface RegisterCard extends Register {
             [(visible)]="tpvDialog"
             [modal]="true"
             [style]="{ width: '450px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >
@@ -138,6 +139,8 @@ interface RegisterCard extends Register {
             (visibleChange)="onSettingsDialogVisibleChange($event)"
             [modal]="true"
             [style]="{ width: '560px' }"
+            [contentStyle]="{ overflow: 'visible' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >
@@ -175,6 +178,7 @@ interface RegisterCard extends Register {
                         [(ngModel)]="settingsForm.sellerEmployeeIds"
                         optionLabel="label"
                         optionValue="value"
+                        [appendTo]="'body'"
                         [filter]="true"
                         [showClear]="true"
                         class="w-full"
@@ -235,7 +239,7 @@ export class TpvManagement implements OnInit {
         { label: 'USD - Dolar estadounidense', value: 'USD' }
     ];
 
-    private readonly paymentMethodCatalog: PaymentMethodSetting[] = [
+    private readonly defaultPaymentMethodCatalog: PaymentMethodSetting[] = [
         { id: 'cash', code: 'CASH', name: 'Efectivo', enabled: true },
         { id: 'card', code: 'CARD', name: 'Tarjeta', enabled: true },
         { id: 'transfer', code: 'TRANSFER', name: 'Transferencia', enabled: true },
@@ -440,22 +444,32 @@ export class TpvManagement implements OnInit {
         this.settingsForm = {
             defaultOpeningFloat: 0,
             currency: 'CUP',
-            paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm })),
+            paymentMethods: [],
             sellerEmployeeIds: []
         };
         this.loadAvailableSellerEmployees();
 
-        this.settingsService.getRegisterSettings(register.id).subscribe({
-            next: (settings) => {
-                const enabledCodes = new Set((settings.paymentMethods || []).filter((m) => m.enabled).map((m) => m.code));
+        forkJoin({
+            registerSettings: this.settingsService.getRegisterSettings(register.id).pipe(catchError(() => of(null))),
+            activePaymentMethods: this.settingsService.listPaymentMethods().pipe(catchError(() => of([] as PaymentMethodSetting[])))
+        }).subscribe({
+            next: ({ registerSettings, activePaymentMethods }) => {
+                const catalog = this.buildActivePaymentMethodCatalog(activePaymentMethods);
+                const enabledCodes = new Set(
+                    ((registerSettings?.paymentMethods || []) as PaymentMethodSetting[])
+                        .filter((m) => m.enabled)
+                        .map((m) => this.normalizePaymentMethodCode(m.code))
+                        .filter((code): code is string => !!code)
+                );
+
                 this.settingsForm = {
-                    defaultOpeningFloat: Number(settings.defaultOpeningFloat || 0),
-                    currency: this.normalizeCurrency(settings.currency),
-                    paymentMethods: this.paymentMethodCatalog.map((pm) => ({
+                    defaultOpeningFloat: Number(registerSettings?.defaultOpeningFloat || 0),
+                    currency: this.normalizeCurrency(registerSettings?.currency),
+                    paymentMethods: catalog.map((pm) => ({
                         ...pm,
-                        enabled: enabledCodes.size > 0 ? enabledCodes.has(pm.code) : pm.enabled
+                        enabled: enabledCodes.size > 0 ? enabledCodes.has(pm.code) : true
                     })),
-                    sellerEmployeeIds: this.resolveSelectedSellerEmployeeIds(settings)
+                    sellerEmployeeIds: this.resolveSelectedSellerEmployeeIds(registerSettings)
                 };
                 this.openSettingsDialogSafely();
             },
@@ -463,7 +477,7 @@ export class TpvManagement implements OnInit {
                 this.settingsForm = {
                     defaultOpeningFloat: 0,
                     currency: 'CUP',
-                    paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm })),
+                    paymentMethods: this.buildActivePaymentMethodCatalog([]),
                     sellerEmployeeIds: []
                 };
                 this.openSettingsDialogSafely();
@@ -506,6 +520,53 @@ export class TpvManagement implements OnInit {
     private normalizeCurrency(value?: string | null): string {
         const normalized = (value || '').toString().trim().toUpperCase();
         return normalized === 'USD' ? 'USD' : 'CUP';
+    }
+
+    private normalizePaymentMethodCode(code?: string | null): string | null {
+        const normalized = (code || '').toString().trim().toUpperCase();
+        if (!normalized) return null;
+        switch (normalized) {
+            case 'EFECTIVO':
+            case 'CASH':
+                return 'CASH';
+            case 'TARJETA':
+            case 'CARD':
+                return 'CARD';
+            case 'TRANSFERENCIA':
+            case 'TRANSFER':
+                return 'TRANSFER';
+            case 'OTRO':
+            case 'OTHER':
+                return 'OTHER';
+            default:
+                return normalized;
+        }
+    }
+
+    private buildActivePaymentMethodCatalog(methods: PaymentMethodSetting[]): PaymentMethodSetting[] {
+        const map = new Map<string, PaymentMethodSetting>();
+
+        for (const method of methods || []) {
+            const code = this.normalizePaymentMethodCode(method.code);
+            if (!code || method.enabled === false) continue;
+            if (map.has(code)) continue;
+            map.set(code, {
+                id: method.id || code.toLowerCase(),
+                code,
+                name: String(method.name || code).trim() || code,
+                enabled: true,
+                requiresTransactionCode: method.requiresTransactionCode === true
+            });
+        }
+
+        const active = Array.from(map.values());
+        if (active.length > 0) {
+            return active;
+        }
+
+        return this.defaultPaymentMethodCatalog
+            .filter((method) => method.enabled !== false)
+            .map((method) => ({ ...method }));
     }
 
     private loadAvailableSellerEmployees() {

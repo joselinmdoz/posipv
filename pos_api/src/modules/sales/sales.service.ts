@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CashSessionStatus, CurrencyCode, Prisma, SaleChannel, SaleStatus, StockMovementType } from "@prisma/client";
+import { CashSessionStatus, CurrencyCode, PaymentMethod, Prisma, SaleChannel, SaleStatus, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
 import { AccountingService } from "../accounting/accounting.service";
 
@@ -18,7 +18,11 @@ export class SalesService {
         register: {
           include: {
             warehouse: true,
-            settings: true,
+            settings: {
+              include: {
+                paymentMethods: true,
+              },
+            },
           },
         },
       },
@@ -65,7 +69,11 @@ export class SalesService {
         register: {
           include: {
             warehouse: true,
-            settings: true,
+            settings: {
+              include: {
+                paymentMethods: true,
+              },
+            },
           },
         },
       },
@@ -75,8 +83,10 @@ export class SalesService {
     if (!session.register.warehouse?.id) {
       throw new BadRequestException("El TPV no tiene almacén asociado.");
     }
+    const customer = await this.resolveCustomer(dto.customerId, dto.customerName);
     const tpvWarehouseId = session.register.warehouse.id;
     const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
+    const paymentMethodRules = await this.resolvePaymentMethodRulesForSale(session.register.settings?.paymentMethods || []);
     await this.assertCashierAllowedForRegister(session.registerId, cashierId, session.register.settings?.sellerEmployeeIds || []);
 
     if (!dto.items?.length) throw new BadRequestException("Sin items.");
@@ -90,7 +100,7 @@ export class SalesService {
     const qtyByProduct = new Map<string, number>();
     for (const item of normalizedItems) {
       const currentQty = qtyByProduct.get(item.productId) || 0;
-      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
+      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(6)));
     }
     const productIds = Array.from(qtyByProduct.keys());
 
@@ -140,12 +150,29 @@ export class SalesService {
 
     const itemsData = normalizedItems.map((i: any) => {
       const price = priceMap.get(i.productId);
-      if (!price) throw new BadRequestException("Producto inválido.");
+      const product = productById.get(i.productId);
+      if (!price || !product) throw new BadRequestException("Producto inválido.");
       total = total.add(price.mul(i.qty));
-      return { productId: i.productId, qty: i.qty, price: price as any };
+      return {
+        productId: i.productId,
+        qty: i.qty,
+        price: price as any,
+        costSnapshot: product.cost ?? null,
+      };
     });
 
     const normalizedPayments = dto.payments.map((rawPayment: any) => {
+      const method = this.normalizePaymentMethod(rawPayment.method);
+      const methodRule = paymentMethodRules.get(method);
+      if (!methodRule || methodRule.enabled !== true) {
+        throw new BadRequestException(`El método de pago ${method} no está habilitado para este TPV.`);
+      }
+
+      const transactionCode = this.normalizeTransactionCode(rawPayment.transactionCode);
+      if (methodRule.requiresTransactionCode && !transactionCode) {
+        throw new BadRequestException(`El método ${method} requiere código de transacción.`);
+      }
+
       const currency = this.normalizeCurrency(rawPayment.currency);
       if (currency !== registerCurrency) {
         throw new BadRequestException(
@@ -156,10 +183,11 @@ export class SalesService {
       const amountOriginal = this.parsePositiveAmount(rawAmountOriginal, "Monto de pago inválido.");
 
       return {
-        method: rawPayment.method,
+        method,
         currency,
         amountOriginal,
         amount: amountOriginal,
+        transactionCode,
         exchangeRateUsdToCup: null,
         exchangeRateRecordId: null,
       };
@@ -179,6 +207,8 @@ export class SalesService {
           cashSessionId: session.id,
           warehouseId: tpvWarehouseId,
           channel: SaleChannel.TPV,
+          customerId: customer?.id || null,
+          customerName: customer?.name || null,
           documentNumber: await this.generateDocumentNumber(tx, SaleChannel.TPV),
           total: total as any,
           items: { create: itemsData },
@@ -188,6 +218,7 @@ export class SalesService {
               amount: dec(p.amount) as any,
               currency: p.currency,
               amountOriginal: dec(p.amountOriginal) as any,
+              transactionCode: p.transactionCode || null,
               exchangeRateUsdToCup: null,
               exchangeRateRecordId: p.exchangeRateRecordId || null,
             })),
@@ -312,6 +343,118 @@ export class SalesService {
     throw new BadRequestException("Moneda de pago inválida.");
   }
 
+  private normalizePaymentMethod(methodInput: unknown): PaymentMethod {
+    const raw = String(methodInput || "").trim().toUpperCase();
+    switch (raw) {
+      case PaymentMethod.CASH:
+      case PaymentMethod.CARD:
+      case PaymentMethod.TRANSFER:
+      case PaymentMethod.OTHER:
+        return raw as PaymentMethod;
+      default:
+        throw new BadRequestException("Método de pago inválido.");
+    }
+  }
+
+  private normalizePaymentMethodCode(codeInput: unknown): PaymentMethod | null {
+    const raw = String(codeInput || "").trim().toUpperCase();
+    switch (raw) {
+      case "CASH":
+      case "EFECTIVO":
+        return PaymentMethod.CASH;
+      case "CARD":
+      case "TARJETA":
+        return PaymentMethod.CARD;
+      case "TRANSFER":
+      case "TRANSFERENCIA":
+        return PaymentMethod.TRANSFER;
+      case "OTHER":
+      case "OTRO":
+        return PaymentMethod.OTHER;
+      default:
+        return null;
+    }
+  }
+
+  private normalizeTransactionCode(value: unknown): string | null {
+    const normalized = String(value || "").trim();
+    if (!normalized) return null;
+    return normalized.slice(0, 120);
+  }
+
+  private async resolvePaymentMethodRulesForSale(
+    registerPaymentMethods: Array<{ code: string; enabled: boolean; requiresTransactionCode?: boolean }>
+  ): Promise<Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>> {
+    const fromRegister = this.buildPaymentMethodRules(registerPaymentMethods);
+    if (fromRegister.size > 0) return fromRegister;
+
+    const globalMethods = await this.prisma.paymentMethodSetting.findMany({
+      where: { enabled: true },
+      select: {
+        code: true,
+        enabled: true,
+        requiresTransactionCode: true,
+      },
+    });
+    const fromGlobal = this.buildPaymentMethodRules(globalMethods);
+    if (fromGlobal.size > 0) return fromGlobal;
+
+    return new Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>([
+      [PaymentMethod.CASH, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.CARD, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.TRANSFER, { enabled: true, requiresTransactionCode: false }],
+      [PaymentMethod.OTHER, { enabled: false, requiresTransactionCode: false }],
+    ]);
+  }
+
+  private buildPaymentMethodRules(
+    rows: Array<{ code: string; enabled: boolean; requiresTransactionCode?: boolean }>
+  ): Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }> {
+    const map = new Map<PaymentMethod, { enabled: boolean; requiresTransactionCode: boolean }>();
+    for (const row of rows || []) {
+      if (row.enabled === false) continue;
+      const method = this.normalizePaymentMethodCode(row.code);
+      if (!method) continue;
+      map.set(method, {
+        enabled: true,
+        requiresTransactionCode: row.requiresTransactionCode === true,
+      });
+    }
+    return map;
+  }
+
+  private normalizeCustomerName(input?: string): string | null {
+    const value = (input || "").trim();
+    return value.length ? value : null;
+  }
+
+  private async resolveCustomer(customerId?: string, fallbackCustomerName?: string) {
+    const normalizedCustomerId = (customerId || "").trim();
+    if (normalizedCustomerId.length) {
+      const customer = await this.prisma.client.findUnique({
+        where: { id: normalizedCustomerId },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+        },
+      });
+      if (!customer || !customer.active) {
+        throw new BadRequestException("El cliente seleccionado no existe o está inactivo.");
+      }
+      return customer;
+    }
+
+    const fallbackName = this.normalizeCustomerName(fallbackCustomerName);
+    if (!fallbackName) return null;
+
+    return {
+      id: null,
+      name: fallbackName,
+      active: true,
+    };
+  }
+
   private resolveRegisterCurrency(currencyInput?: string | null): CurrencyCode {
     const raw = (currencyInput || "CUP").toString().trim().toUpperCase();
     if (raw === CurrencyCode.CUP) return CurrencyCode.CUP;
@@ -336,7 +479,7 @@ export class SalesService {
     if (!Number.isFinite(value) || value <= 0) {
       throw new BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
     }
-    return Number(value.toFixed(3));
+    return Number(value.toFixed(6));
   }
 
   private async generateDocumentNumber(tx: Prisma.TransactionClient, channel: SaleChannel) {

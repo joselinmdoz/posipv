@@ -57,6 +57,7 @@ interface ManagedUser extends User {
             [value]="users()"
             [rows]="10"
             [paginator]="true"
+            responsiveLayout="scroll"
             [globalFilterFields]="['email', 'role']"
             [tableStyle]="{ 'min-width': '58rem' }"
             [rowHover]="true"
@@ -114,6 +115,7 @@ interface ManagedUser extends User {
             [(visible)]="userDialog"
             [modal]="true"
             [style]="{ width: '450px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >
@@ -154,6 +156,7 @@ interface ManagedUser extends User {
             [(visible)]="passwordDialog"
             [modal]="true"
             [style]="{ width: '350px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >

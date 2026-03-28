@@ -108,7 +108,7 @@ interface PurchaseFormLine {
                 </div>
             </p-card>
 
-            <p-table [value]="purchases()" [rows]="10" [paginator]="true" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} compras">
+            <p-table [value]="purchases()" [rows]="10" [paginator]="true" responsiveLayout="scroll" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} compras">
                 <ng-template #header>
                     <tr>
                         <th>Fecha</th>
@@ -210,7 +210,7 @@ interface PurchaseFormLine {
                     <div class="font-semibold">Productos de la compra</div>
                     <p-button label="Agregar línea" icon="pi pi-plus" size="small" severity="secondary" [outlined]="true" (onClick)="addLine()" />
                 </div>
-                <p-table [value]="form.lines">
+                <p-table [value]="form.lines" responsiveLayout="scroll">
                     <ng-template #header>
                         <tr>
                             <th>Producto</th>
@@ -295,7 +295,7 @@ interface PurchaseFormLine {
                     <div class="md:col-span-2 xl:col-span-4"><b>Nota:</b> {{ selectedDetail.note || '-' }}</div>
                 </div>
 
-                <p-table [value]="selectedDetail.items">
+                <p-table [value]="selectedDetail.items" responsiveLayout="scroll">
                     <ng-template #header>
                         <tr>
                             <th>Producto</th>

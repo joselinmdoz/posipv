@@ -31,6 +31,7 @@ export interface PaymentMethodSetting {
   code: string;
   name: string;
   enabled: boolean;
+  requiresTransactionCode?: boolean;
 }
 
 export interface Denomination {
@@ -116,7 +117,7 @@ export class SettingsService {
     return this.http.get<PaymentMethodSetting[]>(`${this.API_URL}/payment-methods`);
   }
 
-  savePaymentMethods(methods: { code: string; name: string; enabled: boolean }[]): Observable<any> {
+  savePaymentMethods(methods: { code: string; name: string; enabled: boolean; requiresTransactionCode?: boolean }[]): Observable<any> {
     return this.http.put(`${this.API_URL}/payment-methods`, methods);
   }
 

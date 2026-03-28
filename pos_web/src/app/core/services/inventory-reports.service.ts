@@ -47,6 +47,8 @@ export interface SessionIvpLine {
   final: number;
   price: number;
   amount: number;
+  gp?: number;
+  gain?: number;
 }
 
 export interface SessionIvpReport {
@@ -74,11 +76,15 @@ export interface SessionIvpReport {
   totals: {
     initial: number;
     entries: number;
+    entriesCount?: number;
     outs: number;
+    outsCount?: number;
     sales: number;
+    salesCount?: number;
     total: number;
     final: number;
     amount: number;
+    profit?: number;
   };
   paymentTotals: {
     CASH: number;

@@ -44,6 +44,7 @@ import { CatalogService, ProductType } from '@/app/core/services/catalog.service
             [value]="items()"
             [rows]="10"
             [paginator]="true"
+            responsiveLayout="scroll"
             [tableStyle]="{ 'min-width': '50rem' }"
             [rowHover]="true"
             dataKey="id"
@@ -82,6 +83,7 @@ import { CatalogService, ProductType } from '@/app/core/services/catalog.service
             [(visible)]="dialogVisible" 
             [modal]="true" 
             [style]="{ width: '450px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >

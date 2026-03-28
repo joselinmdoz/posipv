@@ -33,14 +33,20 @@ import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings
                             <label class="block mb-2 font-medium">Logo (URL/ruta o archivo)</label>
                             <input pInputText [(ngModel)]="systemLogoUrl" class="w-full" placeholder="Ej: /assets/logo.png o https://..." />
                             <div class="mt-2 flex flex-wrap gap-2">
-                                <input #logoFileInput type="file" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="onLogoFileSelected($event)" />
+                                <input
+                                    #logoFileInput
+                                    type="file"
+                                    class="hidden"
+                                    accept=".png,.jpg,.jpeg,.webp,.svg,.ico,image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,application/vnd.microsoft.icon"
+                                    (change)="onLogoFileSelected($event)"
+                                />
                                 <p-button type="button" size="small" icon="pi pi-upload" label="Subir archivo" severity="secondary" [outlined]="true" (onClick)="logoFileInput.click()" />
                                 <p-button type="button" size="small" icon="pi pi-times" label="Quitar logo" severity="secondary" [outlined]="true" (onClick)="clearLogo()" [disabled]="!systemLogoUrl.trim()" />
                             </div>
                             @if (logoFileName) {
                                 <small class="text-gray-600 block mt-2">Archivo cargado: {{ logoFileName }}</small>
                             }
-                            <small class="text-gray-500 block mt-2">Si lo dejas vacío se usa el logo por defecto. Formatos: PNG, JPG, WEBP, SVG (máx {{ logoMaxFileMb }}MB).</small>
+                            <small class="text-gray-500 block mt-2">Si lo dejas vacío se usa el logo por defecto. Formatos: PNG, JPG, WEBP, SVG, ICO (máx {{ logoMaxFileMb }}MB).</small>
                         </div>
 
                         <div>
@@ -158,6 +164,9 @@ import { ExchangeRateRecord, SettingsService, SystemCurrencyCode, SystemSettings
     `
 })
 export class Settings implements OnInit {
+    private readonly allowedLogoExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico'];
+    private readonly allowedLogoMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon', 'application/vnd.microsoft.icon', 'application/x-ico'];
+
     readonly currencyOptions = [
         { label: 'CUP - Peso cubano', value: 'CUP' as SystemCurrencyCode },
         { label: 'USD - Dólar estadounidense', value: 'USD' as SystemCurrencyCode }
@@ -335,11 +344,11 @@ export class Settings implements OnInit {
             return;
         }
 
-        if (!file.type.startsWith('image/')) {
+        if (!this.isAllowedLogoFile(file)) {
             this.messageService.add({
                 severity: 'warn',
                 summary: 'Logo inválido',
-                detail: 'Debes seleccionar una imagen válida'
+                detail: 'Debes seleccionar una imagen válida (PNG, JPG, WEBP, SVG o ICO)'
             });
             if (input) input.value = '';
             return;
@@ -387,5 +396,13 @@ export class Settings implements OnInit {
             minute: '2-digit'
         });
         return formatter.format(date);
+    }
+
+    private isAllowedLogoFile(file: File): boolean {
+        const mime = String(file.type || '').trim().toLowerCase();
+        const fileName = String(file.name || '').trim().toLowerCase();
+        const hasAllowedMime = !!mime && (mime.startsWith('image/') || this.allowedLogoMimeTypes.includes(mime));
+        const hasAllowedExtension = this.allowedLogoExtensions.some((ext) => fileName.endsWith(ext));
+        return hasAllowedMime || hasAllowedExtension;
     }
 }

@@ -183,6 +183,7 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                         [value]="reports()"
                         [loading]="loading()"
                         [paginator]="true"
+                        responsiveLayout="scroll"
                         [rows]="12"
                         [rowsPerPageOptions]="[12, 25, 50]"
                         sortField="openedAt"
@@ -196,7 +197,7 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                 <th>Apertura</th>
                                 <th>Cierre</th>
                                 <th>Estado</th>
-                                <th class="text-right">Ventas</th>
+                                <th class="text-right">Ventas (tickets)</th>
                                 <th class="text-right">Entradas</th>
                                 <th class="text-right">Salidas</th>
                                 <th class="text-right">Importe</th>
@@ -213,9 +214,9 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                 <td>
                                     <p-tag [value]="report.closed ? 'Cerrada' : 'Abierta'" [severity]="report.closed ? 'info' : 'success'" />
                                 </td>
-                                <td class="text-right">{{ report.totals.sales }}</td>
-                                <td class="text-right">{{ report.totals.entries }}</td>
-                                <td class="text-right">{{ report.totals.outs }}</td>
+                                <td class="text-right">{{ report.totals.salesCount ?? report.totals.sales }}</td>
+                                <td class="text-right">{{ report.totals.entriesCount ?? report.totals.entries }}</td>
+                                <td class="text-right">{{ report.totals.outsCount ?? report.totals.outs }}</td>
                                 <td class="text-right font-semibold">{{ formatMoney(report.totals.amount, getReportDisplayCurrency(report)) }}</td>
                                 <td class="text-center">
                                     <p-button
@@ -275,6 +276,9 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                         <div class="tpv-ipv-toolbar-actions">
                             <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="refreshSelectedReport()" />
                             <p-button icon="pi pi-file-pdf" label="Exportar PDF" severity="secondary" (onClick)="exportSelectedReportAsPdf()" />
+                            @if (canViewAdminProfitInfo()) {
+                                <p-button icon="pi pi-chart-bar" label="Exportar PDF Admin" severity="contrast" [outlined]="true" (onClick)="exportSelectedReportAsAdminPdf()" />
+                            }
                             @if (canDeleteIpvReports()) {
                                 <p-button icon="pi pi-trash" label="Eliminar IPV" severity="danger" [outlined]="true" (onClick)="deleteReport(selectedReport()!)" />
                             }
@@ -284,15 +288,15 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                     <div class="tpv-ipv-summary">
                         <div class="tpv-ipv-summary-item">
                             <span>Total de ventas</span>
-                            <strong>{{ selectedReport()!.totals.sales }}</strong>
+                            <strong>{{ selectedReport()!.totals.salesCount ?? selectedReport()!.totals.sales }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de entradas</span>
-                            <strong>{{ selectedReport()!.totals.entries }}</strong>
+                            <strong>{{ selectedReport()!.totals.entriesCount ?? selectedReport()!.totals.entries }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de salidas</span>
-                            <strong>{{ selectedReport()!.totals.outs }}</strong>
+                            <strong>{{ selectedReport()!.totals.outsCount ?? selectedReport()!.totals.outs }}</strong>
                         </div>
                         @for (paymentRow of selectedReportPaymentRows(); track paymentRow.code) {
                             <div class="tpv-ipv-summary-item">
@@ -315,12 +319,16 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                     <th class="text-right">Final</th>
                                     <th class="text-right">Precio</th>
                                     <th class="text-right">Importe</th>
+                                    @if (canViewAdminProfitInfo()) {
+                                        <th class="text-right">G.P</th>
+                                        <th class="text-right">Ganancia</th>
+                                    }
                                 </tr>
                             </thead>
                             <tbody>
                                 @if (selectedReport()!.lines.length === 0) {
                                     <tr>
-                                        <td colspan="9" class="tpv-ipv-empty-cell">No hay productos para mostrar en este IPV.</td>
+                                        <td [attr.colspan]="canViewAdminProfitInfo() ? 11 : 9" class="tpv-ipv-empty-cell">No hay productos para mostrar en este IPV.</td>
                                     </tr>
                                 } @else {
                                     @for (line of selectedReport()!.lines; track line.productId) {
@@ -337,15 +345,28 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                             <td class="text-right font-semibold">{{ line.final }}</td>
                                             <td class="text-right">{{ formatMoney(line.price, line.currency || selectedReportCurrency()) }}</td>
                                             <td class="text-right font-semibold">{{ formatMoney(line.amount, line.currency || selectedReportCurrency()) }}</td>
+                                            @if (canViewAdminProfitInfo()) {
+                                                <td class="text-right">{{ formatMoney(line.gp || 0, line.currency || selectedReportCurrency()) }}</td>
+                                                <td class="text-right font-semibold">{{ formatMoney(line.gain || 0, line.currency || selectedReportCurrency()) }}</td>
+                                            }
                                         </tr>
                                     }
                                 }
                             </tbody>
                             <tfoot>
                                 <tr>
-                                    <td colspan="8" class="text-right">Total Importe</td>
+                                    <td [attr.colspan]="canViewAdminProfitInfo() ? 10 : 8" class="text-right">Total Importe</td>
                                     <td class="text-right">{{ formatMoney(selectedReport()!.totals.amount, selectedReportCurrency()) }}</td>
+                                    @if (canViewAdminProfitInfo()) {
+                                        <td class="text-right">-</td>
+                                    }
                                 </tr>
+                                @if (canViewAdminProfitInfo()) {
+                                    <tr>
+                                        <td colspan="10" class="text-right">Ganancia Total</td>
+                                        <td class="text-right font-semibold">{{ formatMoney(selectedReportProfitTotal(), selectedReportCurrency()) }}</td>
+                                    </tr>
+                                }
                             </tfoot>
                         </table>
                     </div>
@@ -547,6 +568,22 @@ export class InventoryReportsComponent implements OnInit {
         return this.authService.hasPermission('inventory-reports.delete');
     }
 
+    canViewAdminProfitInfo() {
+        const role = String(this.authService.getUser()?.role || '').trim().toUpperCase();
+        return role === 'ADMIN';
+    }
+
+    selectedReportProfitTotal() {
+        const report = this.selectedReport();
+        if (!report) return 0;
+        if (typeof report.totals?.profit === 'number') {
+            return this.roundMoney(report.totals.profit);
+        }
+        return this.roundMoney(
+            (report.lines || []).reduce((sum, line) => sum + Number(line.gain || 0), 0)
+        );
+    }
+
     deleteReport(report: SessionIvpReport) {
         if (!this.canDeleteIpvReports()) {
             this.messageService.add({
@@ -631,6 +668,9 @@ export class InventoryReportsComponent implements OnInit {
     }
 
     getSessionResponsibleLabel(report: SessionIvpReport): string {
+        const reportEmployeeName = String(report.responsible?.employeeName || '').trim();
+        if (reportEmployeeName) return reportEmployeeName;
+
         const session = this.sessions().find((row) => row.id === report.cashSessionId);
         const employee = session?.openedBy?.employee;
         if (employee) {
@@ -657,7 +697,7 @@ export class InventoryReportsComponent implements OnInit {
             .subscribe({
                 next: (settings) => {
                     const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report, settings?.paymentMethods || null);
-                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel);
+                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel, false);
                     this.downloadBlob(
                         pdfBlob,
                         `ipv-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
@@ -665,10 +705,42 @@ export class InventoryReportsComponent implements OnInit {
                 },
                 error: () => {
                     const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report, null);
-                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel);
+                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel, false);
                     this.downloadBlob(
                         pdfBlob,
                         `ipv-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
+                    );
+                }
+            });
+    }
+
+    exportSelectedReportAsAdminPdf() {
+        if (!this.canViewAdminProfitInfo()) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Sin permisos',
+                detail: 'Solo el administrador puede exportar el IPV con datos de ganancia.'
+            });
+            return;
+        }
+
+        const report = this.selectedReport();
+        if (!report) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay reporte IPV para exportar' });
+            return;
+        }
+
+        const employeeLabel = this.getSessionResponsibleLabel(report);
+        this.settingsService
+            .getRegisterSettings(report.register.id)
+            .pipe(catchError(() => of(null)))
+            .subscribe({
+                next: (settings) => {
+                    const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report, settings?.paymentMethods || null);
+                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel, true);
+                    this.downloadBlob(
+                        pdfBlob,
+                        `ipv-admin-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
                     );
                 }
             });
@@ -698,31 +770,40 @@ export class InventoryReportsComponent implements OnInit {
         report: SessionIvpReport,
         paymentMethods: Array<{ code: string; name: string; enabled: boolean }> | null
     ) {
-        const configuredMethods =
-            paymentMethods
-                ?.filter((method) => method.enabled)
+        if (paymentMethods) {
+            const configuredMethods = paymentMethods
+                .filter((method) => method.enabled)
                 .map((method) => ({
                     label: method.name,
                     value: method.code as 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER'
                 }))
-                .filter((row) => ['CASH', 'CARD', 'TRANSFER', 'OTHER'].includes(row.value)) || [];
+                .filter((row) => ['CASH', 'CARD', 'TRANSFER', 'OTHER'].includes(row.value));
+
+            return configuredMethods.map((method) => ({
+                code: method.value,
+                label: method.label,
+                amount: Number(report.paymentTotals?.[method.value] || 0)
+            }));
+        }
 
         const fallbackMethods: Array<{ label: string; value: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER' }> = this.paymentMethodCatalog
             .filter((item) => item.defaultEnabled)
             .map(({ label, value }) => ({ label, value }));
 
-        const methods = configuredMethods.length > 0 ? configuredMethods : fallbackMethods;
-        return methods.map((method) => ({
+        return fallbackMethods
+            .filter((method) => Number(report.paymentTotals?.[method.value] || 0) > 0)
+            .map((method) => ({
             code: method.value,
             label: method.label,
             amount: Number(report.paymentTotals?.[method.value] || 0)
-        }));
+            }));
     }
 
     private buildSessionIpvProfessionalPdfBlob(
         report: SessionIvpReport,
         paymentRows: Array<{ code: string; label: string; amount: number }>,
-        employeeLabel: string
+        employeeLabel: string,
+        includeProfitColumns = false
     ): Blob {
         const pages: string[] = [];
         let rowIndex = 0;
@@ -736,7 +817,8 @@ export class InventoryReportsComponent implements OnInit {
                 rowIndex,
                 pageNumber: pages.length + 1,
                 isFirstPage: pages.length === 0,
-                forceTotalsPage
+                forceTotalsPage,
+                includeProfitColumns
             });
 
             pages.push(page.content);
@@ -759,8 +841,9 @@ export class InventoryReportsComponent implements OnInit {
         pageNumber: number;
         isFirstPage: boolean;
         forceTotalsPage: boolean;
+        includeProfitColumns: boolean;
     }): { content: string; nextRowIndex: number; totalsDrawn: boolean; rowsDrawn: number } {
-        const { report, paymentRows, employeeLabel, rowIndex, pageNumber, isFirstPage, forceTotalsPage } = params;
+        const { report, paymentRows, employeeLabel, rowIndex, pageNumber, isFirstPage, forceTotalsPage, includeProfitColumns } = params;
 
         const pageWidth = 595;
         const pageHeight = 842;
@@ -772,18 +855,44 @@ export class InventoryReportsComponent implements OnInit {
         const tableRowHeight = 16;
         const tableMaxTop = 780;
 
-        const columns: Array<{ key: string; label: string; width: number; align: 'left' | 'right' }> = [
-            { key: 'name', label: 'Producto', width: 150, align: 'left' },
-            { key: 'codigo', label: 'Cod', width: 55, align: 'left' },
-            { key: 'initial', label: 'Ini', width: 32, align: 'right' },
-            { key: 'entries', label: 'Ent', width: 32, align: 'right' },
-            { key: 'outs', label: 'Sal', width: 32, align: 'right' },
-            { key: 'sales', label: 'Ven', width: 32, align: 'right' },
-            { key: 'total', label: 'Tot', width: 32, align: 'right' },
-            { key: 'final', label: 'Fin', width: 32, align: 'right' },
-            { key: 'price', label: 'Precio', width: 65, align: 'right' },
-            { key: 'amount', label: 'Importe', width: 85, align: 'right' }
-        ];
+        const columns: Array<{ key: string; label: string; width: number; align: 'left' | 'right' }> = includeProfitColumns
+            ? [
+                { key: 'name', label: 'Producto', width: 120, align: 'left' },
+                { key: 'codigo', label: 'Cod', width: 45, align: 'left' },
+                { key: 'initial', label: 'Ini', width: 28, align: 'right' },
+                { key: 'entries', label: 'Ent', width: 28, align: 'right' },
+                { key: 'outs', label: 'Sal', width: 28, align: 'right' },
+                { key: 'sales', label: 'Ven', width: 28, align: 'right' },
+                { key: 'total', label: 'Tot', width: 28, align: 'right' },
+                { key: 'final', label: 'Fin', width: 28, align: 'right' },
+                { key: 'price', label: 'Precio', width: 52, align: 'right' },
+                { key: 'amount', label: 'Importe', width: 60, align: 'right' },
+                { key: 'gp', label: 'G.P', width: 45, align: 'right' },
+                { key: 'gain', label: 'Ganancia', width: 57, align: 'right' }
+              ]
+            : [
+                { key: 'name', label: 'Producto', width: 150, align: 'left' },
+                { key: 'codigo', label: 'Cod', width: 55, align: 'left' },
+                { key: 'initial', label: 'Ini', width: 32, align: 'right' },
+                { key: 'entries', label: 'Ent', width: 32, align: 'right' },
+                { key: 'outs', label: 'Sal', width: 32, align: 'right' },
+                { key: 'sales', label: 'Ven', width: 32, align: 'right' },
+                { key: 'total', label: 'Tot', width: 32, align: 'right' },
+                { key: 'final', label: 'Fin', width: 32, align: 'right' },
+                { key: 'price', label: 'Precio', width: 65, align: 'right' },
+                { key: 'amount', label: 'Importe', width: 85, align: 'right' }
+              ];
+
+        const columnLayout = new Map<string, { x: number; width: number; align: 'left' | 'right' }>();
+        let layoutX = marginX;
+        for (const column of columns) {
+            columnLayout.set(column.key, {
+                x: layoutX,
+                width: column.width,
+                align: column.align
+            });
+            layoutX += column.width;
+        }
 
         const ops: string[] = [];
         const generatedAt = this.formatDateTime(new Date().toISOString());
@@ -845,20 +954,19 @@ export class InventoryReportsComponent implements OnInit {
         let topCursor = headerTop + 54;
 
         if (isFirstPage) {
-            drawRect(marginX, topCursor, contentWidth, 72, [245, 248, 252], [214, 221, 229]);
-            drawText(`TPV: ${report.register.name} (${report.register.code})`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
+            drawRect(marginX, topCursor, contentWidth, 58, [245, 248, 252], [214, 221, 229]);
+            drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 34, { size: 10, color: [68, 84, 106] });
-            drawText(`Almacen: ${report.warehouse.name} (${report.warehouse.code})`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
-            drawText(`Empleado: ${employeeLabel}`, marginX + 12, topCursor + 62, { size: 10, color: [68, 84, 106] });
+            drawText(`Responsable: ${employeeLabel}`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
             topCursor += 86;
 
             drawText('Resumen Ejecutivo', marginX, topCursor + 12, { font: 'F2', size: 11, color: [27, 44, 94] });
             topCursor += 20;
 
             const summaryRows = [
-                { label: 'Total de ventas', value: report.totals.sales.toString() },
-                { label: 'Total de entradas', value: report.totals.entries.toString() },
-                { label: 'Total de salidas', value: report.totals.outs.toString() },
+                { label: 'Total de ventas', value: String(report.totals.salesCount ?? report.totals.sales) },
+                { label: 'Total de entradas', value: String(report.totals.entriesCount ?? report.totals.entries) },
+                { label: 'Total de salidas', value: String(report.totals.outsCount ?? report.totals.outs) },
                 ...paymentRows.map((row) => ({ label: `Total ${row.label.toLowerCase()}`, value: this.roundMoney(row.amount).toFixed(2) })),
                 { label: 'Importe total', value: this.roundMoney(report.totals.amount).toFixed(2) }
             ];
@@ -886,7 +994,7 @@ export class InventoryReportsComponent implements OnInit {
             drawRect(marginX, topCursor, contentWidth, 46, [247, 250, 254], [220, 228, 236]);
             drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 16, { font: 'F2', size: 9 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 28, { size: 9, color: [68, 84, 106] });
-            drawText(`Empleado: ${employeeLabel}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
+            drawText(`Responsable: ${employeeLabel}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
             topCursor += 58;
         }
 
@@ -931,7 +1039,9 @@ export class InventoryReportsComponent implements OnInit {
                 total: `${line.total}`,
                 final: `${line.final}`,
                 price: this.roundMoney(line.price).toFixed(2),
-                amount: this.roundMoney(line.amount).toFixed(2)
+                amount: this.roundMoney(line.amount).toFixed(2),
+                gp: this.roundMoney(line.gp || 0).toFixed(2),
+                gain: this.roundMoney(line.gain || 0).toFixed(2)
             };
 
             let x = marginX;
@@ -956,18 +1066,45 @@ export class InventoryReportsComponent implements OnInit {
         let totalsDrawn = false;
         if ((currentIndex >= report.lines.length || forceTotalsPage) && rowTop + tableRowHeight <= tableMaxTop) {
             drawRect(marginX, rowTop, contentWidth, tableRowHeight, [226, 244, 235], [146, 178, 163]);
-            drawText('TOTAL IMPORTE', marginX + contentWidth - 140, rowTop + 11, { font: 'F2', size: 8.6, align: 'right' });
-            drawText(this.roundMoney(report.totals.amount).toFixed(2), marginX + contentWidth - 6, rowTop + 11, {
+            const amountCol = columnLayout.get('amount');
+            const gpCol = columnLayout.get('gp');
+            const gainCol = columnLayout.get('gain');
+            const amountRight = amountCol ? amountCol.x + amountCol.width - 6 : marginX + contentWidth - 6;
+
+            drawText('TOTAL IMPORTE', amountRight - 72, rowTop + 11, { font: 'F2', size: 8.6, align: 'right' });
+            drawText(this.roundMoney(report.totals.amount).toFixed(2), amountRight, rowTop + 11, {
                 font: 'F2',
                 size: 8.6,
                 align: 'right'
             });
+
+            if (includeProfitColumns) {
+                if (gpCol) {
+                    drawText('-', gpCol.x + gpCol.width - 6, rowTop + 11, {
+                        font: 'F2',
+                        size: 8.6,
+                        align: 'right'
+                    });
+                }
+                if (gainCol) {
+                    const totalProfit =
+                        typeof report.totals?.profit === 'number'
+                            ? this.roundMoney(report.totals.profit)
+                            : this.roundMoney((report.lines || []).reduce((sum, line) => sum + Number(line.gain || 0), 0));
+
+                    drawText(totalProfit.toFixed(2), gainCol.x + gainCol.width - 6, rowTop + 11, {
+                        font: 'F2',
+                        size: 8.6,
+                        align: 'right'
+                    });
+                }
+            }
             totalsDrawn = true;
         }
 
         drawLine(marginX, footerTop - 10, pageWidth - marginX, footerTop - 10, [208, 216, 228], 0.7);
         drawText(
-            `Reporte IPV | ${report.register.code} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
+            `Reporte IPV | ${report.register.name} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
             marginX,
             footerTop + 4,
             { size: 8, color: [93, 109, 130], maxChars: 95 }

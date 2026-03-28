@@ -9,6 +9,7 @@ class PaymentMethodSettingDto {
   @IsString() code!: string;
   @IsString() name!: string;
   @IsBoolean() enabled!: boolean;
+  @IsOptional() @IsBoolean() requiresTransactionCode?: boolean;
 }
 
 class DenominationSettingDto {
@@ -82,7 +83,7 @@ export class SettingsController {
   }
 
   @Get("payment-methods")
-  @Permissions("sales.tpv", "tpv.manage", "settings.manage")
+  @Permissions("sales.tpv", "sales.direct", "tpv.manage", "settings.manage")
   listPaymentMethods() {
     return this.service.listPaymentMethods();
   }

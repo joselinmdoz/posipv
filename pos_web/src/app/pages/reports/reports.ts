@@ -15,6 +15,7 @@ import { ConfirmationService, MenuItem, MessageService } from 'primeng/api';
 import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/reports.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 import { AuthService } from '@/app/core/services/auth.service';
+import { SettingsService } from '@/app/core/services/settings.service';
 
 @Component({
     selector: 'app-reports',
@@ -113,7 +114,7 @@ import { AuthService } from '@/app/core/services/auth.service';
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <p-card header="Ventas por Método de Pago">
-                        <p-table [value]="report()?.salesByPaymentMethod || []">
+                        <p-table [value]="report()?.salesByPaymentMethod || []" responsiveLayout="scroll">
                             <ng-template #header>
                                 <tr>
                                     <th>Método</th>
@@ -134,7 +135,7 @@ import { AuthService } from '@/app/core/services/auth.service';
                     </p-card>
 
                     <p-card header="Ventas por Cajero">
-                        <p-table [value]="report()?.salesByCashier || []">
+                        <p-table [value]="report()?.salesByCashier || []" responsiveLayout="scroll">
                             <ng-template #header>
                                 <tr>
                                     <th>Cajero</th>
@@ -154,7 +155,7 @@ import { AuthService } from '@/app/core/services/auth.service';
                 </div>
 
                 <p-card header="Detalle de Ventas">
-                    <p-table [value]="report()?.detailedSales || []" [paginator]="true" [rows]="10">
+                    <p-table [value]="report()?.detailedSales || []" [paginator]="true" [rows]="10" responsiveLayout="scroll">
                         <ng-template #header>
                             <tr>
                                 <th>Fecha</th>
@@ -239,7 +240,7 @@ import { AuthService } from '@/app/core/services/auth.service';
                     </div>
 
                     <p-card header="Productos vendidos">
-                        <p-table [value]="selectedSale()!.items || []">
+                        <p-table [value]="selectedSale()!.items || []" responsiveLayout="scroll">
                             <ng-template #header>
                                 <tr>
                                     <th>Producto</th>
@@ -267,7 +268,7 @@ import { AuthService } from '@/app/core/services/auth.service';
                     </p-card>
 
                     <p-card header="Pagos de la venta">
-                        <p-table [value]="selectedSale()!.payments || []">
+                        <p-table [value]="selectedSale()!.payments || []" responsiveLayout="scroll">
                             <ng-template #header>
                                 <tr>
                                     <th>Método</th>
@@ -329,6 +330,12 @@ export class Reports implements OnInit {
         { label: 'Venta Directa', value: 'DIRECT' }
     ];
     warehouseOptions: Array<{ label: string; value: string }> = [{ label: 'Todos', value: '' }];
+    private paymentMethodNameByCode = new Map<string, string>([
+        ['CASH', 'Efectivo'],
+        ['CARD', 'Tarjeta'],
+        ['TRANSFER', 'Transferencia'],
+        ['OTHER', 'Otro']
+    ]);
 
     exportItems: MenuItem[] = [
         {
@@ -346,14 +353,32 @@ export class Reports implements OnInit {
     constructor(
         private reportsService: ReportsService,
         private warehousesService: WarehousesService,
+        private settingsService: SettingsService,
         private messageService: MessageService,
         private confirmationService: ConfirmationService,
         private authService: AuthService
     ) {}
 
     ngOnInit() {
+        this.loadPaymentMethodLabels();
         this.loadWarehouseOptions();
         this.loadServerTodayReport();
+    }
+
+    private loadPaymentMethodLabels() {
+        this.settingsService.listPaymentMethods().subscribe({
+            next: (methods) => {
+                const nextMap = new Map(this.paymentMethodNameByCode);
+                for (const method of methods || []) {
+                    const code = this.normalizePaymentMethodCode(method.code);
+                    const name = String(method.name || '').trim();
+                    if (!code || !name) continue;
+                    nextMap.set(code, name);
+                }
+                this.paymentMethodNameByCode = nextMap;
+            },
+            error: () => {}
+        });
     }
 
     private loadWarehouseOptions() {
@@ -654,13 +679,21 @@ export class Reports implements OnInit {
     }
 
     getPaymentMethodLabel(method: string): string {
-        const labels: Record<string, string> = {
-            CASH: 'Efectivo',
-            CARD: 'Tarjeta',
-            TRANSFER: 'Transferencia',
-            OTHER: 'Otro'
-        };
-        return labels[method] || method;
+        const code = this.normalizePaymentMethodCode(method);
+        if (code && this.paymentMethodNameByCode.has(code)) {
+            return this.paymentMethodNameByCode.get(code)!;
+        }
+        return method;
+    }
+
+    private normalizePaymentMethodCode(codeInput: string): string | null {
+        const code = String(codeInput || '').trim().toUpperCase();
+        if (!code) return null;
+        if (code === 'CASH' || code === 'EFECTIVO') return 'CASH';
+        if (code === 'CARD' || code === 'TARJETA') return 'CARD';
+        if (code === 'TRANSFER' || code === 'TRANSFERENCIA') return 'TRANSFER';
+        if (code === 'OTHER' || code === 'OTRO') return 'OTHER';
+        return code;
     }
 
     getChannelLabel(channel?: string): string {

@@ -330,11 +330,20 @@ export class SettingsService {
     });
   }
 
-  async savePaymentMethods(payload: { code: string; name: string; enabled: boolean }[]) {
+  async savePaymentMethods(payload: { code: string; name: string; enabled: boolean; requiresTransactionCode?: boolean }[]) {
+    const normalizedPayload = (payload || [])
+      .map((item) => ({
+        code: this.normalizePaymentMethodCode(item.code) || (item.code || "").trim().toUpperCase(),
+        name: (item.name || "").trim(),
+        enabled: item.enabled !== false,
+        requiresTransactionCode: item.requiresTransactionCode === true,
+      }))
+      .filter((item) => !!item.code && !!item.name);
+
     // Delete all and recreate
     await this.prisma.paymentMethodSetting.deleteMany();
     return this.prisma.paymentMethodSetting.createMany({
-      data: payload,
+      data: normalizedPayload,
     });
   }
 

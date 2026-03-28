@@ -47,7 +47,7 @@ type CustomerForm = {
             <p-button label="Limpiar" icon="pi pi-filter-slash" severity="secondary" [outlined]="true" [disabled]="loading()" (onClick)="clearFilters()" />
         </div>
 
-        <p-table [value]="customers()" [loading]="loading()" [rows]="10" [paginator]="true" dataKey="id">
+        <p-table [value]="customers()" [loading]="loading()" [rows]="10" [paginator]="true" responsiveLayout="scroll" dataKey="id">
             <ng-template #header>
                 <tr>
                     <th>Nombre</th>
@@ -100,6 +100,7 @@ type CustomerForm = {
             [(visible)]="customerDialog"
             [modal]="true"
             [style]="{ width: '560px' }"
+            [breakpoints]="{ '960px': '98vw' }"
             [draggable]="false"
             [resizable]="false"
         >
@@ -157,7 +158,7 @@ type CustomerForm = {
                         <div><b>Última compra:</b> {{ formatDateTime(selectedHistory()!.summary.lastPurchaseAt) }}</div>
                     </div>
 
-                    <p-table [value]="selectedHistory()!.recentSales || []" [rows]="10" [paginator]="true">
+                    <p-table [value]="selectedHistory()!.recentSales || []" [rows]="10" [paginator]="true" responsiveLayout="scroll">
                         <ng-template #header>
                             <tr>
                                 <th>Fecha</th>

@@ -60,7 +60,7 @@ import {
                         />
                     </div>
 
-                    <p-table [value]="filteredAccounts" [rows]="10" [paginator]="true" [rowsPerPageOptions]="[10,25,50]" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} cuentas">
+                    <p-table [value]="filteredAccounts" [rows]="10" [paginator]="true" responsiveLayout="scroll" [rowsPerPageOptions]="[10,25,50]" dataKey="id" currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} cuentas">
                         <ng-template #header>
                             <tr>
                                 <th>Código</th>
@@ -91,7 +91,7 @@ import {
                 </div>
             </p-card>
 
-            <p-dialog [header]="editingAccountId ? 'Editar cuenta' : 'Nueva cuenta'" [(visible)]="accountDialog" [modal]="true" [style]="{ width: '520px' }" [draggable]="false" [resizable]="false">
+            <p-dialog [header]="editingAccountId ? 'Editar cuenta' : 'Nueva cuenta'" [(visible)]="accountDialog" [modal]="true" [style]="{ width: '520px' }" [breakpoints]="{ '960px': '98vw' }" [draggable]="false" [resizable]="false">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label class="block mb-2">Código *</label>

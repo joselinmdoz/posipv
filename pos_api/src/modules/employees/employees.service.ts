@@ -16,10 +16,11 @@ type CreateEmployeeInput = {
   phone?: string;
   email?: string;
   position?: string;
+  image?: string;
   hireDate?: string;
   salary?: string;
   notes?: string;
-  active?: boolean;
+  active?: boolean | string;
   userId?: string;
 };
 
@@ -204,8 +205,9 @@ export class EmployeesService {
     if (input.phone !== undefined) data.phone = this.normalize(input.phone);
     if (input.email !== undefined) data.email = this.normalize(input.email);
     if (input.position !== undefined) data.position = this.normalize(input.position);
+    if (input.image !== undefined) data.image = this.normalize(input.image);
     if (input.notes !== undefined) data.notes = this.normalize(input.notes);
-    if (input.active !== undefined) data.active = Boolean(input.active);
+    if (input.active !== undefined) data.active = this.parseBoolean(input.active);
 
     if (input.hireDate !== undefined) {
       data.hireDate = this.parseDate(input.hireDate);
@@ -269,6 +271,14 @@ export class EmployeesService {
     } catch {
       throw new BadRequestException("Salario inválido.");
     }
+  }
+
+  private parseBoolean(value: boolean | string): boolean {
+    if (typeof value === "boolean") return value;
+    const normalized = String(value || "").trim().toLowerCase();
+    if (["true", "1", "yes", "si"].includes(normalized)) return true;
+    if (["false", "0", "no"].includes(normalized)) return false;
+    throw new BadRequestException("Valor booleano inválido.");
   }
 
   private handleMutationError(error: unknown, fallbackMessage: string): never {
