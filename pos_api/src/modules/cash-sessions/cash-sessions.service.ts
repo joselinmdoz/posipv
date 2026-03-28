@@ -103,6 +103,21 @@ export class CashSessionsService {
   getOpenByRegister(registerId: string) {
     return this.prisma.cashSession.findFirst({
       where: { registerId, status: CashSessionStatus.OPEN },
+      include: {
+        openedBy: {
+          select: {
+            id: true,
+            email: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { openedAt: "desc" },
     });
   }
@@ -114,12 +129,29 @@ export class CashSessionsService {
     const openExisting = await this.getOpenByRegister(input.registerId);
     if (openExisting) throw new BadRequestException("Esa caja ya tiene una sesión abierta.");
 
+    await this.assertCashierAllowedForRegister(input.registerId, input.openedById);
+
     const session = await this.prisma.cashSession.create({
       data: {
         registerId: input.registerId,
         openingAmount: dec(input.openingAmount) as any,
         note: input.note,
         openedById: input.openedById,
+      },
+      include: {
+        openedBy: {
+          select: {
+            id: true,
+            email: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -229,5 +261,33 @@ export class CashSessionsService {
     }
 
     return totals;
+  }
+
+  private async assertCashierAllowedForRegister(registerId: string, userId: string) {
+    const settings = await this.prisma.registerSettings.findUnique({
+      where: { registerId },
+      select: {
+        sellerEmployeeIds: true,
+      },
+    });
+
+    const allowedEmployeeIds = Array.isArray(settings?.sellerEmployeeIds) ? settings.sellerEmployeeIds : [];
+    if (allowedEmployeeIds.length === 0) {
+      return;
+    }
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        userId,
+        active: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee || !allowedEmployeeIds.includes(employee.id)) {
+      throw new BadRequestException("Este cajero no está autorizado para operar en el TPV seleccionado.");
+    }
   }
 }

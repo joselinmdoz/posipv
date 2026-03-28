@@ -28,8 +28,9 @@ __decorate([
     __metadata("design:type", String)
 ], ItemDto.prototype, "productId", void 0);
 __decorate([
-    (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.Min)(1),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.001),
     __metadata("design:type", Number)
 ], ItemDto.prototype, "qty", void 0);
 class PayDto {
@@ -88,6 +89,7 @@ let SalesController = class SalesController {
 exports.SalesController = SalesController;
 __decorate([
     (0, common_1.Get)("session/:cashSessionId/products"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv"),
     __param(0, (0, common_1.Param)("cashSessionId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -95,6 +97,7 @@ __decorate([
 ], SalesController.prototype, "listSessionProducts", null);
 __decorate([
     (0, common_1.Post)(),
+    (0, permissions_decorator_1.Permissions)("sales.tpv"),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -103,7 +106,6 @@ __decorate([
 ], SalesController.prototype, "create", null);
 __decorate([
     (0, common_1.Delete)(":id"),
-    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("sales.delete"),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)("id")),
@@ -113,7 +115,7 @@ __decorate([
 ], SalesController.prototype, "remove", null);
 exports.SalesController = SalesController = __decorate([
     (0, common_1.Controller)("sales"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [sales_service_1.SalesService])
 ], SalesController);
 //# sourceMappingURL=sales.controller.js.map

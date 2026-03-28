@@ -21,6 +21,8 @@ const class_validator_1 = require("class-validator");
 const multer_1 = require("multer");
 const path_1 = require("path");
 const client_1 = require("@prisma/client");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class CreateProductDto {
 }
 __decorate([
@@ -47,6 +49,15 @@ __decorate([
     (0, class_validator_1.IsNumberString)(),
     __metadata("design:type", String)
 ], CreateProductDto.prototype, "cost", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumberString)(),
+    __metadata("design:type", String)
+], CreateProductDto.prototype, "lowStockAlertQty", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], CreateProductDto.prototype, "allowFractionalQty", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsEnum)(client_1.CurrencyCode),
@@ -76,8 +87,9 @@ let ProductsController = class ProductsController {
     constructor(service) {
         this.service = service;
     }
-    list() {
-        return this.service.list();
+    list(includeInactive) {
+        const includeAll = ["1", "true", "yes"].includes(String(includeInactive || "").toLowerCase());
+        return this.service.list(includeAll);
     }
     create(req, file) {
         const dto = {
@@ -86,11 +98,15 @@ let ProductsController = class ProductsController {
             codigo: req.body.codigo,
             barcode: req.body.barcode,
             cost: req.body.cost,
+            lowStockAlertQty: req.body.lowStockAlertQty,
             currency: req.body.currency,
             productTypeId: req.body.productTypeId,
             productCategoryId: req.body.productCategoryId,
             measurementUnitId: req.body.measurementUnitId,
         };
+        if (req.body.allowFractionalQty !== undefined) {
+            dto.allowFractionalQty = req.body.allowFractionalQty === 'true' || req.body.allowFractionalQty === true;
+        }
         if (file) {
             dto.image = `/uploads/${file.filename}`;
         }
@@ -103,6 +119,7 @@ let ProductsController = class ProductsController {
             codigo: req.body.codigo,
             barcode: req.body.barcode,
             cost: req.body.cost,
+            lowStockAlertQty: req.body.lowStockAlertQty,
             currency: req.body.currency,
             productTypeId: req.body.productTypeId,
             productCategoryId: req.body.productCategoryId,
@@ -110,6 +127,9 @@ let ProductsController = class ProductsController {
         };
         if (req.body.active !== undefined) {
             dto.active = req.body.active === 'true';
+        }
+        if (req.body.allowFractionalQty !== undefined) {
+            dto.allowFractionalQty = req.body.allowFractionalQty === 'true' || req.body.allowFractionalQty === true;
         }
         if (file) {
             dto.image = `/uploads/${file.filename}`;
@@ -129,12 +149,15 @@ let ProductsController = class ProductsController {
 exports.ProductsController = ProductsController;
 __decorate([
     (0, common_1.Get)(),
+    (0, permissions_decorator_1.Permissions)("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view"),
+    __param(0, (0, common_1.Query)("includeInactive")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], ProductsController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
+    (0, permissions_decorator_1.Permissions)("products.manage"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('image', {
         storage: (0, multer_1.diskStorage)({
             destination: './uploads',
@@ -152,6 +175,7 @@ __decorate([
 ], ProductsController.prototype, "create", null);
 __decorate([
     (0, common_1.Put)(':id'),
+    (0, permissions_decorator_1.Permissions)("products.manage"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('image', {
         storage: (0, multer_1.diskStorage)({
             destination: './uploads',
@@ -170,6 +194,7 @@ __decorate([
 ], ProductsController.prototype, "update", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, permissions_decorator_1.Permissions)("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view"),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -177,6 +202,7 @@ __decorate([
 ], ProductsController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Delete)(':id'),
+    (0, permissions_decorator_1.Permissions)("products.manage"),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -184,7 +210,7 @@ __decorate([
 ], ProductsController.prototype, "delete", null);
 exports.ProductsController = ProductsController = __decorate([
     (0, common_1.Controller)("products"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [products_service_1.ProductsService])
 ], ProductsController);
 //# sourceMappingURL=products.controller.js.map

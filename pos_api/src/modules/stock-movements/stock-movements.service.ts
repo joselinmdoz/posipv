@@ -95,7 +95,7 @@ export class StockMovementsService {
     const normalized = {
       type: dto.type,
       productId: this.normalizeId(dto.productId),
-      qty: Number(dto.qty),
+      qty: Number(Number(dto.qty).toFixed(3)),
       fromWarehouseId: this.normalizeId(dto.fromWarehouseId),
       toWarehouseId: this.normalizeId(dto.toWarehouseId),
       reason: dto.reason?.trim() || null,
@@ -103,8 +103,8 @@ export class StockMovementsService {
 
     if (!normalized.productId) throw new BadRequestException("productId es requerido.");
     const productId = normalized.productId;
-    if (!Number.isFinite(normalized.qty) || normalized.qty <= 0 || !Number.isInteger(normalized.qty)) {
-      throw new BadRequestException("qty debe ser un entero mayor a 0.");
+    if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
+      throw new BadRequestException("qty debe ser mayor a 0.");
     }
 
     if (normalized.type === "IN" && !normalized.toWarehouseId) {

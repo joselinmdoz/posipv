@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SalesService } from "./sales.service";
-import { IsArray, IsEnum, IsInt, IsOptional, IsString, Min, ValidateNested } from "class-validator";
+import { IsArray, IsEnum, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrencyCode, PaymentMethod } from "@prisma/client";
 import { PermissionsGuard } from "../auth/permissions.guard";
@@ -9,7 +9,8 @@ import { Permissions } from "../auth/permissions.decorator";
 
 class ItemDto {
   @IsString() productId!: string;
-  @IsInt() @Min(1) qty!: number;
+  @Type(() => Number)
+  @IsNumber() @Min(0.001) qty!: number;
 }
 
 class PayDto {
@@ -34,22 +35,23 @@ class CreateSaleDto {
 }
 
 @Controller("sales")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SalesController {
   constructor(private service: SalesService) {}
 
   @Get("session/:cashSessionId/products")
+  @Permissions("sales.tpv")
   listSessionProducts(@Param("cashSessionId") cashSessionId: string) {
     return this.service.listSessionProducts(cashSessionId);
   }
 
   @Post()
+  @Permissions("sales.tpv")
   create(@Req() req: any, @Body() dto: CreateSaleDto) {
     return this.service.createSale(req.user.userId, dto);
   }
 
   @Delete(":id")
-  @UseGuards(PermissionsGuard)
   @Permissions("sales.delete")
   remove(@Req() req: any, @Param("id") saleId: string) {
     return this.service.deleteSale(saleId, req.user.userId);

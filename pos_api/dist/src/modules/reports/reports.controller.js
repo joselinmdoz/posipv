@@ -16,6 +16,8 @@ exports.ReportsController = void 0;
 const common_1 = require("@nestjs/common");
 const reports_service_1 = require("./reports.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 let ReportsController = class ReportsController {
     constructor(reportsService) {
         this.reportsService = reportsService;
@@ -36,12 +38,14 @@ let ReportsController = class ReportsController {
 exports.ReportsController = ReportsController;
 __decorate([
     (0, common_1.Get)("server-date"),
+    (0, permissions_decorator_1.Permissions)("reports.view", "dashboard.view"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "getServerDate", null);
 __decorate([
     (0, common_1.Get)("sales"),
+    (0, permissions_decorator_1.Permissions)("reports.view", "dashboard.view"),
     __param(0, (0, common_1.Query)("startDate")),
     __param(1, (0, common_1.Query)("endDate")),
     __param(2, (0, common_1.Query)("channel")),
@@ -55,7 +59,7 @@ __decorate([
 ], ReportsController.prototype, "getSalesReport", null);
 exports.ReportsController = ReportsController = __decorate([
     (0, common_1.Controller)("reports"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [reports_service_1.ReportsService])
 ], ReportsController);
 //# sourceMappingURL=reports.controller.js.map

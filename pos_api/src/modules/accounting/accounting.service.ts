@@ -240,7 +240,7 @@ export class AccountingService {
   }
 
   async deleteAccount(accountId: string) {
-    const account = await this.ensureAccountExists(accountId);
+    await this.ensureAccountExists(accountId);
 
     const [hasChildren, linesCount, debitRulesCount, creditRulesCount] = await Promise.all([
       this.prisma.accountingAccount.count({ where: { parentId: accountId } }),

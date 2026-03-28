@@ -8,6 +8,7 @@ import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
+import { MultiSelectModule } from 'primeng/multiselect';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
@@ -18,6 +19,7 @@ import { catchError, forkJoin, of, switchMap } from 'rxjs';
 import { RegistersService, Register, CreateRegisterDto, UpdateRegisterDto } from '@/app/core/services/registers.service';
 import { PosService, CashSession } from '@/app/core/services/pos.service';
 import { SettingsService, PaymentMethodSetting } from '@/app/core/services/settings.service';
+import { EmployeesService } from '@/app/core/services/employees.service';
 
 interface RegisterCard extends Register {
     openSession: CashSession | null;
@@ -35,6 +37,7 @@ interface RegisterCard extends Register {
         InputNumberModule,
         InputTextModule,
         SelectModule,
+        MultiSelectModule,
         TagModule,
         ToastModule,
         ToggleSwitchModule,
@@ -165,6 +168,23 @@ interface RegisterCard extends Register {
                     </div>
                 </div>
 
+                <div class="flex flex-col gap-2">
+                    <label>Empleados autorizados para vender en este TPV</label>
+                    <p-multiselect
+                        [options]="availableSellerEmployees"
+                        [(ngModel)]="settingsForm.sellerEmployeeIds"
+                        optionLabel="label"
+                        optionValue="value"
+                        [filter]="true"
+                        [showClear]="true"
+                        class="w-full"
+                        placeholder="Si no selecciona ninguno, todos los cajeros activos podrán vender"
+                    />
+                    <small class="text-gray-500">
+                        Si la lista queda vacía, no se restringe el vendedor por empleado en este TPV.
+                    </small>
+                </div>
+
                 <div class="text-sm text-gray-600">
                     Las denominaciones se gestionan en la vista de <strong>Denominaciones</strong>.
                 </div>
@@ -200,11 +220,15 @@ export class TpvManagement implements OnInit {
         defaultOpeningFloat: number;
         currency: string;
         paymentMethods: PaymentMethodSetting[];
+        sellerEmployeeIds: string[];
     } = {
         defaultOpeningFloat: 0,
         currency: 'CUP',
-        paymentMethods: []
+        paymentMethods: [],
+        sellerEmployeeIds: []
     };
+
+    availableSellerEmployees: Array<{ label: string; value: string }> = [];
 
     currencyOptions = [
         { label: 'CUP - Peso cubano', value: 'CUP' },
@@ -222,6 +246,7 @@ export class TpvManagement implements OnInit {
         private registersService: RegistersService,
         private posService: PosService,
         private settingsService: SettingsService,
+        private employeesService: EmployeesService,
         private router: Router,
         private messageService: MessageService,
         private confirmationService: ConfirmationService,
@@ -415,8 +440,10 @@ export class TpvManagement implements OnInit {
         this.settingsForm = {
             defaultOpeningFloat: 0,
             currency: 'CUP',
-            paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm }))
+            paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm })),
+            sellerEmployeeIds: []
         };
+        this.loadAvailableSellerEmployees();
 
         this.settingsService.getRegisterSettings(register.id).subscribe({
             next: (settings) => {
@@ -427,7 +454,8 @@ export class TpvManagement implements OnInit {
                     paymentMethods: this.paymentMethodCatalog.map((pm) => ({
                         ...pm,
                         enabled: enabledCodes.size > 0 ? enabledCodes.has(pm.code) : pm.enabled
-                    }))
+                    })),
+                    sellerEmployeeIds: this.resolveSelectedSellerEmployeeIds(settings)
                 };
                 this.openSettingsDialogSafely();
             },
@@ -435,7 +463,8 @@ export class TpvManagement implements OnInit {
                 this.settingsForm = {
                     defaultOpeningFloat: 0,
                     currency: 'CUP',
-                    paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm }))
+                    paymentMethods: this.paymentMethodCatalog.map((pm) => ({ ...pm })),
+                    sellerEmployeeIds: []
                 };
                 this.openSettingsDialogSafely();
             }
@@ -453,7 +482,8 @@ export class TpvManagement implements OnInit {
         this.settingsService.saveRegisterSettings(this.selectedRegisterForSettings.id, {
             defaultOpeningFloat: Number(this.settingsForm.defaultOpeningFloat || 0),
             currency: this.settingsForm.currency,
-            paymentMethods: this.settingsForm.paymentMethods.filter((m) => m.enabled).map((m) => m.code)
+            paymentMethods: this.settingsForm.paymentMethods.filter((m) => m.enabled).map((m) => m.code),
+            sellerEmployeeIds: (this.settingsForm.sellerEmployeeIds || []).filter((id) => !!id)
         }).subscribe({
             next: () => {
                 this.messageService.add({
@@ -476,6 +506,37 @@ export class TpvManagement implements OnInit {
     private normalizeCurrency(value?: string | null): string {
         const normalized = (value || '').toString().trim().toUpperCase();
         return normalized === 'USD' ? 'USD' : 'CUP';
+    }
+
+    private loadAvailableSellerEmployees() {
+        this.employeesService.list({ active: true, limit: 500 }).subscribe({
+            next: (employees) => {
+                this.availableSellerEmployees = employees
+                    .filter((employee) => employee.active && !!employee.userId && !!employee.user?.active)
+                    .map((employee) => {
+                        const fullName = `${employee.firstName} ${employee.lastName}`.trim();
+                        const email = employee.user?.email ? ` (${employee.user.email})` : '';
+                        return {
+                            label: `${fullName}${email}`,
+                            value: employee.id
+                        };
+                    });
+            },
+            error: () => {
+                this.availableSellerEmployees = [];
+            }
+        });
+    }
+
+    private resolveSelectedSellerEmployeeIds(settings: any): string[] {
+        const rawIds = Array.isArray(settings?.sellerEmployeeIds) ? settings.sellerEmployeeIds : [];
+        if (rawIds.length > 0) {
+            return rawIds;
+        }
+        const allowed = Array.isArray(settings?.allowedEmployees) ? settings.allowedEmployees : [];
+        return allowed
+            .map((employee: any) => String(employee?.id || '').trim())
+            .filter((id: string) => id.length > 0);
     }
 
     private openSettingsDialogSafely() {

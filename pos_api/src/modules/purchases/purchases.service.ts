@@ -175,7 +175,7 @@ export class PurchasesService {
         ? await this.normalizePurchaseItems(input.items)
         : existingItems.map((row) => ({
             productId: row.productId,
-            qty: row.qty,
+            qty: Number(row.qty),
             cost: Number(row.cost),
             total: Number(row.total),
           }));
@@ -297,7 +297,7 @@ export class PurchasesService {
     const grouped = new Map<string, { qty: number; cost: number }>();
     for (const raw of items) {
       const productId = this.requiredText(raw.productId, "productId", 80);
-      const qty = this.parsePositiveInt(raw.qty, "qty");
+      const qty = this.parsePositiveQty(raw.qty, "qty");
       const cost = this.parsePositiveNumber(raw.cost, "cost");
 
       const current = grouped.get(productId);
@@ -355,9 +355,10 @@ export class PurchasesService {
     tx: Prisma.TransactionClient,
     purchaseId: string,
     warehouseId: string,
-    items: Array<{ productId: string; qty: number }>
+    items: Array<{ productId: string; qty: number | Prisma.Decimal }>
   ) {
     for (const item of items) {
+      const qty = Number(item.qty);
       const existing = await tx.stock.findUnique({
         where: {
           warehouseId_productId: {
@@ -376,7 +377,7 @@ export class PurchasesService {
             },
           },
           data: {
-            qty: { increment: item.qty },
+            qty: { increment: qty },
           },
         });
       } else {
@@ -384,7 +385,7 @@ export class PurchasesService {
           data: {
             warehouseId,
             productId: item.productId,
-            qty: item.qty,
+            qty,
           },
         });
       }
@@ -393,7 +394,7 @@ export class PurchasesService {
         data: {
           type: StockMovementType.IN,
           productId: item.productId,
-          qty: item.qty,
+          qty,
           toWarehouseId: warehouseId,
           reason: `COMPRA:${purchaseId}`,
         },
@@ -405,9 +406,10 @@ export class PurchasesService {
     tx: Prisma.TransactionClient,
     purchaseId: string,
     warehouseId: string,
-    items: Array<{ productId: string; qty: number }>
+    items: Array<{ productId: string; qty: number | Prisma.Decimal }>
   ) {
     for (const item of items) {
+      const qty = Number(item.qty);
       const stock = await tx.stock.findUnique({
         where: {
           warehouseId_productId: {
@@ -417,7 +419,7 @@ export class PurchasesService {
         },
       });
 
-      if (!stock || stock.qty < item.qty) {
+      if (!stock || Number(stock.qty) < qty) {
         throw new BadRequestException(
           "No se puede anular la compra porque el stock actual es menor a la cantidad comprada.",
         );
@@ -431,7 +433,7 @@ export class PurchasesService {
           },
         },
         data: {
-          qty: { decrement: item.qty },
+          qty: { decrement: qty },
         },
       });
 
@@ -439,7 +441,7 @@ export class PurchasesService {
         data: {
           type: StockMovementType.OUT,
           productId: item.productId,
-          qty: item.qty,
+          qty,
           fromWarehouseId: warehouseId,
           reason: `ANULACION_COMPRA:${purchaseId}`,
         },
@@ -556,12 +558,12 @@ export class PurchasesService {
     return parsed;
   }
 
-  private parsePositiveInt(value: number, fieldName: string) {
+  private parsePositiveQty(value: number, fieldName: string) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
-      throw new BadRequestException(`${fieldName} debe ser un entero mayor a 0.`);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new BadRequestException(`${fieldName} debe ser mayor a 0.`);
     }
-    return parsed;
+    return Number(parsed.toFixed(3));
   }
 
   private parseOptionalDate(value: string | undefined, fieldName: string) {

@@ -196,7 +196,7 @@ export class InventoryReportsService {
       orderBy: { closedAt: 'desc' },
     });
 
-    const initialMap = new Map<string, number>(initial.items.map((i) => [i.productId, i.qty]));
+    const initialMap = new Map<string, number>(initial.items.map((i) => [i.productId, Number(i.qty)]));
     const productIds = new Set<string>(initial.items.map((i) => i.productId));
 
     const movementCreatedAtFilter: { lte: Date; gte?: Date; gt?: Date } = {
@@ -327,6 +327,14 @@ export class InventoryReportsService {
       status: session.status,
       openedAt: session.openedAt,
       closedAt: session.closedAt,
+      responsible: {
+        userId: session.openedBy.id,
+        email: session.openedBy.email,
+        employeeId: session.openedBy.employee?.id || null,
+        employeeName: session.openedBy.employee
+          ? `${session.openedBy.employee.firstName} ${session.openedBy.employee.lastName}`.trim()
+          : null,
+      },
       register: {
         id: session.register.id,
         name: session.register.name,
@@ -435,6 +443,19 @@ export class InventoryReportsService {
     const session = await this.prisma.cashSession.findUnique({
       where: { id: cashSessionId },
       include: {
+        openedBy: {
+          select: {
+            id: true,
+            email: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
         register: {
           include: {
             warehouse: true,

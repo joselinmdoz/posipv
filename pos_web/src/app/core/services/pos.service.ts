@@ -20,6 +20,15 @@ export interface CashSession {
   note?: string;
   registerId: string;
   openedById: string;
+  openedBy?: {
+    id: string;
+    email: string;
+    employee?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+    } | null;
+  };
 }
 
 export interface CashSessionSummary {
@@ -106,16 +115,20 @@ export class PosService {
 
   // Cart operations
   addToCart(product: any, qty: number = 1) {
+    const normalizedQty = this.normalizeQty(qty);
+    if (normalizedQty <= 0) return;
+
     const currentCart = this._cart();
     const existingIndex = currentCart.findIndex(item => item.productId === product.id);
 
     if (existingIndex >= 0) {
       // Update existing item
       const updated = [...currentCart];
+      const nextQty = this.normalizeQty(updated[existingIndex].qty + normalizedQty);
       updated[existingIndex] = {
         ...updated[existingIndex],
-        qty: updated[existingIndex].qty + qty,
-        subtotal: (updated[existingIndex].qty + qty) * updated[existingIndex].price
+        qty: nextQty,
+        subtotal: this.roundMoney(nextQty * updated[existingIndex].price)
       };
       this._cart.set(updated);
     } else {
@@ -125,22 +138,19 @@ export class PosService {
         productName: product.name,
         productCodigo: product.codigo,
         price: Number(product.price),
-        qty,
-        subtotal: Number(product.price) * qty
+        qty: normalizedQty,
+        subtotal: this.roundMoney(Number(product.price) * normalizedQty)
       }]);
     }
   }
 
   updateCartItemQty(productId: string, qty: number) {
     const currentCart = this._cart();
-    if (qty <= 0) {
-      this.removeFromCart(productId);
-      return;
-    }
+    const normalizedQty = this.normalizeQty(qty);
 
     const updated = currentCart.map(item => 
       item.productId === productId 
-        ? { ...item, qty, subtotal: item.price * qty }
+        ? { ...item, qty: normalizedQty, subtotal: this.roundMoney(item.price * normalizedQty) }
         : item
     );
     this._cart.set(updated);
@@ -156,7 +166,7 @@ export class PosService {
   }
 
   getCartTotal(): number {
-    return this._cart().reduce((sum, item) => sum + item.subtotal, 0);
+    return this.roundMoney(this._cart().reduce((sum, item) => sum + item.subtotal, 0));
   }
 
   // Sales
@@ -184,5 +194,15 @@ export class PosService {
 
   loadRegisters() {
     this.listRegisters().subscribe(registers => this._registers.set(registers));
+  }
+
+  private normalizeQty(value: unknown): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Number(parsed.toFixed(3));
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   }
 }

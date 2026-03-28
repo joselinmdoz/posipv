@@ -21,10 +21,10 @@ export class PermissionsGuard implements CanActivate {
     if (user.role === "ADMIN") return true;
 
     const userPermissions: string[] = Array.isArray(user.permissions) ? user.permissions : [];
-    const hasAllPermissions = requiredPermissions.every((permission) =>
+    const hasAnyPermission = requiredPermissions.some((permission) =>
       userPermissions.includes(permission),
     );
-    if (!hasAllPermissions) {
+    if (!hasAnyPermission) {
       throw new ForbiddenException("No tiene permisos para ejecutar esta acción.");
     }
 

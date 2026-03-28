@@ -36,7 +36,7 @@ export class DirectSalesService {
 
     return stock.map((item) => ({
       ...item.product,
-      qtyAvailable: item.qty,
+      qtyAvailable: Number(item.qty),
     }));
   }
 
@@ -49,10 +49,15 @@ export class DirectSalesService {
 
     const rateSnapshot = await this.settingsService.getCurrentUsdToCupRateSnapshot();
 
+    const normalizedItems = dto.items.map((item: any) => ({
+      productId: item.productId,
+      qty: this.parsePositiveQty(item.qty),
+    }));
+
     const qtyByProduct = new Map<string, number>();
-    for (const item of dto.items) {
+    for (const item of normalizedItems) {
       const currentQty = qtyByProduct.get(item.productId) || 0;
-      qtyByProduct.set(item.productId, currentQty + item.qty);
+      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
     }
     const productIds = Array.from(qtyByProduct.keys());
 
@@ -72,18 +77,29 @@ export class DirectSalesService {
     }
 
     const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
+    const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
+
+    for (const item of normalizedItems) {
+      const product = productById.get(item.productId);
+      if (!product) {
+        throw new BadRequestException("Producto inválido.");
+      }
+      if (!product.allowFractionalQty && !Number.isInteger(item.qty)) {
+        throw new BadRequestException(`El producto "${product.name}" no permite cantidades fraccionadas.`);
+      }
+    }
+
     for (const [productId, requestedQty] of qtyByProduct.entries()) {
       const stock = stockByProduct.get(productId);
-      if (!stock || stock.qty < requestedQty) {
+      if (!stock || Number(stock.qty) < requestedQty) {
         throw new BadRequestException("Stock insuficiente para completar la venta.");
       }
     }
 
-    const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
     const exchangeRateUsdToCup: Prisma.Decimal = dec(rateSnapshot.rate.toString());
     let total = new Prisma.Decimal(0);
 
-    const itemsData = dto.items.map((i: any) => {
+    const itemsData = normalizedItems.map((i: any) => {
       const product = productById.get(i.productId);
       if (!product) throw new BadRequestException("Producto inválido.");
 
@@ -353,6 +369,14 @@ export class DirectSalesService {
     } catch {
       throw new BadRequestException(message);
     }
+  }
+
+  private parsePositiveQty(input: unknown): number {
+    const value = Number(input);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
+    }
+    return Number(value.toFixed(3));
   }
 
   private async generateDocumentNumber(tx: Prisma.TransactionClient, channel: SaleChannel) {

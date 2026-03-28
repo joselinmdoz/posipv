@@ -1,7 +1,7 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { tap, catchError, of } from 'rxjs';
+import { tap, catchError } from 'rxjs';
 
 export interface LoginResponse {
   access_token: string;

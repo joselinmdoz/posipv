@@ -21,7 +21,7 @@ import { CardModule } from 'primeng/card';
 import { DividerModule } from 'primeng/divider';
 import { MessageService, ConfirmationService } from 'primeng/api';
 import { firstValueFrom } from 'rxjs';
-import { ProductsService, Product, CreateProductDto, UpdateProductDto, ProductType, ProductCategory, MeasurementUnit } from '@/app/core/services/products.service';
+import { ProductsService, Product, CreateProductDto } from '@/app/core/services/products.service';
 import { CatalogService, ProductType as CatalogProductType, ProductCategory as CatalogProductCategory, MeasurementUnit as CatalogMeasurementUnit } from '@/app/core/services/catalog.service';
 import { SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 
@@ -84,22 +84,34 @@ interface Column {
             <ng-template #caption>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="font-semibold text-lg">Listado de productos</div>
-                    <div class="flex items-center gap-2 w-full md:w-auto">
-                        <i class="pi pi-search text-500"></i>
-                        <input
-                            pInputText
-                            [(ngModel)]="searchTerm"
-                            placeholder="Buscar por nombre, código o código de barras"
-                            (input)="onSearchInput()"
-                            class="w-full md:w-22rem"
-                        />
-                        <p-button
-                            icon="pi pi-times"
-                            severity="secondary"
-                            [outlined]="true"
-                            [disabled]="!searchTerm"
-                            (onClick)="clearSearch()"
-                        />
+                    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        <div class="flex items-center gap-2">
+                            <p-toggleswitch
+                                inputId="showInactive"
+                                [(ngModel)]="showInactive"
+                                (ngModelChange)="onShowInactiveChange()"
+                            />
+                            <label for="showInactive" class="font-semibold cursor-pointer">
+                                Mostrar inactivos
+                            </label>
+                        </div>
+                        <div class="flex items-center gap-2 w-full md:w-auto">
+                            <i class="pi pi-search text-500"></i>
+                            <input
+                                pInputText
+                                [(ngModel)]="searchTerm"
+                                placeholder="Buscar por nombre, código o código de barras"
+                                (input)="onSearchInput()"
+                                class="w-full md:w-22rem"
+                            />
+                            <p-button
+                                icon="pi pi-times"
+                                severity="secondary"
+                                [outlined]="true"
+                                [disabled]="!searchTerm"
+                                (onClick)="clearSearch()"
+                            />
+                        </div>
                     </div>
                 </div>
             </ng-template>
@@ -114,6 +126,7 @@ interface Column {
                     <th pSortableColumn="productType">Tipo</th>
                     <th pSortableColumn="productCategory">Categoría</th>
                     <th pSortableColumn="measurementUnit">Unidad</th>
+                    <th pSortableColumn="lowStockAlertQty">Stock bajo</th>
                     <th pSortableColumn="currency">Moneda</th>
                     <th pSortableColumn="price">Precio <p-sortIcon field="price" /></th>
                     <th pSortableColumn="cost">Costo</th>
@@ -122,7 +135,7 @@ interface Column {
                 </tr>
             </ng-template>
             <ng-template #body let-product>
-                <tr>
+                <tr [style.opacity]="product.active ? '1' : '0.7'">
                     <td>
                         <p-tableCheckbox [value]="product" />
                     </td>
@@ -157,6 +170,7 @@ interface Column {
                             <span class="text-gray-400">-</span>
                         }
                     </td>
+                    <td>{{ product.lowStockAlertQty ?? '-' }}</td>
                     <td>{{ product.currency || defaultProductCurrency }}</td>
                     <td>{{ product.price | number:'1.2-2' }}</td>
                     <td>{{ product.cost ? (product.cost | number:'1.2-2') : '-' }}</td>
@@ -165,13 +179,19 @@ interface Column {
                     </td>
                     <td>
                         <p-button icon="pi pi-pencil" class="mr-2" [rounded]="true" [outlined]="true" severity="success" (onClick)="editProduct(product)" />
-                        <p-button icon="pi pi-trash" [rounded]="true" [outlined]="true" severity="danger" (onClick)="deleteProduct(product)" />
+                        <p-button
+                            [icon]="product.active ? 'pi pi-trash' : 'pi pi-refresh'"
+                            [rounded]="true"
+                            [outlined]="true"
+                            [severity]="product.active ? 'danger' : 'contrast'"
+                            (onClick)="toggleProductStatus(product)"
+                        />
                     </td>
                 </tr>
             </ng-template>
             <ng-template #emptymessage>
                 <tr>
-                    <td colspan="12">No se encontraron productos.</td>
+                    <td colspan="13">No se encontraron productos.</td>
                 </tr>
             </ng-template>
         </p-table>
@@ -327,6 +347,28 @@ interface Column {
                                         {{ unit.name }} ({{ unit.symbol }})
                                     </ng-template>
                                 </p-select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 mt-4">
+                            <div class="flex flex-col gap-2">
+                                <label for="lowStockAlertQty" class="font-semibold">Umbral de stock bajo</label>
+                                <p-inputnumber
+                                    id="lowStockAlertQty"
+                                    [(ngModel)]="product.lowStockAlertQty"
+                                    [min]="0"
+                                    [maxFractionDigits]="3"
+                                    [minFractionDigits]="0"
+                                    [useGrouping]="false"
+                                    class="w-full"
+                                    placeholder="Ej: 5"
+                                />
+                            </div>
+                            <div class="flex align-items-center gap-3 mt-6">
+                                <p-toggleswitch id="allowFractionalQty" [(ngModel)]="product.allowFractionalQty" />
+                                <label for="allowFractionalQty" class="font-semibold cursor-pointer">
+                                    Permitir cantidad fraccionada
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -506,6 +548,7 @@ export class Products implements OnInit {
         { field: 'productType', header: 'Tipo' },
         { field: 'productCategory', header: 'Categoría' },
         { field: 'measurementUnit', header: 'Unidad' },
+        { field: 'lowStockAlertQty', header: 'Stock bajo' },
         { field: 'currency', header: 'Moneda' },
         { field: 'price', header: 'Precio' },
         { field: 'cost', header: 'Costo' },
@@ -513,6 +556,7 @@ export class Products implements OnInit {
     ];
 
     searchTerm = '';
+    showInactive = false;
 
     product: any = {
         name: '',
@@ -520,6 +564,8 @@ export class Products implements OnInit {
         barcode: '',
         price: 0,
         cost: 0,
+        lowStockAlertQty: undefined,
+        allowFractionalQty: false,
         currency: 'CUP' as SystemCurrencyCode,
         image: '',
         active: true,
@@ -544,7 +590,7 @@ export class Products implements OnInit {
     }
 
     loadProducts() {
-        this.productsService.list().subscribe({
+        this.productsService.list(this.showInactive).subscribe({
             next: (products) => {
                 this.allProducts.set(products);
                 this.applyFilters();
@@ -599,6 +645,8 @@ export class Products implements OnInit {
             barcode: '',
             price: 0,
             cost: 0,
+            lowStockAlertQty: undefined,
+            allowFractionalQty: false,
             currency: this.defaultProductCurrency,
             image: '',
             active: true,
@@ -733,6 +781,10 @@ export class Products implements OnInit {
         if (this.product.codigo) formData.append('codigo', this.product.codigo);
         if (this.product.barcode) formData.append('barcode', this.product.barcode);
         if (this.product.cost) formData.append('cost', String(this.product.cost));
+        if (this.product.lowStockAlertQty !== undefined && this.product.lowStockAlertQty !== null && this.product.lowStockAlertQty !== '') {
+            formData.append('lowStockAlertQty', String(this.product.lowStockAlertQty));
+        }
+        formData.append('allowFractionalQty', String(!!this.product.allowFractionalQty));
         if (this.product.productTypeId) formData.append('productTypeId', this.product.productTypeId);
         if (this.product.productCategoryId) formData.append('productCategoryId', this.product.productCategoryId);
         if (this.product.measurementUnitId) formData.append('measurementUnitId', this.product.measurementUnitId);
@@ -766,21 +818,38 @@ export class Products implements OnInit {
         });
     }
 
-    deleteProduct(product: Product) {
+    toggleProductStatus(product: Product) {
+        const activating = !product.active;
+        const verb = activating ? 'reactivar' : 'desactivar';
+        const successMsg = activating ? 'Producto reactivado' : 'Producto desactivado';
+
         this.confirmationService.confirm({
-            message: `¿Está seguro de eliminar el producto ${product.name}?`,
+            message: `¿Está seguro de ${verb} el producto ${product.name}?`,
             header: 'Confirmar',
             icon: 'pi pi-exclamation-triangle',
             accept: () => {
+                const onSuccess = () => {
+                    this.messageService.add({ severity: 'success', summary: 'Éxito', detail: successMsg });
+                    this.loadProducts();
+                };
+                const onError = (err: unknown) => {
+                    console.error('Error toggling product status:', err);
+                    this.messageService.add({ severity: 'error', summary: 'Error', detail: `Error al ${verb} producto` });
+                };
+
+                if (activating) {
+                    this.productsService.update(product.id, { active: true }).subscribe({
+                        next: onSuccess,
+                        error: onError
+                    });
+                    return;
+                }
+
                 this.productsService.delete(product.id).subscribe({
                     next: () => {
-                        this.messageService.add({ severity: 'success', summary: 'Éxito', detail: 'Producto eliminado' });
-                        this.loadProducts();
+                        onSuccess();
                     },
-                    error: (err) => {
-                        console.error('Error deleting product:', err);
-                        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar producto' });
-                    }
+                    error: onError
                 });
             }
         });
@@ -793,6 +862,10 @@ export class Products implements OnInit {
     clearSearch() {
         this.searchTerm = '';
         this.applyFilters();
+    }
+
+    onShowInactiveChange() {
+        this.loadProducts();
     }
 
     private applyFilters() {
@@ -916,7 +989,10 @@ export class Products implements OnInit {
             const barcode = (raw['barcode'] || '').trim();
             const costText = (raw['cost'] || '').trim().replace(',', '.');
             const cost = Number(costText);
+            const lowStockAlertQtyText = (raw['lowstockalertqty'] || '').trim().replace(',', '.');
+            const lowStockAlertQty = Number(lowStockAlertQtyText);
             const currencyText = (raw['currency'] || '').trim().toUpperCase();
+            const allowFractionalQtyText = (raw['allowfractionalqty'] || '').trim().toLowerCase();
 
             const codigoKey = this.toKey(codigo);
             if (codigoKey && (existingCodigo.has(codigoKey) || csvCodigo.has(codigoKey))) {
@@ -935,6 +1011,12 @@ export class Products implements OnInit {
             if (codigo) dto.codigo = codigo;
             if (barcode) dto.barcode = barcode;
             if (costText && !Number.isNaN(cost) && cost >= 0) dto.cost = cost.toFixed(2);
+            if (lowStockAlertQtyText && !Number.isNaN(lowStockAlertQty) && lowStockAlertQty >= 0) {
+                dto.lowStockAlertQty = lowStockAlertQty.toFixed(3);
+            }
+            if (['true', '1', 'yes', 'si', 'sí'].includes(allowFractionalQtyText)) {
+                dto.allowFractionalQty = true;
+            }
             if (currencyText && this.isValidCurrencyCode(currencyText)) dto.currency = currencyText as SystemCurrencyCode;
             if (productTypeId) dto.productTypeId = productTypeId;
             if (productCategoryId) dto.productCategoryId = productCategoryId;
@@ -1108,7 +1190,7 @@ export class Products implements OnInit {
             return;
         }
 
-        const headers = ['name', 'codigo', 'barcode', 'currency', 'price', 'cost', 'productType', 'productCategory', 'measurementUnit', 'active'];
+        const headers = ['name', 'codigo', 'barcode', 'currency', 'price', 'cost', 'lowStockAlertQty', 'allowFractionalQty', 'productType', 'productCategory', 'measurementUnit', 'active'];
         const lines = rows.map((product) => [
             product.name || '',
             product.codigo || '',
@@ -1116,6 +1198,8 @@ export class Products implements OnInit {
             product.currency || this.defaultProductCurrency,
             product.price != null ? Number(product.price).toFixed(2) : '',
             product.cost != null ? Number(product.cost).toFixed(2) : '',
+            product.lowStockAlertQty != null ? Number(product.lowStockAlertQty).toFixed(3) : '',
+            product.allowFractionalQty ? 'true' : 'false',
             product.productType?.name || '',
             product.productCategory?.name || '',
             product.measurementUnit?.name || '',

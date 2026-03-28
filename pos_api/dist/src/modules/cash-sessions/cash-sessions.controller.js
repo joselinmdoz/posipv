@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const cash_sessions_service_1 = require("./cash-sessions.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const class_validator_1 = require("class-validator");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class OpenDto {
 }
 __decorate([
@@ -74,12 +76,14 @@ let CashSessionsController = class CashSessionsController {
 exports.CashSessionsController = CashSessionsController;
 __decorate([
     (0, common_1.Get)(),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "reports.view"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], CashSessionsController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)("open"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "reports.view"),
     __param(0, (0, common_1.Query)("registerId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -87,6 +91,7 @@ __decorate([
 ], CashSessionsController.prototype, "getOpen", null);
 __decorate([
     (0, common_1.Get)(":id/summary"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "reports.view"),
     __param(0, (0, common_1.Param)("id")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -94,6 +99,7 @@ __decorate([
 ], CashSessionsController.prototype, "getSummary", null);
 __decorate([
     (0, common_1.Get)(":id"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "reports.view"),
     __param(0, (0, common_1.Param)("id")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -101,6 +107,7 @@ __decorate([
 ], CashSessionsController.prototype, "getOne", null);
 __decorate([
     (0, common_1.Post)("open"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage"),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -109,6 +116,7 @@ __decorate([
 ], CashSessionsController.prototype, "open", null);
 __decorate([
     (0, common_1.Post)(":id/close"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage"),
     __param(0, (0, common_1.Param)("id")),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -117,7 +125,7 @@ __decorate([
 ], CashSessionsController.prototype, "close", null);
 exports.CashSessionsController = CashSessionsController = __decorate([
     (0, common_1.Controller)("cash-sessions"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [cash_sessions_service_1.CashSessionsService])
 ], CashSessionsController);
 //# sourceMappingURL=cash-sessions.controller.js.map

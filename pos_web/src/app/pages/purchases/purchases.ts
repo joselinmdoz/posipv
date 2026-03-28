@@ -287,10 +287,10 @@ interface PurchaseFormLine {
                     <div><b>Fecha:</b> {{ formatDateTime(selectedDetail.createdAt) }}</div>
                     <div><b>Documento:</b> {{ selectedDetail.documentNumber || '-' }}</div>
                     <div><b>Estado:</b> {{ statusLabel(selectedDetail.status) }}</div>
-                    <div><b>Almacén:</b> {{ selectedDetail.warehouse?.name || '-' }}</div>
+                    <div><b>Almacén:</b> {{ selectedDetail.warehouse.name || '-' }}</div>
                     <div><b>Proveedor:</b> {{ selectedDetail.supplierName || '-' }}</div>
                     <div><b>Doc. proveedor:</b> {{ selectedDetail.supplierDocument || '-' }}</div>
-                    <div><b>Creador:</b> {{ selectedDetail.createdBy?.email || '-' }}</div>
+                    <div><b>Creador:</b> {{ selectedDetail.createdBy.email || '-' }}</div>
                     <div><b>Total:</b> {{ formatMoney(selectedDetail.total, selectedDetail.currency) }}</div>
                     <div class="md:col-span-2 xl:col-span-4"><b>Nota:</b> {{ selectedDetail.note || '-' }}</div>
                 </div>

@@ -46,7 +46,7 @@ export class CashSessionsService {
   }
 
   openSession(registerId: string, openingAmount: number): Observable<CashSession> {
-    return this.http.post<CashSession>(this.URL, { registerId, openingAmount });
+    return this.http.post<CashSession>(`${this.URL}/open`, { registerId, openingAmount });
   }
 
   closeSession(id: string, closingAmount: number, note?: string): Observable<CashSession> {
@@ -54,6 +54,6 @@ export class CashSessionsService {
   }
 
   getOpenSession(registerId: string): Observable<CashSession | null> {
-    return this.http.get<CashSession | null>(`${this.URL}/open/${registerId}`);
+    return this.http.get<CashSession | null>(`${this.URL}/open?registerId=${registerId}`);
   }
 }

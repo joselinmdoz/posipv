@@ -16,44 +16,71 @@ class ResetStockDto {
 }
 
 @Controller("warehouses")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class WarehousesController {
   constructor(private service: WarehousesService) {}
 
   @Get()
+  @Permissions(
+    "warehouses.view",
+    "reports.view",
+    "sales.direct",
+    "purchases.view",
+    "purchases.manage",
+    "sales.tpv",
+    "tpv.manage",
+  )
   list() {
     return this.service.list();
   }
 
   @Post()
+  @Permissions("warehouses.manage")
   create(@Body() dto: CreateWarehouseDto) {
     return this.service.create(dto);
   }
 
   @Get(":id/stock")
+  @Permissions(
+    "warehouses.view",
+    "reports.view",
+    "sales.direct",
+    "purchases.view",
+    "purchases.manage",
+    "sales.tpv",
+    "tpv.manage",
+  )
   getStock(@Param("id") warehouseId: string) {
     return this.service.getStock(warehouseId);
   }
 
   @Get(':id')
+  @Permissions(
+    "warehouses.view",
+    "reports.view",
+    "sales.direct",
+    "purchases.view",
+    "purchases.manage",
+    "sales.tpv",
+    "tpv.manage",
+  )
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
   @Put(':id')
+  @Permissions("warehouses.manage")
   update(@Param('id') id: string, @Body() dto: { name?: string; code?: string; type?: 'CENTRAL' | 'TPV'; active?: boolean }) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(PermissionsGuard)
   @Permissions("warehouses.delete")
   delete(@Param('id') id: string) {
     return this.service.delete(id);
   }
 
   @Post(':id/reset-stock')
-  @UseGuards(PermissionsGuard)
   @Permissions("warehouses.reset-stock")
   resetStock(@Param('id') id: string, @Body() dto: ResetStockDto) {
     return this.service.resetStock(id, dto.reason);

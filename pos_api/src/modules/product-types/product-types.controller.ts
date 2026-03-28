@@ -10,34 +10,34 @@ import {
 } from '@nestjs/common';
 import { ProductTypesService } from './product-types.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { Permissions } from '../auth/permissions.decorator';
 
 @Controller('product-types')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductTypesController {
   constructor(private readonly productTypesService: ProductTypesService) {}
 
   @Get()
-  @Roles('ADMIN', 'CASHIER')
+  @Permissions('products.view', 'products.manage')
   findAll() {
     return this.productTypesService.findAll();
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'CASHIER')
+  @Permissions('products.view', 'products.manage')
   findOne(@Param('id') id: string) {
     return this.productTypesService.findOne(id);
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Permissions('products.manage')
   create(@Body() data: { name: string; description?: string }) {
     return this.productTypesService.create(data);
   }
 
   @Put(':id')
-  @Roles('ADMIN')
+  @Permissions('products.manage')
   update(
     @Param('id') id: string,
     @Body() data: { name?: string; description?: string; active?: boolean },
@@ -46,7 +46,7 @@ export class ProductTypesController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @Permissions('products.manage')
   delete(@Param('id') id: string) {
     return this.productTypesService.delete(id);
   }

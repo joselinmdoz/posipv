@@ -133,7 +133,7 @@ export class ReportsService {
         id: item.id,
         saleId: item.saleId,
         productId: item.productId,
-        qty: item.qty,
+        qty: Number(item.qty),
         price: Number(item.price.toFixed(2)),
         product: {
           id: item.product.id,

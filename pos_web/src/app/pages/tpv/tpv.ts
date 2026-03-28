@@ -44,6 +44,10 @@ import { forkJoin } from 'rxjs';
                             TPV en sesion:
                             <strong>{{ getSelectedRegisterName() || 'No seleccionado' }}</strong>
                         </p>
+                        <p class="tpv-subtitle">
+                            Cajero en turno:
+                            <strong>{{ currentShiftCashierName() }}</strong>
+                        </p>
                     </div>
                     <div class="tpv-header-tools">
                         <div class="tpv-header-actions">
@@ -93,19 +97,19 @@ import { forkJoin } from 'rxjs';
                             <button
                                 type="button"
                                 class="tpv-product-card"
-                                [class.no-stock]="(product.qtyAvailable || 0) <= getCartQty(product.id)"
-                                [disabled]="(product.qtyAvailable || 0) <= getCartQty(product.id)"
+                                [class.no-stock]="getAvailableQtyForProduct(product) <= getCartQty(product.id)"
+                                [disabled]="getAvailableQtyForProduct(product) <= getCartQty(product.id)"
                                 (click)="addToCart(product)"
                             >
                                 <div class="tpv-product-head">
                                     <div class="tpv-product-name">{{ product.name }}</div>
                                     <span
                                         class="tpv-stock-pill"
-                                        [class.low]="(product.qtyAvailable || 0) > 0 && (product.qtyAvailable || 0) <= 5"
-                                        [class.empty]="(product.qtyAvailable || 0) <= 0"
+                                        [class.low]="getAvailableQtyForProduct(product) > 0 && getAvailableQtyForProduct(product) <= 5"
+                                        [class.empty]="getAvailableQtyForProduct(product) <= 0"
                                     >
-                                        @if ((product.qtyAvailable || 0) > 0) {
-                                            Stock {{ product.qtyAvailable || 0 }}
+                                        @if (getAvailableQtyForProduct(product) > 0) {
+                                            Stock {{ formatQty(getAvailableQtyForProduct(product), !!product.allowFractionalQty) }}
                                         } @else {
                                             Sin stock
                                         }
@@ -156,14 +160,46 @@ import { forkJoin } from 'rxjs';
 
                 <div class="tpv-cart-items">
                     @for (item of posService.cart(); track item.productId) {
-                        <article class="tpv-cart-item">
+                        <article class="tpv-cart-item" [class.tpv-cart-item-zero]="item.qty <= 0">
                             <div class="tpv-cart-item-main">
                                 <div class="tpv-cart-item-name">{{ item.productName }}</div>
-                                <div class="tpv-cart-item-price">{{ item.price | currency: paymentBaseCurrency() }} x {{ item.qty }}</div>
+                                <div class="tpv-cart-item-price">{{ item.price | currency: paymentBaseCurrency() }} x {{ formatQty(item.qty, isFractionalProduct(item.productId)) }}</div>
+                                <div class="tpv-cart-item-amount-edit">
+                                    <label>Importe</label>
+                                    <p-inputnumber
+                                        [ngModel]="item.subtotal"
+                                        [min]="0"
+                                        mode="currency"
+                                        [currency]="paymentBaseCurrency()"
+                                        locale="es-ES"
+                                        [useGrouping]="false"
+                                        (ngModelChange)="onCartAmountInputChange(item, $event)"
+                                        (onBlur)="onCartAmountInputBlur(item, $event)"
+                                        (click)="onCartFieldInteraction($event)"
+                                        (touchend)="onCartFieldInteraction($event)"
+                                        inputStyleClass="tpv-cart-amount-field"
+                                        styleClass="tpv-cart-amount-input"
+                                    />
+                                </div>
                             </div>
                             <div class="tpv-cart-item-controls">
                                 <p-button icon="pi pi-minus" [rounded]="true" [text]="true" severity="secondary" (onClick)="decreaseQty(item)" />
-                                <span>{{ item.qty }}</span>
+                                <p-inputnumber
+                                    [ngModel]="item.qty"
+                                    [min]="0"
+                                    [max]="getAvailableQtyForCartItem(item)"
+                                    [step]="isFractionalProduct(item.productId) ? 0.001 : 1"
+                                    [minFractionDigits]="0"
+                                    [maxFractionDigits]="isFractionalProduct(item.productId) ? 3 : 0"
+                                    locale="es-ES"
+                                    [useGrouping]="false"
+                                    (ngModelChange)="onCartQtyInputChange(item, $event)"
+                                    (onBlur)="onCartQtyInputBlur(item, $event)"
+                                    (click)="onCartFieldInteraction($event)"
+                                    (touchend)="onCartFieldInteraction($event)"
+                                    inputStyleClass="tpv-cart-qty-field"
+                                    styleClass="tpv-cart-qty-input"
+                                />
                                 <p-button icon="pi pi-plus" [rounded]="true" [text]="true" severity="secondary" (onClick)="increaseQty(item)" />
                             </div>
                             <div class="tpv-cart-item-subtotal">{{ item.subtotal | currency: paymentBaseCurrency() }}</div>
@@ -192,7 +228,7 @@ import { forkJoin } from 'rxjs';
                             <p-button
                                 label="Cobrar"
                                 icon="pi pi-credit-card"
-                                [disabled]="posService.cart().length === 0"
+                                [disabled]="!hasPositiveCartItems()"
                                 styleClass="w-full"
                                 (onClick)="showPaymentDialog()"
                             />
@@ -491,6 +527,10 @@ import { forkJoin } from 'rxjs';
                             Apertura:
                             <strong>{{ sessionIpvReport()?.openedAt ? (sessionIpvReport()!.openedAt | date:'dd/MM/yyyy HH:mm') : '-' }}</strong>
                         </div>
+                        <div>
+                            Responsable:
+                            <strong>{{ sessionIpvResponsibleName() }}</strong>
+                        </div>
                     </div>
                     <div class="tpv-ipv-toolbar-actions">
                         <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="openSessionIpvDialog()" />
@@ -703,7 +743,10 @@ export class Tpv implements OnInit {
     loadSessionProducts(cashSessionId: string) {
         this.posService.listSessionProducts(cashSessionId).subscribe({
             next: (products) => {
-                this.products.set(products);
+                this.products.set(products.map((product) => ({
+                    ...product,
+                    qtyAvailable: this.normalizeAvailableQty(product),
+                })));
                 this.filterProducts();
             },
             error: (err) => {
@@ -814,28 +857,95 @@ export class Tpv implements OnInit {
             return;
         }
 
-        const available = Number(product.qtyAvailable || 0);
+        const available = this.getAvailableQtyByProductId(product.id);
         const qtyInCart = this.getCartQty(product.id);
-        if (available <= 0 || qtyInCart + 1 > available) {
+        const step = this.getStepQtyForProduct(product.id);
+        const qtyToAdd = this.roundQty(Math.min(step, Math.max(0, available - qtyInCart)));
+        if (available <= 0 || qtyToAdd <= 0 || qtyInCart + qtyToAdd > available + 0.000001) {
             this.messageService.add({ severity: 'warn', summary: 'Sin stock', detail: 'No hay stock suficiente en este TPV' });
             return;
         }
 
-        this.posService.addToCart(product, 1);
+        this.posService.addToCart(product, qtyToAdd);
     }
 
     increaseQty(item: SaleItem) {
-        const product = this.products().find((p) => p.id === item.productId);
-        const available = Number(product?.qtyAvailable || 0);
-        if (available <= item.qty) {
+        const available = this.getAvailableQtyByProductId(item.productId);
+        const step = this.getStepQtyForProduct(item.productId);
+        if (available <= item.qty + 0.000001) {
             this.messageService.add({ severity: 'warn', summary: 'Sin stock', detail: 'No hay stock suficiente en este TPV' });
             return;
         }
-        this.posService.updateCartItemQty(item.productId, item.qty + 1);
+        const nextQty = this.roundQty(item.qty + step);
+        this.applyCartQty(item, nextQty, true);
     }
 
     decreaseQty(item: SaleItem) {
-        this.posService.updateCartItemQty(item.productId, item.qty - 1);
+        const step = this.getStepQtyForProduct(item.productId);
+        const nextQty = this.roundQty(item.qty - step);
+        this.applyCartQty(item, nextQty, false);
+    }
+
+    onCartQtyInputChange(item: SaleItem, rawQty: number | null) {
+        this.applyCartQty(item, rawQty, true);
+    }
+
+    onCartQtyInputBlur(item: SaleItem, event: any) {
+        const modelValue = event?.value;
+        if (modelValue !== undefined && modelValue !== null && Number.isFinite(Number(modelValue))) {
+            this.applyCartQty(item, Number(modelValue), false);
+            return;
+        }
+
+        const rawInputValue = event?.originalEvent?.target?.value;
+        if (rawInputValue === null || rawInputValue === undefined || String(rawInputValue).trim() === '') {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+    }
+
+    onCartAmountInputChange(item: SaleItem, rawAmount: number | null) {
+        if (rawAmount === null || rawAmount === undefined || Number.isNaN(Number(rawAmount))) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+        const amount = Number(rawAmount);
+        if (amount <= 0) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+        const unitPrice = Number(item.price || 0);
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+        const qty = this.roundQty(amount / unitPrice);
+        this.applyCartQty(item, qty, true);
+    }
+
+    onCartAmountInputBlur(item: SaleItem, event: any) {
+        const modelValue = event?.value;
+        if (modelValue !== undefined && modelValue !== null && Number.isFinite(Number(modelValue))) {
+            this.onCartAmountInputChange(item, Number(modelValue));
+            return;
+        }
+
+        const rawInputValue = event?.originalEvent?.target?.value;
+        if (rawInputValue === null || rawInputValue === undefined || String(rawInputValue).trim() === '') {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+    }
+
+    onCartFieldInteraction(event: Event): void {
+        const target = event.target as HTMLElement | null;
+        const input = target instanceof HTMLInputElement ? target : (target?.closest('.p-inputnumber')?.querySelector('input') as HTMLInputElement | null);
+        if (!input) return;
+        setTimeout(() => input.select(), 0);
+    }
+
+    getAvailableQtyForCartItem(item: SaleItem): number {
+        return this.getAvailableQtyByProductId(item.productId);
     }
 
     removeFromCart(item: SaleItem) {
@@ -1018,6 +1128,10 @@ export class Tpv implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Abra la caja primero' });
             return;
         }
+        if (!this.hasPositiveCartItems()) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay lineas con cantidad mayor a 0 en el ticket' });
+            return;
+        }
         if (this.paymentMethods.length === 0) {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Este TPV no tiene métodos de pago configurados' });
             return;
@@ -1027,7 +1141,7 @@ export class Tpv implements OnInit {
     }
 
     canCompletePayment(): boolean {
-        if (this.posService.cart().length === 0) return false;
+        if (!this.hasPositiveCartItems()) return false;
         if (!this.paymentLines.length) return false;
 
         const hasInvalidLine = this.paymentLines.some(
@@ -1042,6 +1156,11 @@ export class Tpv implements OnInit {
     completeSale() {
         const session = this.posService.currentSession();
         if (!session) return;
+        const saleItems = this.positiveCartItems();
+        if (saleItems.length === 0) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay lineas con cantidad mayor a 0 para cobrar' });
+            return;
+        }
 
         if (!this.validatePaymentsBeforeSubmit()) return;
 
@@ -1053,7 +1172,7 @@ export class Tpv implements OnInit {
                 currency: line.currency
             }));
 
-        this.posService.createSale(session.id, this.posService.cart(), payments).subscribe({
+        this.posService.createSale(session.id, saleItems, payments).subscribe({
             next: () => {
                 this.posService.clearCart();
                 this.loadSessionProducts(session.id);
@@ -1143,6 +1262,23 @@ export class Tpv implements OnInit {
 
     canManageSessionInventory(): boolean {
         return !!this.posService.currentSession() && !!this.registerWarehouseId;
+    }
+
+    currentShiftCashierName(): string {
+        const session = this.posService.currentSession();
+        if (!session) return '-';
+        const firstName = session.openedBy?.employee?.firstName || '';
+        const lastName = session.openedBy?.employee?.lastName || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        return fullName || session.openedBy?.email || '-';
+    }
+
+    sessionIpvResponsibleName(): string {
+        const report = this.sessionIpvReport();
+        if (!report) return '-';
+        const name = String(report.responsible?.employeeName || '').trim();
+        if (name) return name;
+        return report.responsible?.email || '-';
     }
 
     getSelectedRegisterName(): string {
@@ -1302,6 +1438,104 @@ export class Tpv implements OnInit {
     getCartQty(productId: string): number {
         const item = this.posService.cart().find((p) => p.productId === productId);
         return item?.qty || 0;
+    }
+
+    hasPositiveCartItems(): boolean {
+        return this.positiveCartItems().length > 0;
+    }
+
+    formatQty(value: number, allowFractional: boolean): string {
+        const safe = this.roundQty(Number(value || 0));
+        if (!allowFractional) {
+            return `${Math.max(0, Math.floor(safe))}`;
+        }
+        return safe.toFixed(3).replace(/\.?0+$/, '');
+    }
+
+    isFractionalProduct(productId: string): boolean {
+        return !!this.getProductById(productId)?.allowFractionalQty;
+    }
+
+    getAvailableQtyForProduct(product: Product): number {
+        return this.normalizeAvailableQty(product);
+    }
+
+    private getAvailableQtyByProductId(productId: string): number {
+        const product = this.getProductById(productId);
+        return this.normalizeAvailableQty(product);
+    }
+
+    private getProductById(productId: string): Product | undefined {
+        return this.products().find((p) => p.id === productId);
+    }
+
+    private getStepQtyForProduct(productId: string): number {
+        return this.isFractionalProduct(productId) ? 0.1 : 1;
+    }
+
+    private normalizeAvailableQty(product?: Product): number {
+        const raw = Number(product?.qtyAvailable || 0);
+        const safe = Number.isFinite(raw) && raw > 0 ? this.roundQty(raw) : 0;
+        if (!!product?.allowFractionalQty) {
+            return safe;
+        }
+        return Math.max(0, Math.floor(safe));
+    }
+
+    private normalizeQtyForProduct(productId: string, value: number): number {
+        if (!Number.isFinite(value) || value <= 0) {
+            return 0;
+        }
+        const allowFractional = this.isFractionalProduct(productId);
+        if (allowFractional) {
+            return this.roundQty(value);
+        }
+        return Math.max(0, Math.floor(value));
+    }
+
+    private applyCartQty(item: SaleItem, rawQty: number | null | undefined, notifyIfClamped: boolean): void {
+        const parsedQty = Number(rawQty);
+        if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+
+        const normalizedQty = this.normalizeQtyForProduct(item.productId, parsedQty);
+        if (normalizedQty <= 0) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            return;
+        }
+
+        const available = this.getAvailableQtyByProductId(item.productId);
+        if (available <= 0) {
+            this.posService.updateCartItemQty(item.productId, 0);
+            if (notifyIfClamped) {
+                this.messageService.add({
+                    severity: 'warn',
+                    summary: 'Sin stock',
+                    detail: 'El producto ya no tiene stock disponible en este TPV'
+                });
+            }
+            return;
+        }
+
+        if (normalizedQty > available) {
+            this.posService.updateCartItemQty(item.productId, available);
+            if (notifyIfClamped) {
+                this.messageService.add({
+                    severity: 'warn',
+                    summary: 'Stock insuficiente',
+                    detail: `Solo hay ${this.formatQty(available, this.isFractionalProduct(item.productId))} unidades disponibles para ${item.productName}`
+                });
+            }
+            return;
+        }
+
+        this.posService.updateCartItemQty(item.productId, normalizedQty);
+    }
+
+    private positiveCartItems(): SaleItem[] {
+        return this.posService.cart().filter((item) => Number(item.qty || 0) > 0);
     }
 
     private loadProductsForMovements() {
@@ -1542,6 +1776,10 @@ export class Tpv implements OnInit {
         return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     }
 
+    private roundQty(value: number): number {
+        return Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+    }
+
     private applyRegisterCurrency(registerCurrency?: string | null) {
         const normalized = this.normalizeRegisterCurrency(registerCurrency);
         this.paymentDefaultCurrency = normalized;
@@ -1769,6 +2007,7 @@ export class Tpv implements OnInit {
             ['REPORTE IPV DE SESION'],
             ['TPV', report.register.name],
             ['Fecha apertura', this.formatDateTime(report.openedAt)],
+            ['Responsable', report.responsible?.employeeName || report.responsible?.email || '-'],
             [],
             ['RESUMEN'],
             ['Total de ventas', report.totals.sales],
@@ -1928,7 +2167,8 @@ export class Tpv implements OnInit {
             drawText(`TPV: ${report.register.name} (${report.register.code})`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 34, { size: 10, color: [68, 84, 106] });
             drawText(`Almacen: ${report.warehouse.name} (${report.warehouse.code})`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
-            topCursor += 72;
+            drawText(`Responsable: ${report.responsible?.employeeName || report.responsible?.email || '-'}`, marginX + 12, topCursor + 62, { size: 10, color: [68, 84, 106] });
+            topCursor += 86;
 
             drawText('Resumen Ejecutivo', marginX, topCursor + 12, { font: 'F2', size: 11, color: [27, 44, 94] });
             topCursor += 20;
@@ -1961,10 +2201,11 @@ export class Tpv implements OnInit {
 
             topCursor += boxHeight + 22;
         } else {
-            drawRect(marginX, topCursor, contentWidth, 34, [247, 250, 254], [220, 228, 236]);
+            drawRect(marginX, topCursor, contentWidth, 46, [247, 250, 254], [220, 228, 236]);
             drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 16, { font: 'F2', size: 9 });
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 28, { size: 9, color: [68, 84, 106] });
-            topCursor += 46;
+            drawText(`Responsable: ${report.responsible?.employeeName || report.responsible?.email || '-'}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
+            topCursor += 58;
         }
 
         const tableTop = Math.max(topCursor, 164);

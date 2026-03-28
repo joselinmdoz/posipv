@@ -62,7 +62,7 @@ let SalesService = class SalesService {
         });
         return stock.map((item) => ({
             ...item.product,
-            qtyAvailable: item.qty,
+            qtyAvailable: Number(item.qty),
         }));
     }
     async createSale(cashierId, dto) {
@@ -86,14 +86,19 @@ let SalesService = class SalesService {
         }
         const tpvWarehouseId = session.register.warehouse.id;
         const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
+        await this.assertCashierAllowedForRegister(session.registerId, cashierId, session.register.settings?.sellerEmployeeIds || []);
         if (!dto.items?.length)
             throw new common_1.BadRequestException("Sin items.");
         if (!dto.payments?.length)
             throw new common_1.BadRequestException("Sin pagos.");
+        const normalizedItems = dto.items.map((item) => ({
+            productId: item.productId,
+            qty: this.parsePositiveQty(item.qty),
+        }));
         const qtyByProduct = new Map();
-        for (const item of dto.items) {
+        for (const item of normalizedItems) {
             const currentQty = qtyByProduct.get(item.productId) || 0;
-            qtyByProduct.set(item.productId, currentQty + item.qty);
+            qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
         }
         const productIds = Array.from(qtyByProduct.keys());
         const stockRows = await this.prisma.stock.findMany({
@@ -113,15 +118,25 @@ let SalesService = class SalesService {
             throw new common_1.BadRequestException(`El TPV está configurado en ${registerCurrency}. Solo puede vender productos en esa moneda.`);
         }
         const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
+        const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
+        for (const item of normalizedItems) {
+            const product = productById.get(item.productId);
+            if (!product) {
+                throw new common_1.BadRequestException("Producto inválido.");
+            }
+            if (!product.allowFractionalQty && !Number.isInteger(item.qty)) {
+                throw new common_1.BadRequestException(`El producto "${product.name}" no permite cantidades fraccionadas.`);
+            }
+        }
         for (const [productId, requestedQty] of qtyByProduct.entries()) {
             const stock = stockByProduct.get(productId);
-            if (!stock || stock.qty < requestedQty) {
+            if (!stock || Number(stock.qty) < requestedQty) {
                 throw new common_1.BadRequestException("Stock insuficiente para completar la venta.");
             }
         }
         const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
         let total = new client_1.Prisma.Decimal(0);
-        const itemsData = dto.items.map((i) => {
+        const itemsData = normalizedItems.map((i) => {
             const price = priceMap.get(i.productId);
             if (!price)
                 throw new common_1.BadRequestException("Producto inválido.");
@@ -290,6 +305,13 @@ let SalesService = class SalesService {
             throw new common_1.BadRequestException(message);
         }
     }
+    parsePositiveQty(input) {
+        const value = Number(input);
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new common_1.BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
+        }
+        return Number(value.toFixed(3));
+    }
     async generateDocumentNumber(tx, channel) {
         const prefix = channel === client_1.SaleChannel.TPV ? "TPV" : "DIR";
         for (let attempt = 0; attempt < 5; attempt++) {
@@ -312,6 +334,24 @@ let SalesService = class SalesService {
                 return candidate;
         }
         throw new common_1.BadRequestException("No se pudo generar un número de comprobante único.");
+    }
+    async assertCashierAllowedForRegister(registerId, userId, configuredEmployeeIds) {
+        const allowedEmployeeIds = Array.isArray(configuredEmployeeIds) ? configuredEmployeeIds : [];
+        if (allowedEmployeeIds.length === 0) {
+            return;
+        }
+        const employee = await this.prisma.employee.findFirst({
+            where: {
+                userId,
+                active: true,
+            },
+            select: {
+                id: true,
+            },
+        });
+        if (!employee || !allowedEmployeeIds.includes(employee.id)) {
+            throw new common_1.BadRequestException("Este cajero no está autorizado para vender en el TPV seleccionado.");
+        }
     }
 };
 exports.SalesService = SalesService;

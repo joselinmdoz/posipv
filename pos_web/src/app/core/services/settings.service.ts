@@ -8,6 +8,20 @@ export interface RegisterSettings {
   defaultOpeningFloat: number;
   currency: string;
   warehouseId?: string;
+  sellerEmployeeIds?: string[];
+  allowedEmployees?: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    fullName?: string;
+    active: boolean;
+    userId: string | null;
+    user?: {
+      id: string;
+      email: string;
+      active: boolean;
+    } | null;
+  }>;
   paymentMethods: PaymentMethodSetting[];
   denominations: Denomination[];
 }
@@ -91,6 +105,7 @@ export class SettingsService {
     defaultOpeningFloat?: number;
     currency?: string;
     warehouseId?: string;
+    sellerEmployeeIds?: string[];
     paymentMethods?: string[];
     denominations?: Array<{ value: number; enabled: boolean; currency?: SystemCurrencyCode }>;
   }): Observable<RegisterSettings> {

@@ -72,12 +72,14 @@ let WarehousesController = class WarehousesController {
 exports.WarehousesController = WarehousesController;
 __decorate([
     (0, common_1.Get)(),
+    (0, permissions_decorator_1.Permissions)("warehouses.view", "reports.view", "sales.direct", "purchases.view", "purchases.manage", "sales.tpv", "tpv.manage"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], WarehousesController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
+    (0, permissions_decorator_1.Permissions)("warehouses.manage"),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [CreateWarehouseDto]),
@@ -85,6 +87,7 @@ __decorate([
 ], WarehousesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(":id/stock"),
+    (0, permissions_decorator_1.Permissions)("warehouses.view", "reports.view", "sales.direct", "purchases.view", "purchases.manage", "sales.tpv", "tpv.manage"),
     __param(0, (0, common_1.Param)("id")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -92,6 +95,7 @@ __decorate([
 ], WarehousesController.prototype, "getStock", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, permissions_decorator_1.Permissions)("warehouses.view", "reports.view", "sales.direct", "purchases.view", "purchases.manage", "sales.tpv", "tpv.manage"),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -99,6 +103,7 @@ __decorate([
 ], WarehousesController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Put)(':id'),
+    (0, permissions_decorator_1.Permissions)("warehouses.manage"),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -107,7 +112,6 @@ __decorate([
 ], WarehousesController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
-    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("warehouses.delete"),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
@@ -116,7 +120,6 @@ __decorate([
 ], WarehousesController.prototype, "delete", null);
 __decorate([
     (0, common_1.Post)(':id/reset-stock'),
-    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("warehouses.reset-stock"),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
@@ -126,7 +129,7 @@ __decorate([
 ], WarehousesController.prototype, "resetStock", null);
 exports.WarehousesController = WarehousesController = __decorate([
     (0, common_1.Controller)("warehouses"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [warehouses_service_1.WarehousesService])
 ], WarehousesController);
 //# sourceMappingURL=warehouses.controller.js.map

@@ -31,18 +31,22 @@ export class DashboardService {
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
-      this.prisma.stock.count({
-        where: {
-          qty: { lte: 5 },
-        },
-      }),
+      this.prisma.$queryRaw<Array<{ count: bigint | number }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM "Stock" s
+        INNER JOIN "Product" p ON p."id" = s."productId"
+        WHERE p."active" = true
+          AND s."qty" <= COALESCE(p."lowStockAlertQty", 5)
+      `,
     ]);
+
+    const lowStockCount = Array.isArray(lowStock) && lowStock.length > 0 ? Number(lowStock[0].count || 0) : 0;
 
     return {
       salesToday: parseFloat((salesToday._sum.total || 0).toFixed(2)),
       transactionsToday,
       openSessions,
-      lowStock,
+      lowStock: lowStockCount,
       lastSaleAt: lastSale?.createdAt.toISOString(),
     };
   }

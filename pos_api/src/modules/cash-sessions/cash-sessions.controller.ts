@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nest
 import { CashSessionsService } from "./cash-sessions.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { PermissionsGuard } from "../auth/permissions.guard";
+import { Permissions } from "../auth/permissions.decorator";
 
 class OpenDto {
   @IsString() registerId!: string;
@@ -15,31 +17,36 @@ class CloseDto {
 }
 
 @Controller("cash-sessions")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CashSessionsController {
   constructor(private service: CashSessionsService) {}
 
   @Get()
+  @Permissions("sales.tpv", "tpv.manage", "reports.view")
   list() {
     return this.service.findAll();
   }
 
   @Get("open")
+  @Permissions("sales.tpv", "tpv.manage", "reports.view")
   getOpen(@Query("registerId") registerId: string) {
     return this.service.getOpenByRegister(registerId);
   }
 
   @Get(":id/summary")
+  @Permissions("sales.tpv", "tpv.manage", "reports.view")
   getSummary(@Param("id") id: string) {
     return this.service.getSessionSummary(id);
   }
 
   @Get(":id")
+  @Permissions("sales.tpv", "tpv.manage", "reports.view")
   getOne(@Param("id") id: string) {
     return this.service.findOne(id);
   }
 
   @Post("open")
+  @Permissions("sales.tpv", "tpv.manage")
   open(@Req() req: any, @Body() dto: OpenDto) {
     return this.service.open({
       registerId: dto.registerId,
@@ -50,6 +57,7 @@ export class CashSessionsController {
   }
 
   @Post(":id/close")
+  @Permissions("sales.tpv", "tpv.manage")
   close(@Param("id") id: string, @Body() dto: CloseDto) {
     return this.service.close(id, dto.closingAmount, dto.note);
   }

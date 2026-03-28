@@ -1,5 +1,5 @@
-import { Injectable, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { SystemCurrencyCode } from './settings.service';
 
@@ -32,6 +32,8 @@ export interface Product {
   price: number;
   qtyAvailable?: number;
   cost?: number;
+  lowStockAlertQty?: number | null;
+  allowFractionalQty?: boolean;
   currency: SystemCurrencyCode;
   image?: string;
   active: boolean;
@@ -50,6 +52,8 @@ export interface CreateProductDto {
   barcode?: string;
   price: string;
   cost?: string;
+  lowStockAlertQty?: string;
+  allowFractionalQty?: boolean;
   currency?: SystemCurrencyCode;
   image?: string;
   productTypeId?: string;
@@ -63,6 +67,8 @@ export interface UpdateProductDto {
   barcode?: string;
   price?: string;
   cost?: string;
+  lowStockAlertQty?: string;
+  allowFractionalQty?: boolean;
   currency?: SystemCurrencyCode;
   image?: string;
   active?: boolean;
@@ -79,8 +85,12 @@ export class ProductsService {
 
   constructor(private http: HttpClient) {}
 
-  list(): Observable<Product[]> {
-    return this.http.get<Product[]>(this.API_URL);
+  list(includeInactive = false): Observable<Product[]> {
+    let params = new HttpParams();
+    if (includeInactive) {
+      params = params.set('includeInactive', 'true');
+    }
+    return this.http.get<Product[]>(this.API_URL, { params });
   }
 
   findOne(id: string): Observable<Product> {

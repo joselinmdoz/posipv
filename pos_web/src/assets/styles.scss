@@ -1,7 +1,7 @@
 /* You can add global styles to this file, and also import other style files */
 @use 'primeicons/primeicons.css';
-@use '@/assets/layout/layout.scss';
-@use '@/assets/demo/demo.scss';
+@use './layout/layout.scss';
+@use './demo/demo.scss';
 
 /* Estilos para el formulario de productos */
 .image-preview-container {
@@ -495,8 +495,15 @@
     align-items: center;
 }
 
+.tpv-cart-item-zero {
+    opacity: 0.55;
+}
+
 .tpv-cart-item-main {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
 .tpv-cart-item-name {
@@ -511,7 +518,22 @@
 .tpv-cart-item-price {
     font-size: 0.76rem;
     color: #64748b;
-    margin-top: 0.15rem;
+    margin-top: 0.1rem;
+}
+
+.tpv-cart-item-amount-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+}
+
+.tpv-cart-item-amount-edit label {
+    font-size: 0.67rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 
 .tpv-cart-item-controls {
@@ -524,12 +546,34 @@
     padding: 0.1rem 0.35rem;
 }
 
-.tpv-cart-item-controls span {
-    min-width: 1.5rem;
+.tpv-cart-qty-input {
+    width: 4rem;
+}
+
+.tpv-cart-qty-field {
+    width: 100%;
     text-align: center;
     font-weight: 600;
     color: #0f172a;
-    font-size: 0.85rem;
+    padding: 0.2rem 0.35rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.tpv-cart-amount-input {
+    width: 7.8rem;
+}
+
+.tpv-cart-amount-field {
+    width: 100%;
+    text-align: right;
+    font-weight: 600;
+    color: #0f172a;
+    padding: 0.2rem 0.35rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 0.5rem;
+    background: #fff;
 }
 
 .tpv-cart-item-subtotal {

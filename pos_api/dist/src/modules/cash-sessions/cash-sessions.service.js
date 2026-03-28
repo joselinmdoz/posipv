@@ -109,6 +109,21 @@ let CashSessionsService = class CashSessionsService {
     getOpenByRegister(registerId) {
         return this.prisma.cashSession.findFirst({
             where: { registerId, status: client_1.CashSessionStatus.OPEN },
+            include: {
+                openedBy: {
+                    select: {
+                        id: true,
+                        email: true,
+                        employee: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                            },
+                        },
+                    },
+                },
+            },
             orderBy: { openedAt: "desc" },
         });
     }
@@ -119,12 +134,28 @@ let CashSessionsService = class CashSessionsService {
         const openExisting = await this.getOpenByRegister(input.registerId);
         if (openExisting)
             throw new common_1.BadRequestException("Esa caja ya tiene una sesión abierta.");
+        await this.assertCashierAllowedForRegister(input.registerId, input.openedById);
         const session = await this.prisma.cashSession.create({
             data: {
                 registerId: input.registerId,
                 openingAmount: (0, decimal_1.dec)(input.openingAmount),
                 note: input.note,
                 openedById: input.openedById,
+            },
+            include: {
+                openedBy: {
+                    select: {
+                        id: true,
+                        email: true,
+                        employee: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                            },
+                        },
+                    },
+                },
             },
         });
         await this.inventoryReportsService.ensureInitialReportForSession(session.id);
@@ -224,6 +255,30 @@ let CashSessionsService = class CashSessionsService {
             totals[row.method] = (0, decimal_1.dec)(row._sum.amount ?? 0);
         }
         return totals;
+    }
+    async assertCashierAllowedForRegister(registerId, userId) {
+        const settings = await this.prisma.registerSettings.findUnique({
+            where: { registerId },
+            select: {
+                sellerEmployeeIds: true,
+            },
+        });
+        const allowedEmployeeIds = Array.isArray(settings?.sellerEmployeeIds) ? settings.sellerEmployeeIds : [];
+        if (allowedEmployeeIds.length === 0) {
+            return;
+        }
+        const employee = await this.prisma.employee.findFirst({
+            where: {
+                userId,
+                active: true,
+            },
+            select: {
+                id: true,
+            },
+        });
+        if (!employee || !allowedEmployeeIds.includes(employee.id)) {
+            throw new common_1.BadRequestException("Este cajero no está autorizado para operar en el TPV seleccionado.");
+        }
     }
 };
 exports.CashSessionsService = CashSessionsService;

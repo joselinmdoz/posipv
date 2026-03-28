@@ -54,7 +54,7 @@ export class SalesService {
 
     return stock.map((item) => ({
       ...item.product,
-      qtyAvailable: item.qty,
+      qtyAvailable: Number(item.qty),
     }));
   }
 
@@ -77,14 +77,20 @@ export class SalesService {
     }
     const tpvWarehouseId = session.register.warehouse.id;
     const registerCurrency = this.resolveRegisterCurrency(session.register.settings?.currency);
+    await this.assertCashierAllowedForRegister(session.registerId, cashierId, session.register.settings?.sellerEmployeeIds || []);
 
     if (!dto.items?.length) throw new BadRequestException("Sin items.");
     if (!dto.payments?.length) throw new BadRequestException("Sin pagos.");
 
+    const normalizedItems = dto.items.map((item: any) => ({
+      productId: item.productId,
+      qty: this.parsePositiveQty(item.qty),
+    }));
+
     const qtyByProduct = new Map<string, number>();
-    for (const item of dto.items) {
+    for (const item of normalizedItems) {
       const currentQty = qtyByProduct.get(item.productId) || 0;
-      qtyByProduct.set(item.productId, currentQty + item.qty);
+      qtyByProduct.set(item.productId, Number((currentQty + item.qty).toFixed(3)));
     }
     const productIds = Array.from(qtyByProduct.keys());
 
@@ -109,9 +115,21 @@ export class SalesService {
     }
 
     const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
+    const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
+
+    for (const item of normalizedItems) {
+      const product = productById.get(item.productId);
+      if (!product) {
+        throw new BadRequestException("Producto inválido.");
+      }
+      if (!product.allowFractionalQty && !Number.isInteger(item.qty)) {
+        throw new BadRequestException(`El producto "${product.name}" no permite cantidades fraccionadas.`);
+      }
+    }
+
     for (const [productId, requestedQty] of qtyByProduct.entries()) {
       const stock = stockByProduct.get(productId);
-      if (!stock || stock.qty < requestedQty) {
+      if (!stock || Number(stock.qty) < requestedQty) {
         throw new BadRequestException("Stock insuficiente para completar la venta.");
       }
     }
@@ -120,7 +138,7 @@ export class SalesService {
 
     let total = new Prisma.Decimal(0);
 
-    const itemsData = dto.items.map((i: any) => {
+    const itemsData = normalizedItems.map((i: any) => {
       const price = priceMap.get(i.productId);
       if (!price) throw new BadRequestException("Producto inválido.");
       total = total.add(price.mul(i.qty));
@@ -313,6 +331,14 @@ export class SalesService {
     }
   }
 
+  private parsePositiveQty(input: unknown): number {
+    const value = Number(input);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new BadRequestException("Cantidad inválida. Debe ser mayor a 0.");
+    }
+    return Number(value.toFixed(3));
+  }
+
   private async generateDocumentNumber(tx: Prisma.TransactionClient, channel: SaleChannel) {
     const prefix = channel === SaleChannel.TPV ? "TPV" : "DIR";
 
@@ -338,5 +364,26 @@ export class SalesService {
     }
 
     throw new BadRequestException("No se pudo generar un número de comprobante único.");
+  }
+
+  private async assertCashierAllowedForRegister(registerId: string, userId: string, configuredEmployeeIds: string[]) {
+    const allowedEmployeeIds = Array.isArray(configuredEmployeeIds) ? configuredEmployeeIds : [];
+    if (allowedEmployeeIds.length === 0) {
+      return;
+    }
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        userId,
+        active: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee || !allowedEmployeeIds.includes(employee.id)) {
+      throw new BadRequestException("Este cajero no está autorizado para vender en el TPV seleccionado.");
+    }
   }
 }

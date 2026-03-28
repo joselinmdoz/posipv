@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const settings_service_1 = require("./settings.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const class_validator_1 = require("class-validator");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 class PaymentMethodSettingDto {
 }
 __decorate([
@@ -64,6 +66,12 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], RegisterSettingsDto.prototype, "warehouseId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], RegisterSettingsDto.prototype, "sellerEmployeeIds", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)(),
@@ -144,12 +152,14 @@ let SettingsController = class SettingsController {
 exports.SettingsController = SettingsController;
 __decorate([
     (0, common_1.Get)("system"),
+    (0, permissions_decorator_1.Permissions)("settings.manage", "products.view", "products.manage", "purchases.view", "purchases.manage", "sales.tpv", "sales.direct", "tpv.manage", "reports.view", "dashboard.view"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], SettingsController.prototype, "getSystemSettings", null);
 __decorate([
     (0, common_1.Put)("system"),
+    (0, permissions_decorator_1.Permissions)("settings.manage"),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [SystemSettingsDto]),
@@ -157,6 +167,7 @@ __decorate([
 ], SettingsController.prototype, "saveSystemSettings", null);
 __decorate([
     (0, common_1.Get)("exchange-rates"),
+    (0, permissions_decorator_1.Permissions)("settings.manage"),
     __param(0, (0, common_1.Query)("limit")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -164,6 +175,7 @@ __decorate([
 ], SettingsController.prototype, "listExchangeRates", null);
 __decorate([
     (0, common_1.Get)("register/:registerId"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "settings.manage"),
     __param(0, (0, common_1.Param)("registerId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -171,6 +183,7 @@ __decorate([
 ], SettingsController.prototype, "getRegisterSettings", null);
 __decorate([
     (0, common_1.Put)("register/:registerId"),
+    (0, permissions_decorator_1.Permissions)("tpv.manage", "settings.manage"),
     __param(0, (0, common_1.Param)("registerId")),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -179,12 +192,14 @@ __decorate([
 ], SettingsController.prototype, "saveRegisterSettings", null);
 __decorate([
     (0, common_1.Get)("payment-methods"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "settings.manage"),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], SettingsController.prototype, "listPaymentMethods", null);
 __decorate([
     (0, common_1.Put)("payment-methods"),
+    (0, permissions_decorator_1.Permissions)("tpv.manage", "settings.manage"),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Array]),
@@ -192,6 +207,7 @@ __decorate([
 ], SettingsController.prototype, "savePaymentMethods", null);
 __decorate([
     (0, common_1.Get)("denominations"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage", "settings.manage"),
     __param(0, (0, common_1.Query)("registerId")),
     __param(1, (0, common_1.Query)("currency")),
     __metadata("design:type", Function),
@@ -200,6 +216,7 @@ __decorate([
 ], SettingsController.prototype, "listDenominations", null);
 __decorate([
     (0, common_1.Put)("denominations"),
+    (0, permissions_decorator_1.Permissions)("tpv.manage", "settings.manage"),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Array]),
@@ -207,7 +224,7 @@ __decorate([
 ], SettingsController.prototype, "saveDenominations", null);
 exports.SettingsController = SettingsController = __decorate([
     (0, common_1.Controller)("settings"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [settings_service_1.SettingsService])
 ], SettingsController);
 //# sourceMappingURL=settings.controller.js.map

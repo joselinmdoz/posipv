@@ -136,7 +136,7 @@ export class ProductCategories implements OnInit {
     loadData() {
         this.catalogService.getProductCategories().subscribe({
             next: (data) => this.items.set(data),
-            error: (err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar categorías' })
+            error: (_err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar categorías' })
         });
     }
 
@@ -175,7 +175,7 @@ export class ProductCategories implements OnInit {
                 this.loadData();
                 this.hideDialog();
             },
-            error: (err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar' })
+            error: (_err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar' })
         });
     }
 
@@ -190,7 +190,7 @@ export class ProductCategories implements OnInit {
                         this.messageService.add({ severity: 'success', summary: 'Éxito', detail: 'Categoría eliminada' });
                         this.loadData();
                     },
-                    error: (err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar' })
+                    error: (_err) => this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar' })
                 });
             }
         });

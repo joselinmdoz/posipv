@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
 import { CurrencyCode, PurchaseStatus } from "@prisma/client";
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Permissions } from "../auth/permissions.decorator";
 import { PermissionsGuard } from "../auth/permissions.guard";
@@ -12,8 +12,8 @@ class PurchaseItemDto {
   productId!: string;
 
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @Min(0.001)
   qty!: number;
 
   @Type(() => Number)
@@ -168,4 +168,3 @@ export class PurchasesController {
     return this.service.delete(id);
   }
 }
-

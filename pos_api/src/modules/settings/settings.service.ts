@@ -173,15 +173,17 @@ export class SettingsService {
     });
     if (!settings) {
       // Create default settings
-      return this.createDefaultRegisterSettings(registerId);
+      const created = await this.createDefaultRegisterSettings(registerId);
+      return this.withAllowedEmployees(created);
     }
-    return settings;
+    return this.withAllowedEmployees(settings);
   }
 
   async saveRegisterSettings(registerId: string, payload: Partial<{
     defaultOpeningFloat: number;
     currency: string;
     warehouseId: string;
+    sellerEmployeeIds: string[];
     paymentMethods: string[];
     denominations: Array<number | { value: number; enabled?: boolean; currency?: string }>;
   }>) {
@@ -197,6 +199,9 @@ export class SettingsService {
     } else {
       data.warehouseId = null;
     }
+    if (payload.sellerEmployeeIds !== undefined) {
+      data.sellerEmployeeIds = await this.resolveSellerEmployeeIds(payload.sellerEmployeeIds);
+    }
 
     const settings = await this.prisma.registerSettings.upsert({
       where: { registerId },
@@ -206,6 +211,7 @@ export class SettingsService {
         defaultOpeningFloat: dec((payload.defaultOpeningFloat || 0).toString()),
         currency: payload.currency || 'USD',
         warehouseId: payload.warehouseId,
+        sellerEmployeeIds: payload.sellerEmployeeIds ? await this.resolveSellerEmployeeIds(payload.sellerEmployeeIds) : [],
       },
       include: {
         paymentMethods: true,
@@ -273,13 +279,14 @@ export class SettingsService {
       }
     }
 
-    return this.prisma.registerSettings.findUnique({
+    const saved = await this.prisma.registerSettings.findUnique({
       where: { registerId },
       include: {
         paymentMethods: true,
         denominations: true,
       },
     });
+    return this.withAllowedEmployees(saved);
   }
 
   private getPaymentMethodName(code: string): string {
@@ -369,12 +376,85 @@ export class SettingsService {
       data: {
         registerId,
         defaultOpeningFloat: dec('0'),
+        sellerEmployeeIds: [],
       },
       include: {
         paymentMethods: true,
         denominations: true,
       },
     });
+  }
+
+  private async resolveSellerEmployeeIds(employeeIds: string[]) {
+    const normalized = Array.from(
+      new Set(
+        (employeeIds || [])
+          .map((id) => (id || "").trim())
+          .filter((id) => id.length > 0),
+      ),
+    );
+
+    if (normalized.length === 0) {
+      return [] as string[];
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        id: { in: normalized },
+        active: true,
+        userId: { not: null },
+      },
+      select: { id: true },
+    });
+
+    if (employees.length !== normalized.length) {
+      throw new BadRequestException(
+        "Uno o más empleados seleccionados no existen, están inactivos o no tienen usuario vinculado.",
+      );
+    }
+
+    return normalized;
+  }
+
+  private async withAllowedEmployees(settings: any) {
+    if (!settings) return settings;
+
+    const ids = Array.isArray(settings.sellerEmployeeIds) ? settings.sellerEmployeeIds : [];
+    if (ids.length === 0) {
+      return { ...settings, allowedEmployees: [] };
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        active: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            active: true,
+          },
+        },
+      },
+    });
+
+    const byId = new Map(employees.map((employee) => [employee.id, employee]));
+    const ordered = ids
+      .map((id) => byId.get(id))
+      .filter((employee): employee is NonNullable<typeof employee> => !!employee)
+      .map((employee) => ({
+        ...employee,
+        fullName: `${employee.firstName} ${employee.lastName}`.trim(),
+      }));
+
+    return {
+      ...settings,
+      allowedEmployees: ordered,
+    };
   }
 
   private normalizeDenominations(

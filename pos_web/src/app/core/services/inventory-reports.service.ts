@@ -54,6 +54,12 @@ export interface SessionIvpReport {
   status: 'OPEN' | 'CLOSED';
   openedAt: string;
   closedAt?: string | null;
+  responsible?: {
+    userId: string;
+    email: string;
+    employeeId?: string | null;
+    employeeName?: string | null;
+  };
   register: {
     id: string;
     name: string;

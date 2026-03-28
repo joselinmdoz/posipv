@@ -65,6 +65,7 @@ let StockMovementsController = class StockMovementsController {
 exports.StockMovementsController = StockMovementsController;
 __decorate([
     (0, common_1.Get)(),
+    (0, permissions_decorator_1.Permissions)("warehouses.view"),
     __param(0, (0, common_1.Query)('warehouseId')),
     __param(1, (0, common_1.Query)('from')),
     __param(2, (0, common_1.Query)('to')),
@@ -76,8 +77,7 @@ __decorate([
 ], StockMovementsController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
-    (0, permissions_decorator_1.Permissions)("stock-movements.manage"),
+    (0, permissions_decorator_1.Permissions)("stock-movements.manage", "warehouses.manage"),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -86,7 +86,6 @@ __decorate([
 ], StockMovementsController.prototype, "create", null);
 __decorate([
     (0, common_1.Delete)(":id"),
-    (0, common_1.UseGuards)(permissions_guard_1.PermissionsGuard),
     (0, permissions_decorator_1.Permissions)("stock-movements.delete"),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)("id")),
@@ -96,7 +95,7 @@ __decorate([
 ], StockMovementsController.prototype, "remove", null);
 exports.StockMovementsController = StockMovementsController = __decorate([
     (0, common_1.Controller)("stock-movements"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [stock_movements_service_1.StockMovementsService])
 ], StockMovementsController);
 //# sourceMappingURL=stock-movements.controller.js.map

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseGuards, UseInterceptors, Req } from "@nestjs/common";
+import { Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors, Req } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProductsService } from "./products.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -6,6 +6,8 @@ import { IsEnum, IsNumberString, IsOptional, IsString, MinLength } from "class-v
 import { diskStorage } from "multer";
 import { extname } from "path";
 import { CurrencyCode } from "@prisma/client";
+import { PermissionsGuard } from "../auth/permissions.guard";
+import { Permissions } from "../auth/permissions.decorator";
 
 class CreateProductDto {
   @IsString() @MinLength(2) name!: string;
@@ -13,6 +15,8 @@ class CreateProductDto {
   @IsOptional() @IsString() barcode?: string;
   @IsNumberString() price!: string;
   @IsOptional() @IsNumberString() cost?: string;
+  @IsOptional() @IsNumberString() lowStockAlertQty?: string;
+  @IsOptional() allowFractionalQty?: boolean;
   @IsOptional() @IsEnum(CurrencyCode) currency?: CurrencyCode;
   @IsOptional() @IsString() image?: string;
   @IsOptional() @IsString() productTypeId?: string;
@@ -21,16 +25,19 @@ class CreateProductDto {
 }
 
 @Controller("products")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductsController {
   constructor(private service: ProductsService) {}
 
   @Get()
-  list() {
-    return this.service.list();
+  @Permissions("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view")
+  list(@Query("includeInactive") includeInactive?: string) {
+    const includeAll = ["1", "true", "yes"].includes(String(includeInactive || "").toLowerCase());
+    return this.service.list(includeAll);
   }
 
   @Post()
+  @Permissions("products.manage")
   @UseInterceptors(FileInterceptor('image', {
     storage: diskStorage({
       destination: './uploads',
@@ -47,11 +54,15 @@ export class ProductsController {
       codigo: req.body.codigo,
       barcode: req.body.barcode,
       cost: req.body.cost,
+      lowStockAlertQty: req.body.lowStockAlertQty,
       currency: req.body.currency,
       productTypeId: req.body.productTypeId,
       productCategoryId: req.body.productCategoryId,
       measurementUnitId: req.body.measurementUnitId,
     };
+    if (req.body.allowFractionalQty !== undefined) {
+      dto.allowFractionalQty = req.body.allowFractionalQty === 'true' || req.body.allowFractionalQty === true;
+    }
     if (file) {
       dto.image = `/uploads/${file.filename}`;
     }
@@ -59,6 +70,7 @@ export class ProductsController {
   }
 
   @Put(':id')
+  @Permissions("products.manage")
   @UseInterceptors(FileInterceptor('image', {
     storage: diskStorage({
       destination: './uploads',
@@ -75,6 +87,7 @@ export class ProductsController {
       codigo: req.body.codigo,
       barcode: req.body.barcode,
       cost: req.body.cost,
+      lowStockAlertQty: req.body.lowStockAlertQty,
       currency: req.body.currency,
       productTypeId: req.body.productTypeId,
       productCategoryId: req.body.productCategoryId,
@@ -83,6 +96,9 @@ export class ProductsController {
     
     if (req.body.active !== undefined) {
       dto.active = req.body.active === 'true';
+    }
+    if (req.body.allowFractionalQty !== undefined) {
+      dto.allowFractionalQty = req.body.allowFractionalQty === 'true' || req.body.allowFractionalQty === true;
     }
     
     if (file) {
@@ -94,11 +110,13 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @Permissions("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view")
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
   @Delete(':id')
+  @Permissions("products.manage")
   delete(@Param('id') id: string) {
     return this.service.delete(id);
   }

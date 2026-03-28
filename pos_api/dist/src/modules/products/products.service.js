@@ -18,9 +18,9 @@ let ProductsService = class ProductsService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    list() {
+    list(includeInactive = false) {
         return this.prisma.product.findMany({
-            where: { active: true },
+            where: includeInactive ? undefined : { active: true },
             orderBy: { createdAt: "desc" },
             include: {
                 productType: true,
@@ -38,6 +38,8 @@ let ProductsService = class ProductsService {
                     barcode: this.asOptional(dto.barcode),
                     price: (0, decimal_1.dec)(dto.price),
                     cost: dto.cost ? (0, decimal_1.dec)(dto.cost) : undefined,
+                    lowStockAlertQty: this.asOptionalDecimal(dto.lowStockAlertQty),
+                    allowFractionalQty: dto.allowFractionalQty === true,
                     currency: dto.currency || client_1.CurrencyCode.CUP,
                     image: this.asOptional(dto.image),
                     productTypeId: this.asOptional(dto.productTypeId),
@@ -60,6 +62,8 @@ let ProductsService = class ProductsService {
                     barcode: dto.barcode !== undefined ? this.asOptional(dto.barcode) : undefined,
                     price: dto.price ? (0, decimal_1.dec)(dto.price) : undefined,
                     cost: dto.cost ? (0, decimal_1.dec)(dto.cost) : undefined,
+                    lowStockAlertQty: dto.lowStockAlertQty !== undefined ? this.asOptionalDecimal(dto.lowStockAlertQty) : undefined,
+                    allowFractionalQty: dto.allowFractionalQty,
                     currency: dto.currency !== undefined ? dto.currency : undefined,
                     image: dto.image,
                     active: dto.active,
@@ -94,6 +98,16 @@ let ProductsService = class ProductsService {
             return undefined;
         const normalized = String(value).trim();
         return normalized.length > 0 ? normalized : undefined;
+    }
+    asOptionalDecimal(value) {
+        const normalized = this.asOptional(value);
+        if (normalized === undefined)
+            return undefined;
+        const parsed = (0, decimal_1.dec)(normalized);
+        if (!parsed.isFinite() || parsed.lt(0)) {
+            throw new common_1.BadRequestException("El umbral de stock bajo debe ser un número mayor o igual a 0.");
+        }
+        return (0, decimal_1.dec)(parsed.toFixed(3));
     }
     handlePrismaError(error) {
         if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
