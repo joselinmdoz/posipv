@@ -190,6 +190,17 @@ let SettingsService = class SettingsService {
             const normalizedCodes = Array.from(new Set(payload.paymentMethods
                 .map((code) => this.normalizePaymentMethodCode(code))
                 .filter((code) => !!code)));
+            const existingMethodRows = normalizedCodes.length
+                ? await this.prisma.paymentMethodSetting.findMany({
+                    where: { code: { in: normalizedCodes } },
+                    select: {
+                        code: true,
+                        name: true,
+                        requiresTransactionCode: true,
+                    },
+                })
+                : [];
+            const existingByCode = new Map(existingMethodRows.map((row) => [row.code, row]));
             await this.prisma.paymentMethodSetting.updateMany({
                 where: {
                     registerSettingsId: settings.id,
@@ -201,17 +212,20 @@ let SettingsService = class SettingsService {
                 },
             });
             for (const code of normalizedCodes) {
+                const existing = existingByCode.get(code);
                 await this.prisma.paymentMethodSetting.upsert({
                     where: { code },
                     update: {
                         registerSettingsId: settings.id,
-                        name: this.getPaymentMethodName(code),
+                        name: (existing?.name || this.getPaymentMethodName(code)).trim(),
+                        requiresTransactionCode: existing?.requiresTransactionCode === true,
                         enabled: true,
                     },
                     create: {
                         registerSettingsId: settings.id,
                         code,
-                        name: this.getPaymentMethodName(code),
+                        name: (existing?.name || this.getPaymentMethodName(code)).trim(),
+                        requiresTransactionCode: existing?.requiresTransactionCode === true,
                         enabled: true,
                     },
                 });

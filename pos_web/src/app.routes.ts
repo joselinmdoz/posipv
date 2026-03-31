@@ -86,6 +86,8 @@ export const appRoutes: Routes = [
             },
             { path: 'user-permissions', redirectTo: 'users', pathMatch: 'full' },
             { path: 'settings', loadComponent: () => import('./app/pages/settings/settings').then((m) => m.Settings), canActivate: [permissionGuard(['settings.manage'])] },
+            { path: 'license', loadComponent: () => import('./app/pages/license/license').then((m) => m.LicensePage), canActivate: [permissionGuard(['settings.manage'])] },
+            { path: 'keypem', loadComponent: () => import('./app/pages/keypem/keypem').then((m) => m.KeyPemPage), canActivate: [permissionGuard(['settings.manage'])] },
             {
                 path: 'payment-methods',
                 loadComponent: () => import('./app/pages/payment-methods/payment-methods').then((m) => m.PaymentMethods),

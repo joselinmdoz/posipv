@@ -15,10 +15,12 @@ const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const decimal_1 = require("../../common/decimal");
 const inventory_reports_service_1 = require("../inventory-reports/inventory-reports.service");
+const stock_movements_service_1 = require("../stock-movements/stock-movements.service");
 let CashSessionsService = class CashSessionsService {
-    constructor(prisma, inventoryReportsService) {
+    constructor(prisma, inventoryReportsService, stockMovementsService) {
         this.prisma = prisma;
         this.inventoryReportsService = inventoryReportsService;
+        this.stockMovementsService = stockMovementsService;
     }
     async findAll() {
         const sessions = await this.prisma.cashSession.findMany({
@@ -167,11 +169,9 @@ let CashSessionsService = class CashSessionsService {
             throw new common_1.NotFoundException("Sesión no encontrada.");
         if (sess.status === client_1.CashSessionStatus.CLOSED)
             throw new common_1.BadRequestException("Ya está cerrada.");
-        const summary = await this.getSessionSummary(id);
         const enteredCash = (0, decimal_1.dec)(closingAmount);
-        const expectedCash = (0, decimal_1.dec)(summary.paymentTotals.CASH);
-        if (!(0, decimal_1.moneyEq)(enteredCash, expectedCash)) {
-            throw new common_1.BadRequestException(`El efectivo contado (${enteredCash.toFixed(2)}) no coincide con el efectivo de ventas (${expectedCash.toFixed(2)}).`);
+        if (enteredCash.lt(0)) {
+            throw new common_1.BadRequestException("El efectivo contado no puede ser negativo.");
         }
         const closedAt = new Date();
         return this.prisma.cashSession.update({
@@ -244,6 +244,45 @@ let CashSessionsService = class CashSessionsService {
             },
         };
     }
+    async createSessionMovement(input) {
+        const session = await this.prisma.cashSession.findUnique({
+            where: { id: input.cashSessionId },
+            select: {
+                id: true,
+                status: true,
+                registerId: true,
+                register: {
+                    select: {
+                        settings: {
+                            select: {
+                                warehouseId: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!session)
+            throw new common_1.NotFoundException("Sesión no encontrada.");
+        if (session.status !== client_1.CashSessionStatus.OPEN) {
+            throw new common_1.BadRequestException("Solo puede registrar movimientos en una sesión de caja abierta.");
+        }
+        await this.assertCashierAllowedForRegister(session.registerId, input.userId);
+        const warehouseId = session.register.settings?.warehouseId || "";
+        if (!warehouseId) {
+            throw new common_1.BadRequestException("El TPV no tiene almacén asociado.");
+        }
+        const movementType = input.type === "OUT" ? "OUT" : "IN";
+        const normalizedReason = String(input.reason || "").trim();
+        const reason = normalizedReason ? `TPV_SESION: ${normalizedReason}` : "TPV_SESION: AJUSTE EN TPV";
+        return this.stockMovementsService.create({
+            type: movementType,
+            productId: String(input.productId || "").trim(),
+            qty: Number(input.qty),
+            reason,
+            ...(movementType === "IN" ? { toWarehouseId: warehouseId } : { fromWarehouseId: warehouseId }),
+        }, input.userId);
+    }
     buildPaymentTotals(grouped) {
         const totals = {
             CASH: (0, decimal_1.dec)(0),
@@ -285,6 +324,7 @@ exports.CashSessionsService = CashSessionsService;
 exports.CashSessionsService = CashSessionsService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        inventory_reports_service_1.InventoryReportsService])
+        inventory_reports_service_1.InventoryReportsService,
+        stock_movements_service_1.StockMovementsService])
 ], CashSessionsService);
 //# sourceMappingURL=cash-sessions.service.js.map

@@ -24,13 +24,28 @@ class CreateProductDto {
   @IsOptional() @IsString() measurementUnitId?: string;
 }
 
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+const productImageUploadOptions = {
+  storage: diskStorage({
+    destination: "./uploads",
+    filename: (req: any, file: Express.Multer.File, callback: (error: Error | null, filename: string) => void) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      callback(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
+    },
+  }),
+  limits: {
+    fileSize: PRODUCT_IMAGE_MAX_BYTES,
+  },
+};
+
 @Controller("products")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductsController {
   constructor(private service: ProductsService) {}
 
   @Get()
-  @Permissions("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view")
+  @Permissions("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view", "sales.tpv")
   list(@Query("includeInactive") includeInactive?: string) {
     const includeAll = ["1", "true", "yes"].includes(String(includeInactive || "").toLowerCase());
     return this.service.list(includeAll);
@@ -38,15 +53,7 @@ export class ProductsController {
 
   @Post()
   @Permissions("products.manage")
-  @UseInterceptors(FileInterceptor('image', {
-    storage: diskStorage({
-      destination: './uploads',
-      filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        callback(null, file.fieldname + '-' + uniqueSuffix + extname(file.originalname));
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor("image", productImageUploadOptions))
   create(@Req() req: any, @UploadedFile() file?: Express.Multer.File) {
     const dto: CreateProductDto = {
       name: req.body.name,
@@ -71,15 +78,7 @@ export class ProductsController {
 
   @Put(':id')
   @Permissions("products.manage")
-  @UseInterceptors(FileInterceptor('image', {
-    storage: diskStorage({
-      destination: './uploads',
-      filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        callback(null, file.fieldname + '-' + uniqueSuffix + extname(file.originalname));
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor("image", productImageUploadOptions))
   update(@Param('id') id: string, @Req() req: any, @UploadedFile() file?: Express.Multer.File) {
     const dto: Partial<CreateProductDto & { active?: boolean; existingImage?: string }> = {
       name: req.body.name,

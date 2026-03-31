@@ -110,6 +110,13 @@ export class PosService {
     });
   }
 
+  createSessionMovement(
+    sessionId: string,
+    dto: { type: 'IN' | 'OUT'; productId: string; qty: number; reason?: string }
+  ): Observable<any> {
+    return this.http.post(`${this.API_URL}/cash-sessions/${sessionId}/movement`, dto);
+  }
+
   getSessionSummary(sessionId: string): Observable<CashSessionSummary> {
     return this.http.get<CashSessionSummary>(`${this.API_URL}/cash-sessions/${sessionId}/summary`);
   }

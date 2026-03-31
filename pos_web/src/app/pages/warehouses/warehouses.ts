@@ -856,12 +856,27 @@ export class Warehouses implements OnInit {
     }
 
     private normalizeMovementQty(value: unknown, allowFractional: boolean): number {
-        const parsed = Number(value);
+        const parsed = this.parseInputNumberValue(value);
         if (!Number.isFinite(parsed) || parsed <= 0) return 0;
         if (allowFractional) {
             return Number(parsed.toFixed(2));
         }
         return Math.floor(parsed);
+    }
+
+    private parseInputNumberValue(value: unknown): number {
+        if (value === null || value === undefined) return NaN;
+        if (typeof value === 'number') return value;
+
+        const text = String(value).trim();
+        if (!text) return NaN;
+
+        const compact = text.replace(/\s+/g, '');
+        const normalized = compact.includes(',') && compact.includes('.')
+            ? compact.replace(/\./g, '').replace(',', '.')
+            : compact.replace(',', '.');
+
+        return Number(normalized);
     }
 
     isMovementFormValid(): boolean {

@@ -57,145 +57,220 @@ interface Column {
     ],
     providers: [MessageService, ConfirmationService],
     template: `
-        <p-toolbar styleClass="mb-6">
-            <ng-template #start>
-                <p-button label="Nuevo" icon="pi pi-plus" severity="secondary" class="mr-2" (click)="openNew()" />
-            </ng-template>
-            <ng-template #end>
-                <div class="flex gap-2">
-                    <p-button label="Importar CSV" icon="pi pi-download" severity="secondary" [outlined]="true" (onClick)="triggerCsvImport(csvFileInput)" />
-                    <p-button label="Exportar" icon="pi pi-upload" severity="secondary" (onClick)="exportCSV()" />
-                </div>
-                <input #csvFileInput type="file" accept=".csv,text/csv" class="hidden" (change)="onCsvSelected($event)" />
-            </ng-template>
-        </p-toolbar>
+        <div class="catalog-page-shell">
+            <div class="catalog-header-surface mb-4">
+                <div class="catalog-header-main">
+                    <div>
+                        <h2 class="catalog-title">Catálogo de productos</h2>
+                       
+                    </div>
 
-        <p-table
-            #dt
-            [value]="products()"
-            [rows]="10"
-            [paginator]="true"
-            responsiveLayout="scroll"
-            [globalFilterFields]="['name', 'codigo', 'barcode', 'productType.name', 'productCategory.name', 'measurementUnit.name']"
-            [tableStyle]="{ 'min-width': '60rem' }"
-            [rowHover]="true"
-            dataKey="id"
-            currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} productos"
-        >
-            <ng-template #caption>
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="font-semibold text-lg">Listado de productos</div>
-                    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                        <div class="flex items-center gap-2">
-                            <p-toggleswitch
-                                inputId="showInactive"
-                                [(ngModel)]="showInactive"
-                                (ngModelChange)="onShowInactiveChange()"
-                            />
-                            <label for="showInactive" class="font-semibold cursor-pointer">
-                                Mostrar inactivos
-                            </label>
-                        </div>
-                        <div class="flex items-center gap-2 w-full md:w-auto">
-                            <i class="pi pi-search text-500"></i>
+                    <div class="catalog-header-actions">
+                        <div class="catalog-search-wrap">
+                            <i class="pi pi-search"></i>
                             <input
                                 pInputText
                                 [(ngModel)]="searchTerm"
-                                placeholder="Buscar por nombre, código o código de barras"
+                                placeholder="Buscar en catálogo..."
                                 (input)="onSearchInput()"
-                                class="w-full md:w-22rem"
                             />
-                            <p-button
-                                icon="pi pi-times"
-                                severity="secondary"
-                                [outlined]="true"
-                                [disabled]="!searchTerm"
-                                (onClick)="clearSearch()"
-                            />
+                            <button type="button" class="catalog-clear-btn" [disabled]="!searchTerm" (click)="clearSearch()">
+                                <i class="pi pi-times"></i>
+                            </button>
                         </div>
+
+                        <div class="catalog-view-toggle compact">
+                            <button type="button" [class.active]="viewMode === 'cards'" (click)="viewMode = 'cards'" aria-label="Vista tarjetas">
+                                <i class="pi pi-th-large"></i>
+                            </button>
+                            <button type="button" [class.active]="viewMode === 'table'" (click)="viewMode = 'table'" aria-label="Vista tabla">
+                                <i class="pi pi-table"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" class="catalog-link-action" (click)="exportCSV()">
+                            <i class="pi pi-download"></i>
+                            Exportar
+                        </button>
+                        <button type="button" class="catalog-link-action" (click)="triggerCsvImport(csvFileInput)">
+                            <i class="pi pi-upload"></i>
+                            Importar
+                        </button>
+                        <button type="button" class="catalog-primary-action" (click)="openNew()">
+                            <i class="pi pi-plus"></i>
+                            Nuevo producto
+                        </button>
+                        <input #csvFileInput type="file" accept=".csv,text/csv" class="hidden" (change)="onCsvSelected($event)" />
                     </div>
                 </div>
-            </ng-template>
-            <ng-template #header>
-                <tr>
-                    <th style="width: 4rem">
-                        <p-tableHeaderCheckbox />
-                    </th>
-                    <th pSortableColumn="name">Nombre <p-sortIcon field="name" /></th>
-                    <th pSortableColumn="codigo">Código <p-sortIcon field="codigo" /></th>
-                    <th pSortableColumn="barcode">Código de Barras</th>
-                    <th pSortableColumn="productType">Tipo</th>
-                    <th pSortableColumn="productCategory">Categoría</th>
-                    <th pSortableColumn="measurementUnit">Unidad</th>
-                    <th pSortableColumn="lowStockAlertQty">Stock bajo</th>
-                    <th pSortableColumn="currency">Moneda</th>
-                    <th pSortableColumn="price">Precio <p-sortIcon field="price" /></th>
-                    <th pSortableColumn="cost">Costo</th>
-                    <th pSortableColumn="active">Estado</th>
-                    <th>Acciones</th>
-                </tr>
-            </ng-template>
-            <ng-template #body let-product>
-                <tr [style.opacity]="product.active ? '1' : '0.7'">
-                    <td>
-                        <p-tableCheckbox [value]="product" />
-                    </td>
-                    <td>
-                        <div class="flex align-items-center gap-2">
-                            @if (product.image) {
-                                <img [src]="getImageUrl(product.image)" [alt]="product.name" width="32" style="border-radius: 4px;" />
-                            }
-                            {{ product.name }}
-                        </div>
-                    </td>
-                    <td>{{ product.codigo || '-' }}</td>
-                    <td>{{ product.barcode || '-' }}</td>
-                    <td>
-                        @if (product.productType) {
-                            <p-tag [value]="product.productType.name" severity="info" />
-                        } @else {
-                            <span class="text-gray-400">-</span>
-                        }
-                    </td>
-                    <td>
-                        @if (product.productCategory) {
-                            <p-tag [value]="product.productCategory.name" severity="success" />
-                        } @else {
-                            <span class="text-gray-400">-</span>
-                        }
-                    </td>
-                    <td>
-                        @if (product.measurementUnit) {
-                            <span>{{ product.measurementUnit.name }} ({{ product.measurementUnit.symbol }})</span>
-                        } @else {
-                            <span class="text-gray-400">-</span>
-                        }
-                    </td>
-                    <td>{{ product.lowStockAlertQty ?? '-' }}</td>
-                    <td>{{ product.currency || defaultProductCurrency }}</td>
-                    <td>{{ product.price | number:'1.2-2' }}</td>
-                    <td>{{ product.cost ? (product.cost | number:'1.2-2') : '-' }}</td>
-                    <td>
-                        <p-tag [value]="product.active ? 'Activo' : 'Inactivo'" [severity]="product.active ? 'success' : 'warn'" />
-                    </td>
-                    <td>
-                        <p-button icon="pi pi-pencil" class="mr-2" [rounded]="true" [outlined]="true" severity="success" (onClick)="editProduct(product)" />
-                        <p-button
-                            [icon]="product.active ? 'pi pi-trash' : 'pi pi-refresh'"
-                            [rounded]="true"
-                            [outlined]="true"
-                            [severity]="product.active ? 'danger' : 'contrast'"
-                            (onClick)="toggleProductStatus(product)"
+
+                <div class="catalog-chip-row">
+                    <button class="catalog-chip" [class.active]="isCategoryActive('all')" (click)="setCategoryFilter('all')">
+                        Todas las colecciones
+                    </button>
+                    @for (category of productCategories(); track category.id) {
+                        <button
+                            class="catalog-chip"
+                            [class.active]="isCategoryActive(category.id)"
+                            (click)="setCategoryFilter(category.id)"
+                        >
+                            {{ category.name }}
+                        </button>
+                    }
+                    <div class="catalog-inactive-toggle">
+                        <p-toggleswitch
+                            inputId="showInactive"
+                            [(ngModel)]="showInactive"
+                            (ngModelChange)="onShowInactiveChange()"
                         />
-                    </td>
-                </tr>
-            </ng-template>
-            <ng-template #emptymessage>
-                <tr>
-                    <td colspan="13">No se encontraron productos.</td>
-                </tr>
-            </ng-template>
-        </p-table>
+                        <label for="showInactive">Mostrar inactivos</label>
+                    </div>
+                </div>
+            </div>
+
+            @if (viewMode === 'cards') {
+                @if (products().length > 0) {
+                    <div class="catalog-card-grid">
+                        @for (product of products(); track product.id) {
+                            <article class="catalog-card" [style.opacity]="product.active ? '1' : '0.72'">
+                                <div class="catalog-card-image-wrap" [class.no-image]="!product.image">
+                                    @if (product.image) {
+                                        <img [src]="getImageUrl(product.image)" [alt]="product.name" class="catalog-card-image" />
+                                    } @else {
+                                        <div class="catalog-image-placeholder">
+                                            <i class="pi pi-image"></i>
+                                        </div>
+                                    }
+                                    <span class="catalog-stock-badge" [class.low]="hasLowStockBadge(product)" [class.inactive]="!product.active">
+                                        {{ getStockBadgeLabel(product) }}
+                                    </span>
+                                </div>
+
+                                <div class="catalog-card-content">
+                                    <div class="catalog-card-headline">
+                                        <h3>{{ product.name }}</h3>
+                                        <strong>{{ formatProductPrice(product) }}</strong>
+                                    </div>
+
+                                    <p class="catalog-sku">SKU: {{ getProductSku(product) }}</p>
+
+                                    <div class="catalog-card-actions">
+                                        <button type="button" class="quick-edit-btn" (click)="editProduct(product)">EDICIÓN RÁPIDA</button>
+                                        <button
+                                            type="button"
+                                            class="quick-delete-btn"
+                                            (click)="toggleProductStatus(product)"
+                                            [attr.aria-label]="product.active ? 'Desactivar producto' : 'Reactivar producto'"
+                                        >
+                                            <i class="pi" [ngClass]="product.active ? 'pi-trash' : 'pi-refresh'"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                } @else {
+                    <div class="surface-card border-1 border-round p-4 text-center text-500">
+                        No se encontraron productos.
+                    </div>
+                }
+
+                <button type="button" class="catalog-fab" (click)="openNew()" aria-label="Nuevo producto">
+                    <i class="pi pi-plus"></i>
+                </button>
+            } @else {
+                <p-table
+                    [value]="products()"
+                    [rows]="10"
+                    [paginator]="true"
+                    responsiveLayout="scroll"
+                    [tableStyle]="{ 'min-width': '60rem' }"
+                    [rowHover]="true"
+                    dataKey="id"
+                    currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} productos"
+                >
+                    <ng-template #header>
+                        <tr>
+                            <th style="width: 4rem">
+                                <p-tableHeaderCheckbox />
+                            </th>
+                            <th pSortableColumn="name">Nombre <p-sortIcon field="name" /></th>
+                            <th pSortableColumn="codigo">Código <p-sortIcon field="codigo" /></th>
+                            <th pSortableColumn="barcode">Código de Barras</th>
+                            <th pSortableColumn="productType">Tipo</th>
+                            <th pSortableColumn="productCategory">Categoría</th>
+                            <th pSortableColumn="measurementUnit">Unidad</th>
+                            <th pSortableColumn="lowStockAlertQty">Stock bajo</th>
+                            <th pSortableColumn="currency">Moneda</th>
+                            <th pSortableColumn="price">Precio <p-sortIcon field="price" /></th>
+                            <th pSortableColumn="cost">Costo</th>
+                            <th pSortableColumn="active">Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </ng-template>
+                    <ng-template #body let-product>
+                        <tr [style.opacity]="product.active ? '1' : '0.7'">
+                            <td>
+                                <p-tableCheckbox [value]="product" />
+                            </td>
+                            <td>
+                                <div class="flex align-items-center gap-2">
+                                    @if (product.image) {
+                                        <img [src]="getImageUrl(product.image)" [alt]="product.name" width="32" style="border-radius: 4px;" />
+                                    }
+                                    {{ product.name }}
+                                </div>
+                            </td>
+                            <td>{{ product.codigo || '-' }}</td>
+                            <td>{{ product.barcode || '-' }}</td>
+                            <td>
+                                @if (product.productType) {
+                                    <p-tag [value]="product.productType.name" severity="info" />
+                                } @else {
+                                    <span class="text-gray-400">-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (product.productCategory) {
+                                    <p-tag [value]="product.productCategory.name" severity="success" />
+                                } @else {
+                                    <span class="text-gray-400">-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (product.measurementUnit) {
+                                    <span>{{ product.measurementUnit.name }} ({{ product.measurementUnit.symbol }})</span>
+                                } @else {
+                                    <span class="text-gray-400">-</span>
+                                }
+                            </td>
+                            <td>{{ product.lowStockAlertQty ?? '-' }}</td>
+                            <td>{{ product.currency || defaultProductCurrency }}</td>
+                            <td>{{ product.price | number:'1.2-2' }}</td>
+                            <td>{{ product.cost ? (product.cost | number:'1.2-2') : '-' }}</td>
+                            <td>
+                                <p-tag [value]="product.active ? 'Activo' : 'Inactivo'" [severity]="product.active ? 'success' : 'warn'" />
+                            </td>
+                            <td>
+                                <p-button icon="pi pi-pencil" class="mr-2" [rounded]="true" [outlined]="true" severity="success" (onClick)="editProduct(product)" />
+                                <p-button
+                                    [icon]="product.active ? 'pi pi-trash' : 'pi pi-refresh'"
+                                    [rounded]="true"
+                                    [outlined]="true"
+                                    [severity]="product.active ? 'danger' : 'contrast'"
+                                    (onClick)="toggleProductStatus(product)"
+                                />
+                            </td>
+                        </tr>
+                    </ng-template>
+                    <ng-template #emptymessage>
+                        <tr>
+                            <td colspan="13">No se encontraron productos.</td>
+                        </tr>
+                    </ng-template>
+                </p-table>
+            }
+        </div>
 
         <!-- Dialog para crear/editar producto -->
         <p-dialog 
@@ -246,6 +321,7 @@ interface Column {
                                 class="upload-input"
                             />
                         </div>
+                        <small class="text-500 text-center">Formatos: WEBP, JPG, PNG, GIF (máx {{ productImageMaxFileMb }}MB)</small>
                         
                         @if (imagePreview || product.image) {
                             <p-button 
@@ -411,7 +487,37 @@ interface Column {
                             <div class="profit-calculator">
                                 <div class="flex align-items-center justify-content-between mb-2">
                                     <label class="font-semibold">Porcentaje de Ganancia</label>
-                                    <span class="profit-percentage">{{ profitPercentage | number:'1.0-0' }}%</span>
+                                    <span class="profit-percentage">{{ profitPercentage | number:'1.0-2' }}%</span>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                    <div class="flex flex-col gap-2">
+                                        <label class="text-sm text-600">Ganancia (%)</label>
+                                        <p-inputnumber
+                                            [(ngModel)]="profitPercentage"
+                                            mode="decimal"
+                                            [min]="0"
+                                            [maxFractionDigits]="2"
+                                            [useGrouping]="false"
+                                            (ngModelChange)="onProfitPercentageInputChange()"
+                                            class="w-full"
+                                            placeholder="Ej: 30"
+                                        />
+                                    </div>
+                                    <div class="flex flex-col gap-2">
+                                        <label class="text-sm text-600">Ganancia por unidad</label>
+                                        <p-inputnumber
+                                            [(ngModel)]="profitAmount"
+                                            mode="currency"
+                                            [currency]="product.currency || defaultProductCurrency"
+                                            locale="es-MX"
+                                            [min]="0"
+                                            [maxFractionDigits]="2"
+                                            (ngModelChange)="onProfitAmountInputChange()"
+                                            class="w-full"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
                                 </div>
                                 
                                 <p-slider 
@@ -460,6 +566,15 @@ interface Column {
                                         (onClick)="setProfitPercentage(100)"
                                     />
                                 </div>
+
+                                <div class="mt-3">
+                                    <p-button
+                                        label="Calcular precio de venta"
+                                        icon="pi pi-calculator"
+                                        styleClass="w-full"
+                                        (onClick)="applySuggestedPrice()"
+                                    />
+                                </div>
                             </div>
                             
                             <!-- Precio Sugerido -->
@@ -483,6 +598,7 @@ interface Column {
                                     mode="currency" 
                                     [currency]="product.currency || defaultProductCurrency"
                                     locale="es-MX"
+                                    (onInput)="onPriceChange()"
                                     (onFocus)="selectInputValue($event)"
                                     class="w-full price-input" 
                                     placeholder="0.00"
@@ -513,26 +629,33 @@ interface Column {
 
         <p-confirmdialog />
         <p-toast />
-    `
+    `,
+    styles: []
 })
 export class Products implements OnInit {
+    readonly productImageMaxFileMb = 5;
+    private readonly productImageMaxBytes = this.productImageMaxFileMb * 1024 * 1024;
+    private readonly allowedProductImageExtensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+
     allProducts = signal<Product[]>([]);
     products = signal<Product[]>([]);
     productTypes = signal<CatalogProductType[]>([]);
     productCategories = signal<CatalogProductCategory[]>([]);
     measurementUnits = signal<CatalogMeasurementUnit[]>([]);
     isEditMode = signal<boolean>(false);
-    
+
     productDialog = false;
     selectedProduct: Product | null = null;
     selectedFile: File | null = null;
-    
+
     // Imagen preview
     imagePreview: string | null = null;
-    
+
     // Calculadora de ganancia
     profitPercentage: number = 30;
+    profitAmount: number = 0;
     suggestedPrice: number = 0;
+    private profitCalculationMode: 'PERCENTAGE' | 'AMOUNT' = 'PERCENTAGE';
     defaultProductCurrency: SystemCurrencyCode = 'CUP';
     enabledProductCurrencies: SystemCurrencyCode[] = ['CUP', 'USD'];
     currencyOptions: Array<{ label: string; value: SystemCurrencyCode }> = [
@@ -559,6 +682,8 @@ export class Products implements OnInit {
 
     searchTerm = '';
     showInactive = false;
+    viewMode: 'cards' | 'table' = 'cards';
+    selectedCategoryId = 'all';
 
     product: any = {
         name: '',
@@ -583,7 +708,7 @@ export class Products implements OnInit {
         private messageService: MessageService,
         private confirmationService: ConfirmationService,
         private cdr: ChangeDetectorRef
-    ) {}
+    ) { }
 
     ngOnInit() {
         this.loadSystemCurrencySettings();
@@ -640,7 +765,7 @@ export class Products implements OnInit {
         if (document.activeElement) {
             (document.activeElement as HTMLElement).blur();
         }
-        
+
         this.product = {
             name: '',
             codigo: '',
@@ -659,14 +784,16 @@ export class Products implements OnInit {
         this.selectedFile = null;
         this.imagePreview = null;
         this.profitPercentage = 30;
+        this.profitAmount = 0;
         this.suggestedPrice = 0;
+        this.profitCalculationMode = 'PERCENTAGE';
         this.isEditMode.set(false);
         this.productDialog = true;
     }
 
     editProduct(product: Product) {
         this.selectedProduct = product;
-        this.product = { 
+        this.product = {
             ...product,
             currency: (product.currency || this.defaultProductCurrency) as SystemCurrencyCode,
             productTypeId: product.productTypeId,
@@ -675,13 +802,8 @@ export class Products implements OnInit {
         };
         this.selectedFile = null;
         this.imagePreview = null;
-        // Calcular porcentaje de ganancia basado en el precio actual
-        if (product.cost && product.price) {
-            this.profitPercentage = Math.round(((product.price - product.cost) / product.cost) * 100);
-        } else {
-            this.profitPercentage = 30;
-        }
-        this.calculateSuggestedPrice(false);
+        this.profitCalculationMode = 'PERCENTAGE';
+        this.syncProfitMetricsFromCostAndPrice();
         this.isEditMode.set(true);
         this.productDialog = true;
     }
@@ -693,23 +815,45 @@ export class Products implements OnInit {
         this.imagePreview = null;
     }
 
-    onFileSelected(event: any) {
-        const file = event.target.files[0];
-        if (file) {
-            this.selectedFile = file;
-            // Crear preview de la imagen
-            const reader = new FileReader();
-            reader.onload = (e: any) => {
-                this.imagePreview = e.target.result;
-            };
-            reader.readAsDataURL(file);
-            // Forzar detección de cambios después de un pequeño retraso
-            setTimeout(() => {
-                this.cdr.detectChanges();
-            }, 10);
+    onFileSelected(event: Event) {
+        const input = event.target as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (!file) return;
+
+        if (file.size > this.productImageMaxBytes) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Imagen inválida',
+                detail: `La imagen supera ${this.productImageMaxFileMb}MB`
+            });
+            if (input) input.value = '';
+            return;
         }
+
+        if (!this.isAllowedProductImage(file)) {
+            this.messageService.add({
+                severity: 'warn',
+                summary: 'Imagen inválida',
+                detail: 'Debes seleccionar una imagen válida (WEBP, JPG, PNG o GIF).'
+            });
+            if (input) input.value = '';
+            return;
+        }
+
+        this.selectedFile = file;
+        // Crear preview de la imagen
+        const reader = new FileReader();
+        reader.onload = (e: any) => {
+            this.imagePreview = e.target.result;
+        };
+        reader.readAsDataURL(file);
+        // Forzar detección de cambios después de un pequeño retraso
+        setTimeout(() => {
+            this.cdr.detectChanges();
+        }, 10);
+
         // Limpiar el valor del input para permitir seleccionar el mismo archivo de nuevo
-        event.target.value = '';
+        if (input) input.value = '';
     }
 
     removeImage() {
@@ -720,28 +864,64 @@ export class Products implements OnInit {
 
     setProfitPercentage(value: number) {
         this.profitPercentage = value;
-        this.calculateSuggestedPrice(true);
+        this.profitCalculationMode = 'PERCENTAGE';
+        this.calculateSuggestedPrice(false);
     }
 
     onProfitPercentageChanged() {
-        this.calculateSuggestedPrice(true);
+        this.profitCalculationMode = 'PERCENTAGE';
+        this.calculateSuggestedPrice(false);
+    }
+
+    onProfitPercentageInputChange() {
+        this.profitCalculationMode = 'PERCENTAGE';
+        this.calculateSuggestedPrice(false);
+    }
+
+    onProfitAmountInputChange() {
+        this.profitCalculationMode = 'AMOUNT';
+        this.calculateSuggestedPrice(false);
     }
 
     calculateSuggestedPrice(autoApply = false) {
-        if (this.product.cost && this.product.cost > 0) {
-            // Calcular precio con el porcentaje de ganancia
-            this.suggestedPrice = this.product.cost * (1 + this.profitPercentage / 100);
+        const cost = Number(this.product.cost || 0);
+        if (cost > 0) {
+            if (this.profitCalculationMode === 'AMOUNT') {
+                const amount = Math.max(0, Number(this.profitAmount || 0));
+                this.profitAmount = this.roundMoney(amount);
+                this.suggestedPrice = this.roundMoney(cost + this.profitAmount);
+                this.profitPercentage = this.roundPercent(((this.suggestedPrice - cost) / cost) * 100);
+            } else {
+                const percentage = Math.max(0, Number(this.profitPercentage || 0));
+                this.profitPercentage = this.roundPercent(percentage);
+                this.suggestedPrice = this.roundMoney(cost * (1 + this.profitPercentage / 100));
+                this.profitAmount = this.roundMoney(this.suggestedPrice - cost);
+            }
             if (autoApply) {
                 this.product.price = this.roundMoney(this.suggestedPrice);
+                this.syncProfitMetricsFromCostAndPrice();
             }
         } else {
             this.suggestedPrice = 0;
+            if (this.profitCalculationMode === 'PERCENTAGE') {
+                this.profitAmount = 0;
+            } else {
+                this.profitAmount = this.roundMoney(Math.max(0, Number(this.profitAmount || 0)));
+            }
         }
     }
 
     onCostChange() {
-        // Cuando cambia el costo, calcular automáticamente el precio de venta
-        this.calculateSuggestedPrice(true);
+        const salePrice = Number(this.product.price || 0);
+        if (salePrice > 0) {
+            this.syncProfitMetricsFromCostAndPrice();
+            return;
+        }
+        this.calculateSuggestedPrice(false);
+    }
+
+    onPriceChange() {
+        this.syncProfitMetricsFromCostAndPrice();
     }
 
     selectInputValue(event: any) {
@@ -752,8 +932,10 @@ export class Products implements OnInit {
     }
 
     applySuggestedPrice() {
+        this.calculateSuggestedPrice(false);
         if (this.suggestedPrice > 0) {
             this.product.price = this.roundMoney(this.suggestedPrice);
+            this.syncProfitMetricsFromCostAndPrice();
         }
     }
 
@@ -768,18 +950,13 @@ export class Products implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'El porcentaje de ganancia no puede ser negativo' });
             return;
         }
-        
-        if (this.profitPercentage > 500) {
-            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'El porcentaje de ganancia es muy alto (máximo 500%)' });
-            return;
-        }
 
         // Crear FormData para enviar la imagen junto con los datos
         const formData = new FormData();
         formData.append('name', this.product.name);
         formData.append('price', String(this.product.price));
         formData.append('currency', String(this.product.currency || this.defaultProductCurrency));
-        
+
         if (this.product.codigo) formData.append('codigo', this.product.codigo);
         if (this.product.barcode) formData.append('barcode', this.product.barcode);
         if (this.product.cost) formData.append('cost', String(this.product.cost));
@@ -791,12 +968,12 @@ export class Products implements OnInit {
         if (this.product.productCategoryId) formData.append('productCategoryId', this.product.productCategoryId);
         if (this.product.measurementUnitId) formData.append('measurementUnitId', this.product.measurementUnitId);
         if (this.product.active !== undefined) formData.append('active', String(this.product.active));
-        
+
         // En modo edición, mantener la imagen existente
         if (this.isEditMode() && this.product.image && !this.selectedFile) {
             formData.append('existingImage', this.product.image);
         }
-        
+
         // Agregar la imagen si hay una seleccionada
         if (this.selectedFile) {
             formData.append('image', this.selectedFile);
@@ -815,7 +992,12 @@ export class Products implements OnInit {
             },
             error: (err) => {
                 console.error('Error saving product:', err);
-                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar producto' });
+                const backendMessage = this.extractErrorMessage(err);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: backendMessage || 'Error al guardar producto'
+                });
             }
         });
     }
@@ -870,6 +1052,51 @@ export class Products implements OnInit {
         this.loadProducts();
     }
 
+    setCategoryFilter(categoryId: string) {
+        this.selectedCategoryId = categoryId || 'all';
+        this.applyFilters();
+    }
+
+    isCategoryActive(categoryId: string) {
+        return this.selectedCategoryId === (categoryId || 'all');
+    }
+
+    getProductSku(product: Product) {
+        return product.codigo || product.barcode || product.id.slice(0, 8).toUpperCase();
+    }
+
+    hasLowStockBadge(product: Product) {
+        return Number(product.lowStockAlertQty || 0) > 0 && !!product.active;
+    }
+
+    getStockBadgeLabel(product: Product) {
+        if (!product.active) return 'INACTIVO';
+        const lowQty = Number(product.lowStockAlertQty || 0);
+        if (lowQty > 0) return `STOCK BAJO: ${this.formatCompactQuantity(lowQty)}`;
+        return 'EN STOCK';
+    }
+
+    formatProductPrice(product: Product) {
+        const currency = (product.currency || this.defaultProductCurrency) as SystemCurrencyCode;
+        const amount = Number(product.price || 0);
+        const locale = currency === 'USD' ? 'en-US' : 'es-CU';
+        try {
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        } catch {
+            return `${amount.toFixed(2)} ${currency}`;
+        }
+    }
+
+    private formatCompactQuantity(value: number) {
+        if (Number.isInteger(value)) return String(value);
+        return value.toFixed(2).replace(/\.?0+$/, '');
+    }
+
     private applyFilters() {
         const source = this.allProducts();
         if (!source || source.length === 0) {
@@ -883,7 +1110,11 @@ export class Products implements OnInit {
             const productName = String(product.name || '').toLowerCase();
             const productCodigo = String(product.codigo || '').toLowerCase();
             const productBarcode = String(product.barcode || '').toLowerCase();
+            const categoryMatches =
+                this.selectedCategoryId === 'all' ||
+                String(product.productCategoryId || '') === this.selectedCategoryId;
 
+            if (!categoryMatches) return false;
             if (!term) return true;
             return (
                 productName.includes(term) ||
@@ -1231,6 +1462,55 @@ export class Products implements OnInit {
         return value;
     }
 
+    private extractErrorMessage(error: any): string {
+        const message = error?.error?.message;
+        const rawErrorCode = String(error?.error?.code || error?.code || '').toUpperCase();
+        const rawMessage = String(message || error?.message || '').toLowerCase();
+        if (rawErrorCode.includes('LIMIT_FILE_SIZE') || rawMessage.includes('file too large') || error?.status === 413) {
+            return `La imagen supera ${this.productImageMaxFileMb}MB.`;
+        }
+        if (Array.isArray(message)) {
+            return message.map((item) => String(item || '').trim()).filter(Boolean).join(' | ');
+        }
+        if (typeof message === 'string' && message.trim()) {
+            return message.trim();
+        }
+        if (typeof error?.message === 'string' && error.message.trim()) {
+            return error.message.trim();
+        }
+        return '';
+    }
+
+    private isAllowedProductImage(file: File): boolean {
+        const mime = String(file.type || '').trim().toLowerCase();
+        const fileName = String(file.name || '').trim().toLowerCase();
+        const hasAllowedMime = mime.startsWith('image/');
+        const hasAllowedExtension = this.allowedProductImageExtensions.some((ext) => fileName.endsWith(ext));
+        return hasAllowedMime || hasAllowedExtension;
+    }
+
+    private syncProfitMetricsFromCostAndPrice() {
+        const cost = Number(this.product.cost || 0);
+        const price = Number(this.product.price || 0);
+
+        if (cost > 0 && price >= 0) {
+            const amount = this.roundMoney(price - cost);
+            this.profitAmount = amount;
+            this.profitPercentage = this.roundPercent((amount / cost) * 100);
+            this.suggestedPrice = this.roundMoney(price);
+            return;
+        }
+
+        if (cost > 0) {
+            this.calculateSuggestedPrice(false);
+            return;
+        }
+
+        this.suggestedPrice = 0;
+        this.profitAmount = 0;
+        this.profitPercentage = 0;
+    }
+
     private loadSystemCurrencySettings() {
         this.settingsService.getSystemSettings().subscribe({
             next: (settings) => {
@@ -1259,6 +1539,10 @@ export class Products implements OnInit {
     }
 
     private roundMoney(value: number): number {
+        return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    }
+
+    private roundPercent(value: number): number {
         return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     }
 

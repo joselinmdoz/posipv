@@ -83,6 +83,19 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateProductDto.prototype, "measurementUnitId", void 0);
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const productImageUploadOptions = {
+    storage: (0, multer_1.diskStorage)({
+        destination: "./uploads",
+        filename: (req, file, callback) => {
+            const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+            callback(null, `${file.fieldname}-${uniqueSuffix}${(0, path_1.extname)(file.originalname)}`);
+        },
+    }),
+    limits: {
+        fileSize: PRODUCT_IMAGE_MAX_BYTES,
+    },
+};
 let ProductsController = class ProductsController {
     constructor(service) {
         this.service = service;
@@ -149,7 +162,7 @@ let ProductsController = class ProductsController {
 exports.ProductsController = ProductsController;
 __decorate([
     (0, common_1.Get)(),
-    (0, permissions_decorator_1.Permissions)("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view"),
+    (0, permissions_decorator_1.Permissions)("products.view", "products.manage", "purchases.view", "purchases.manage", "warehouses.view", "sales.tpv"),
     __param(0, (0, common_1.Query)("includeInactive")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -158,15 +171,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, permissions_decorator_1.Permissions)("products.manage"),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('image', {
-        storage: (0, multer_1.diskStorage)({
-            destination: './uploads',
-            filename: (req, file, callback) => {
-                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                callback(null, file.fieldname + '-' + uniqueSuffix + (0, path_1.extname)(file.originalname));
-            },
-        }),
-    })),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("image", productImageUploadOptions)),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
@@ -176,15 +181,7 @@ __decorate([
 __decorate([
     (0, common_1.Put)(':id'),
     (0, permissions_decorator_1.Permissions)("products.manage"),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('image', {
-        storage: (0, multer_1.diskStorage)({
-            destination: './uploads',
-            filename: (req, file, callback) => {
-                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                callback(null, file.fieldname + '-' + uniqueSuffix + (0, path_1.extname)(file.originalname));
-            },
-        }),
-    })),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("image", productImageUploadOptions)),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Req)()),
     __param(2, (0, common_1.UploadedFile)()),

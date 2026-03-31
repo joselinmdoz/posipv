@@ -45,6 +45,21 @@ class UpdateEmployeeDto {
   @IsOptional() @IsString() userId?: string;
 }
 
+const EMPLOYEE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+const employeeImageUploadOptions = {
+  storage: diskStorage({
+    destination: "./uploads",
+    filename: (req: any, file: Express.Multer.File, callback: (error: Error | null, filename: string) => void) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      callback(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
+    },
+  }),
+  limits: {
+    fileSize: EMPLOYEE_IMAGE_MAX_BYTES,
+  },
+};
+
 @Controller("employees")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
@@ -67,15 +82,7 @@ export class EmployeesController {
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor("image", {
-    storage: diskStorage({
-      destination: "./uploads",
-      filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        callback(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor("image", employeeImageUploadOptions))
   create(@Req() req: any, @UploadedFile() file?: Express.Multer.File) {
     const dto: CreateEmployeeDto = {
       firstName: req.body.firstName,
@@ -99,15 +106,7 @@ export class EmployeesController {
   }
 
   @Put(":id")
-  @UseInterceptors(FileInterceptor("image", {
-    storage: diskStorage({
-      destination: "./uploads",
-      filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        callback(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor("image", employeeImageUploadOptions))
   update(@Param("id") id: string, @Req() req: any, @UploadedFile() file?: Express.Multer.File) {
     const dto: UpdateEmployeeDto = {
       firstName: req.body.firstName,

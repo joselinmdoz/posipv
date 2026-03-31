@@ -411,6 +411,26 @@ model SystemSettings {
   updatedAt              DateTime @updatedAt
 }
 
+model SystemLicense {
+  id              String    @id
+  licenseData     String?
+  payloadJson     Json?
+  payloadHash     String?
+  licenseId       String?   @unique
+  deviceHash      String?
+  issuedAt        DateTime?
+  validFrom       DateTime?
+  expiresAt       DateTime?
+  features        String[]  @default([])
+  maxUsers        Int?
+  status          String    @default("MISSING")
+  statusMessage   String?
+  lastValidatedAt DateTime?
+  lastSeenAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model ExchangeRateRecord {
   id                   String       @id @default(cuid())
   baseCurrency         CurrencyCode @default(USD)

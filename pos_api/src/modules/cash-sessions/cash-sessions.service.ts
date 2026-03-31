@@ -1,14 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashSessionStatus, PaymentMethod, Prisma, SaleStatus } from "@prisma/client";
-import { dec, moneyEq } from "../../common/decimal";
+import { dec } from "../../common/decimal";
 import { InventoryReportsService } from "../inventory-reports/inventory-reports.service";
+import { StockMovementsService } from "../stock-movements/stock-movements.service";
 
 @Injectable()
 export class CashSessionsService {
   constructor(
     private prisma: PrismaService,
     private inventoryReportsService: InventoryReportsService,
+    private stockMovementsService: StockMovementsService,
   ) {}
 
   async findAll() {
@@ -163,13 +165,9 @@ export class CashSessionsService {
     const sess = await this.prisma.cashSession.findUnique({ where: { id } });
     if (!sess) throw new NotFoundException("Sesión no encontrada.");
     if (sess.status === CashSessionStatus.CLOSED) throw new BadRequestException("Ya está cerrada.");
-    const summary = await this.getSessionSummary(id);
     const enteredCash = dec(closingAmount);
-    const expectedCash = dec(summary.paymentTotals.CASH);
-    if (!moneyEq(enteredCash, expectedCash)) {
-      throw new BadRequestException(
-        `El efectivo contado (${enteredCash.toFixed(2)}) no coincide con el efectivo de ventas (${expectedCash.toFixed(2)}).`
-      );
+    if (enteredCash.lt(0)) {
+      throw new BadRequestException("El efectivo contado no puede ser negativo.");
     }
 
     const closedAt = new Date();
@@ -246,6 +244,60 @@ export class CashSessionsService {
         OTHER: Number(paymentTotals.OTHER.toFixed(2)),
       },
     };
+  }
+
+  async createSessionMovement(input: {
+    cashSessionId: string;
+    type: "IN" | "OUT";
+    productId: string;
+    qty: number;
+    reason?: string;
+    userId: string;
+  }) {
+    const session = await this.prisma.cashSession.findUnique({
+      where: { id: input.cashSessionId },
+      select: {
+        id: true,
+        status: true,
+        registerId: true,
+        register: {
+          select: {
+            settings: {
+              select: {
+                warehouseId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException("Sesión no encontrada.");
+    if (session.status !== CashSessionStatus.OPEN) {
+      throw new BadRequestException("Solo puede registrar movimientos en una sesión de caja abierta.");
+    }
+
+    await this.assertCashierAllowedForRegister(session.registerId, input.userId);
+
+    const warehouseId = session.register.settings?.warehouseId || "";
+    if (!warehouseId) {
+      throw new BadRequestException("El TPV no tiene almacén asociado.");
+    }
+
+    const movementType = input.type === "OUT" ? "OUT" : "IN";
+    const normalizedReason = String(input.reason || "").trim();
+    const reason = normalizedReason ? `TPV_SESION: ${normalizedReason}` : "TPV_SESION: AJUSTE EN TPV";
+
+    return this.stockMovementsService.create(
+      {
+        type: movementType,
+        productId: String(input.productId || "").trim(),
+        qty: Number(input.qty),
+        reason,
+        ...(movementType === "IN" ? { toWarehouseId: warehouseId } : { fromWarehouseId: warehouseId }),
+      },
+      input.userId,
+    );
   }
 
   private buildPaymentTotals(grouped: Array<{ method: PaymentMethod; _sum: { amount: Prisma.Decimal | null } }>) {

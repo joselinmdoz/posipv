@@ -11,12 +11,13 @@ const common_1 = require("@nestjs/common");
 const cash_sessions_controller_1 = require("./cash-sessions.controller");
 const cash_sessions_service_1 = require("./cash-sessions.service");
 const inventory_reports_module_1 = require("../inventory-reports/inventory-reports.module");
+const stock_movements_module_1 = require("../stock-movements/stock-movements.module");
 let CashSessionsModule = class CashSessionsModule {
 };
 exports.CashSessionsModule = CashSessionsModule;
 exports.CashSessionsModule = CashSessionsModule = __decorate([
     (0, common_1.Module)({
-        imports: [inventory_reports_module_1.InventoryReportsModule],
+        imports: [inventory_reports_module_1.InventoryReportsModule, stock_movements_module_1.StockMovementsModule],
         controllers: [cash_sessions_controller_1.CashSessionsController],
         providers: [cash_sessions_service_1.CashSessionsService],
     })

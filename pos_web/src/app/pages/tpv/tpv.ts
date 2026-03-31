@@ -15,7 +15,7 @@ import { MenuItem, MessageService } from 'primeng/api';
 import { CashSessionSummary, Payment, PosService, SaleItem } from '@/app/core/services/pos.service';
 import { Product, ProductsService } from '@/app/core/services/products.service';
 import { Denomination, PaymentMethodSetting, SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
-import { CreateStockMovementDto, WarehousesService } from '@/app/core/services/warehouses.service';
+import { WarehousesService } from '@/app/core/services/warehouses.service';
 import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
 import { Customer, CustomersService } from '@/app/core/services/customers.service';
 import { catchError, forkJoin, of } from 'rxjs';
@@ -37,743 +37,7 @@ import { catchError, forkJoin, of } from 'rxjs';
         TableModule
     ],
     providers: [MessageService],
-    template: `
-        <div class="tpv-shell">
-            <section class="tpv-products-panel">
-                <header class="tpv-page-header">
-                    <div>
-                        <h1 class="tpv-title">Ventas TPV</h1>
-                        <p class="tpv-subtitle">
-                            TPV en sesion:
-                            <strong>{{ getSelectedRegisterName() || 'No seleccionado' }}</strong>
-                        </p>
-                        <p class="tpv-subtitle">
-                            Cajero en turno:
-                            <strong>{{ currentShiftCashierName() }}</strong>
-                        </p>
-                    </div>
-                    <div class="tpv-header-tools">
-                        <div class="tpv-header-actions">
-                            <p-button
-                                label="Entrada / Salida"
-                                icon="pi pi-box"
-                                severity="secondary"
-                                [outlined]="true"
-                                [disabled]="!canManageSessionInventory()"
-                                (onClick)="openSessionMovementDialog()"
-                            />
-                            <p-button
-                                label="IPV Sesion"
-                                icon="pi pi-chart-line"
-                                severity="secondary"
-                                [outlined]="true"
-                                [disabled]="!posService.currentSession()"
-                                (onClick)="openSessionIpvDialog()"
-                            />
-                        </div>
-                        <p-tag
-                            [value]="posService.currentSession() ? 'Sesion abierta' : 'Sesion cerrada'"
-                            [severity]="posService.currentSession() ? 'success' : 'danger'"
-                        />
-                    </div>
-                </header>
-
-                <div class="tpv-filters">
-                    <div class="tpv-field">
-                        <label>Buscar producto</label>
-                        <div class="tpv-search-wrap">
-                            <i class="pi pi-search"></i>
-                            <input
-                                pInputText
-                                [(ngModel)]="searchQuery"
-                                placeholder="Nombre, codigo o barcode..."
-                                (input)="filterProducts()"
-                                class="w-full tpv-search-input"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tpv-products-scroll">
-                    <div class="tpv-product-grid">
-                        @for (product of filteredProducts(); track product.id) {
-                            <button
-                                type="button"
-                                class="tpv-product-card"
-                                [class.no-stock]="getAvailableQtyForProduct(product) <= getCartQty(product.id)"
-                                [disabled]="getAvailableQtyForProduct(product) <= getCartQty(product.id)"
-                                (click)="addToCart(product)"
-                            >
-                                <div class="tpv-product-head">
-                                    <div class="tpv-product-name">{{ product.name }}</div>
-                                    <span
-                                        class="tpv-stock-pill"
-                                        [class.low]="getAvailableQtyForProduct(product) > 0 && getAvailableQtyForProduct(product) <= 5"
-                                        [class.empty]="getAvailableQtyForProduct(product) <= 0"
-                                    >
-                                        @if (getAvailableQtyForProduct(product) > 0) {
-                                            Stock {{ formatQty(getAvailableQtyForProduct(product), !!product.allowFractionalQty) }}
-                                        } @else {
-                                            Sin stock
-                                        }
-                                    </span>
-                                </div>
-
-                                <div class="tpv-product-media">
-                                    @if (product.image) {
-                                        <img [src]="product.image" class="tpv-product-image" />
-                                    } @else {
-                                        <div class="tpv-product-placeholder">
-                                            <i class="pi pi-image"></i>
-                                        </div>
-                                    }
-                                </div>
-
-                                <div class="tpv-product-content">
-                                    <div class="tpv-product-meta">{{ product.codigo || product.barcode || 'Sin identificador' }}</div>
-                                    <div class="tpv-product-footer">
-                                        <strong>{{ product.price | currency: (product.currency || paymentBaseCurrency()) }}</strong>
-                                        <span class="tpv-add-chip">
-                                            <i class="pi pi-plus"></i>
-                                            Agregar
-                                        </span>
-                                    </div>
-                                </div>
-                            </button>
-                        }
-                    </div>
-
-                    @if (filteredProducts().length === 0) {
-                        <div class="tpv-empty-state">
-                            <i class="pi pi-search"></i>
-                            <p>{{ posService.currentSession() ? 'No hay productos con stock disponible en este TPV' : 'Abra caja para cargar productos del TPV' }}</p>
-                        </div>
-                    }
-                </div>
-            </section>
-
-            <aside class="tpv-cart-panel">
-                <div class="tpv-cart-header">
-                    <div>
-                        <h2>Ticket actual</h2>
-                        <p>Total de lineas: {{ posService.cart().length }}</p>
-                    </div>
-                    <p-tag [value]="posService.currentSession() ? 'Caja activa' : 'Caja cerrada'" [severity]="posService.currentSession() ? 'success' : 'danger'" />
-                </div>
-
-                <div class="tpv-cart-items">
-                    @for (item of posService.cart(); track item.productId) {
-                        <article
-                            class="tpv-cart-item"
-                            [class.tpv-cart-item-zero]="item.qty <= 0"
-                            [class.tpv-cart-item-has-amount]="isFractionalProduct(item.productId)"
-                        >
-                            <div class="tpv-cart-item-main">
-                                <div class="tpv-cart-item-name">{{ item.productName }}</div>
-                                <div class="tpv-cart-item-price">{{ item.price | currency: paymentBaseCurrency() }} x {{ formatQty(item.qty, isFractionalProduct(item.productId)) }}</div>
-                            </div>
-                            <div class="tpv-cart-item-controls">
-                                <p-button icon="pi pi-minus" [rounded]="true" [text]="true" severity="secondary" (onClick)="decreaseQty(item)" />
-                                <p-inputnumber
-                                    [ngModel]="item.qty"
-                                    [min]="0"
-                                    [max]="getAvailableQtyForCartItem(item)"
-                                    [step]="isFractionalProduct(item.productId) ? 0.001 : 1"
-                                    [minFractionDigits]="0"
-                                    [maxFractionDigits]="isFractionalProduct(item.productId) ? 6 : 0"
-                                    locale="es-ES"
-                                    [useGrouping]="false"
-                                    (ngModelChange)="onCartQtyInputChange(item, $event)"
-                                    (onBlur)="onCartQtyInputBlur(item, $event)"
-                                    (click)="onCartFieldInteraction($event)"
-                                    (touchend)="onCartFieldInteraction($event)"
-                                    inputStyleClass="tpv-cart-qty-field"
-                                    styleClass="tpv-cart-qty-input"
-                                />
-                                <p-button icon="pi pi-plus" [rounded]="true" [text]="true" severity="secondary" (onClick)="increaseQty(item)" />
-                            </div>
-                            @if (isFractionalProduct(item.productId)) {
-                                <div class="tpv-cart-item-amount-edit">
-                                    <label>Importe</label>
-                                    <p-inputnumber
-                                        [ngModel]="item.subtotal"
-                                        [min]="0"
-                                        [step]="0.01"
-                                        [minFractionDigits]="0"
-                                        [maxFractionDigits]="2"
-                                        locale="es-ES"
-                                        [useGrouping]="false"
-                                        (onBlur)="onCartAmountInputBlur(item, $event)"
-                                        (click)="onCartFieldInteraction($event)"
-                                        (touchend)="onCartFieldInteraction($event)"
-                                        inputStyleClass="tpv-cart-amount-field"
-                                        styleClass="tpv-cart-amount-input"
-                                    />
-                                </div>
-                            }
-                            <div class="tpv-cart-item-subtotal">{{ item.subtotal | currency: paymentBaseCurrency() }}</div>
-                            <p-button
-                                icon="pi pi-trash"
-                                [rounded]="true"
-                                [text]="true"
-                                severity="danger"
-                                styleClass="tpv-cart-item-remove"
-                                (onClick)="removeFromCart(item)"
-                            />
-                        </article>
-                    }
-
-                    @if (posService.cart().length === 0) {
-                        <div class="tpv-cart-empty">
-                            <i class="pi pi-shopping-cart"></i>
-                            <p>El carrito esta vacio.</p>
-                        </div>
-                    }
-                </div>
-
-                <div class="tpv-cart-footer">
-                    <div class="tpv-totals">
-                        <span>Total:</span>
-                        <strong>{{ cartTotal() | currency: paymentBaseCurrency() }}</strong>
-                    </div>
-
-                    <div class="tpv-actions">
-                        @if (!posService.currentSession()) {
-                            <p-button label="Abrir Caja" icon="pi pi-lock-open" styleClass="w-full" (onClick)="showOpenDialog()" />
-                        } @else {
-                            <p-button
-                                label="Cobrar"
-                                icon="pi pi-credit-card"
-                                [disabled]="!hasPositiveCartItems()"
-                                styleClass="w-full"
-                                (onClick)="showPaymentDialog()"
-                            />
-                            <p-button label="Cerrar Caja" icon="pi pi-lock" severity="danger" styleClass="w-full" (onClick)="showCloseDialog()" />
-                        }
-                    </div>
-                </div>
-            </aside>
-        </div>
-
-        <!-- Dialog: Abrir Caja -->
-        <p-dialog header="Abrir Caja" [(visible)]="openDialog" [modal]="true" [style]="{ width: '400px' }" [breakpoints]="{ '960px': '98vw' }">
-            <div class="flex flex-col gap-4">
-                <div>
-                    <label class="block mb-2">Fondo inicial</label>
-                    <p-inputnumber [(ngModel)]="openingAmount" mode="currency" [currency]="paymentBaseCurrency()" locale="en-US" class="w-full" />
-                </div>
-                <div>
-                    <label class="block mb-2">Nota</label>
-                    <input pInputText [(ngModel)]="openingNote" class="w-full" />
-                </div>
-            </div>
-            <ng-template #footer>
-                <p-button label="Cancelar" icon="pi pi-times" text (onClick)="openDialog = false" />
-                <p-button label="Abrir Caja" icon="pi pi-check" (onClick)="openSession()" />
-            </ng-template>
-        </p-dialog>
-
-        <!-- Dialog: Cerrar Caja -->
-        <p-dialog header="Cerrar Caja" [(visible)]="closeDialog" [modal]="true" [style]="{ width: '860px' }" [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }">
-            <div class="flex flex-col gap-4">
-                @if (closeSummaryLoading()) {
-                    <div class="text-center py-6 text-gray-500">
-                        <i class="pi pi-spin pi-spinner text-2xl mb-2"></i>
-                        <p>Cargando resumen de sesión...</p>
-                    </div>
-                } @else if (closeSummary()) {
-                    <div class="tpv-close-summary-grid">
-                        <div class="tpv-close-card">
-                            <span>Ventas realizadas</span>
-                            <strong>{{ closeSummary()!.salesCount }}</strong>
-                        </div>
-                        <div class="tpv-close-card">
-                            <span>Total de ventas</span>
-                            <strong>{{ closeSummary()!.totalSales | currency: paymentBaseCurrency() }}</strong>
-                        </div>
-                        <div class="tpv-close-card">
-                            <span>Efectivo esperado</span>
-                            <strong>{{ closeExpectedCash() | currency: paymentBaseCurrency() }}</strong>
-                        </div>
-                    </div>
-
-                    <div class="tpv-close-payment-breakdown">
-                        <h4 class="m-0 mb-2">Monto total por métodos de pago</h4>
-                        <div class="tpv-close-payment-grid">
-                            @for (item of closePaymentMethodRows(); track item.code) {
-                                <div class="tpv-close-method-row">
-                                    <span>{{ item.label }}</span>
-                                    <strong>{{ item.amount | currency: paymentBaseCurrency() }}</strong>
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    <div class="tpv-close-denoms">
-                        <h4 class="m-0 mb-2">Conteo de efectivo por denominaciones</h4>
-                        @if (closeDenominationLines.length > 0) {
-                            <div class="tpv-close-denom-grid">
-                                @for (line of closeDenominationLines; track line.id) {
-                                    <div class="tpv-close-denom-row">
-                                        <span class="tpv-close-denom-value">{{ line.value | currency: line.currency }}</span>
-                                        <p-inputnumber
-                                            [(ngModel)]="line.qty"
-                                            [min]="0"
-                                            [minFractionDigits]="0"
-                                            [maxFractionDigits]="0"
-                                            [useGrouping]="false"
-                                            (click)="onCloseDenominationFieldInteraction($event)"
-                                            (touchend)="onCloseDenominationFieldInteraction($event)"
-                                            (ngModelChange)="onCloseDenominationQtyChange(line)"
-                                            inputStyleClass="tpv-close-denom-input"
-                                        />
-                                        <strong class="tpv-close-denom-subtotal">{{ (line.value * (line.qty || 0)) | currency: line.currency }}</strong>
-                                    </div>
-                                }
-                            </div>
-                        } @else {
-                            <div class="text-sm text-orange-600">
-                                No hay denominaciones activas configuradas para {{ closeCashCurrency }}.
-                            </div>
-                        }
-                    </div>
-
-                    <div class="tpv-close-balance">
-                        <div>
-                            <span>Contado por cajero:</span>
-                            <strong>{{ closeCountedCash() | currency: paymentBaseCurrency() }}</strong>
-                        </div>
-                        <div>
-                            <span>Diferencia:</span>
-                            <strong [class.text-green-600]="closeCashDifference() === 0" [class.text-red-600]="closeCashDifference() !== 0">
-                                {{ closeCashDifference() | currency: paymentBaseCurrency() }}
-                            </strong>
-                        </div>
-                    </div>
-                }
-
-                <div>
-                    <label class="block mb-2">Nota de cierre</label>
-                    <input pInputText [(ngModel)]="closingNote" class="w-full" placeholder="Opcional" />
-                </div>
-            </div>
-            <ng-template #footer>
-                <p-button label="Cancelar" icon="pi pi-times" text (onClick)="closeDialog = false" />
-                <p-button label="Cerrar Caja" icon="pi pi-check" [disabled]="!canConfirmCloseSession()" (onClick)="closeSession()" />
-            </ng-template>
-        </p-dialog>
-
-        <!-- Dialog: Pago -->
-        <p-dialog header="Procesar Pago" [(visible)]="paymentDialog" [modal]="true" [style]="{ width: '860px' }" [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }">
-            <div class="flex flex-col gap-4 tpv-payment-modal">
-                <div class="tpv-payment-summary">
-                    <div class="tpv-payment-summary-item">
-                        <span>Total ({{ paymentBaseCurrency() }})</span>
-                        <strong>{{ cartTotal() | currency: paymentBaseCurrency() }}</strong>
-                    </div>
-                    <div class="tpv-payment-summary-item">
-                        <span>Pagado ({{ paymentBaseCurrency() }})</span>
-                        <strong>{{ paymentTotal() | currency: paymentBaseCurrency() }}</strong>
-                    </div>
-                    <div class="tpv-payment-summary-item" [class.ok]="paymentDifference() === 0" [class.warn]="paymentDifference() > 0" [class.over]="paymentDifference() < 0">
-                        <span>{{ paymentDifference() >= 0 ? 'Restante' : 'Exceso' }} ({{ paymentBaseCurrency() }})</span>
-                        <strong>{{ absolutePaymentDifference() | currency: paymentBaseCurrency() }}</strong>
-                    </div>
-                </div>
-                <div class="text-sm text-gray-600">
-                    Moneda de este TPV: <strong>{{ paymentBaseCurrency() }}</strong>
-                </div>
-                <div class="border rounded p-3 bg-gray-50">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <div class="text-sm font-medium mb-1">Cliente de la venta (opcional)</div>
-                            @if (selectedCustomer()) {
-                                <div class="font-semibold">{{ selectedCustomer()!.name }}</div>
-                                <div class="text-sm text-gray-600">ID: {{ selectedCustomer()!.identification }}</div>
-                            } @else {
-                                <div class="text-sm text-gray-500">No hay cliente seleccionado.</div>
-                            }
-                        </div>
-                        <div class="flex gap-2">
-                            <p-button label="Seleccionar cliente" icon="pi pi-user-plus" severity="secondary" [outlined]="true" (onClick)="openCustomerDialog()" />
-                            <p-button label="Quitar" icon="pi pi-times" severity="danger" [outlined]="true" [disabled]="!selectedCustomer()" (onClick)="clearSelectedCustomer()" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tpv-payment-actions">
-                    <p-button
-                        label="Agregar línea"
-                        icon="pi pi-plus"
-                        severity="secondary"
-                        [outlined]="true"
-                        [disabled]="paymentLines.length >= paymentMethods.length"
-                        (onClick)="addPaymentLine()"
-                    />
-                    @for (methodOption of paymentMethods; track methodOption.value) {
-                        <p-button
-                            [label]="'Resto en ' + methodOption.label"
-                            severity="secondary"
-                            [outlined]="true"
-                            (onClick)="addRemainingAs(methodOption.value)"
-                        />
-                    }
-                </div>
-
-                <div class="tpv-payment-lines">
-                    @for (line of paymentLines; track line.id; let i = $index) {
-                        <div class="tpv-payment-line">
-                            <div class="tpv-payment-line-index">#{{ i + 1 }}</div>
-                            <div class="tpv-payment-line-method">
-                                <p-select
-                                    [options]="getPaymentMethodOptionsForLine(i)"
-                                    [(ngModel)]="line.method"
-                                    (ngModelChange)="onPaymentMethodChanged(i, $event)"
-                                    optionLabel="label"
-                                    optionValue="value"
-                                    appendTo="body"
-                                    class="w-full"
-                                />
-                            </div>
-                            <div class="tpv-payment-line-amount" (click)="onAmountFieldInteraction($event)" (touchend)="onAmountFieldInteraction($event)">
-                                <p-inputnumber
-                                    [(ngModel)]="line.amount"
-                                    mode="currency"
-                                    [currency]="paymentBaseCurrency()"
-                                    locale="en-US"
-                                    [min]="0"
-                                    inputStyleClass="tpv-amount-input"
-                                    class="w-full"
-                                />
-                            </div>
-                            <div class="tpv-payment-line-fill">
-                                <p-button
-                                    icon="pi pi-bolt"
-                                    severity="secondary"
-                                    [outlined]="true"
-                                    (onClick)="fillLineWithRemaining(i)"
-                                />
-                            </div>
-                            <div class="tpv-payment-line-remove">
-                                <p-button
-                                    icon="pi pi-trash"
-                                    severity="danger"
-                                    [outlined]="true"
-                                    [disabled]="paymentLines.length === 1"
-                                    (onClick)="removePaymentLine(i)"
-                                />
-                            </div>
-                            @if (requiresTransactionCodeForMethod(line.method)) {
-                                <div class="tpv-payment-line-transaction">
-                                    <input
-                                        pInputText
-                                        [(ngModel)]="line.transactionCode"
-                                        maxlength="120"
-                                        class="w-full"
-                                        placeholder="Código de transacción"
-                                    />
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
-            <ng-template #footer>
-                <p-button label="Cancelar" icon="pi pi-times" text (onClick)="paymentDialog = false" />
-                <p-button 
-                    label="Completar Venta" 
-                    icon="pi pi-check" 
-                    [disabled]="!canCompletePayment()"
-                    (onClick)="completeSale()"
-                />
-            </ng-template>
-        </p-dialog>
-
-        <p-dialog
-            header="Seleccionar cliente"
-            [(visible)]="customerDialog"
-            [modal]="true"
-            [style]="{ width: '980px' }"
-            [breakpoints]="{ '1200px': '96vw', '960px': '98vw' }"
-            (onShow)="onCustomerDialogShow()"
-        >
-            <div class="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-4">
-                <div class="flex flex-col gap-3">
-                    <div class="flex gap-2">
-                        <input
-                            pInputText
-                            [(ngModel)]="customerSearch"
-                            class="w-full"
-                            placeholder="Buscar por nombre, identificación, teléfono o email"
-                            (keydown.enter)="loadCustomers()"
-                        />
-                        <p-button icon="pi pi-search" label="Buscar" severity="secondary" [outlined]="true" [loading]="customersLoading()" (onClick)="loadCustomers()" />
-                    </div>
-
-                    <p-table [value]="customers()" [paginator]="true" [rows]="8" [loading]="customersLoading()" responsiveLayout="scroll">
-                        <ng-template #header>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Identificación</th>
-                                <th class="text-right">Compras</th>
-                                <th class="text-center">Seleccionar</th>
-                            </tr>
-                        </ng-template>
-                        <ng-template #body let-customer>
-                            <tr>
-                                <td>{{ customer.name }}</td>
-                                <td>{{ customer.identification }}</td>
-                                <td class="text-right">{{ customer.purchasesCount }}</td>
-                                <td class="text-center">
-                                    <p-button icon="pi pi-check" [rounded]="true" [text]="true" severity="success" (onClick)="selectCustomer(customer)" />
-                                </td>
-                            </tr>
-                        </ng-template>
-                        <ng-template #emptymessage>
-                            <tr>
-                                <td colspan="4" class="text-center">No hay clientes para mostrar.</td>
-                            </tr>
-                        </ng-template>
-                    </p-table>
-                </div>
-
-                <div class="flex flex-col gap-3">
-                    <p-button
-                        [label]="showNewCustomerForm ? 'Cancelar nuevo cliente' : 'Nuevo cliente'"
-                        [icon]="showNewCustomerForm ? 'pi pi-times' : 'pi pi-user-plus'"
-                        severity="secondary"
-                        [outlined]="true"
-                        (onClick)="toggleNewCustomerForm()"
-                    />
-
-                    @if (showNewCustomerForm) {
-                        <div class="border rounded p-3 bg-gray-50 flex flex-col gap-2">
-                            <h4 class="m-0">Crear cliente</h4>
-                            <input pInputText [(ngModel)]="newCustomer.name" placeholder="Nombre completo" />
-                            <input pInputText [(ngModel)]="newCustomer.identification" placeholder="Identificación" />
-                            <input pInputText [(ngModel)]="newCustomer.phone" placeholder="Teléfono (opcional)" />
-                            <input pInputText [(ngModel)]="newCustomer.email" placeholder="Email (opcional)" />
-                            <input pInputText [(ngModel)]="newCustomer.address" placeholder="Dirección (opcional)" />
-                            <div class="flex justify-end">
-                                <p-button label="Guardar cliente" icon="pi pi-save" [loading]="creatingCustomer()" (onClick)="createCustomer()" />
-                            </div>
-                        </div>
-                    } @else {
-                        <div class="text-sm text-gray-500 border rounded p-3">
-                            Si el cliente no existe, pulsa <strong>Nuevo cliente</strong> para crearlo y seleccionarlo en esta venta.
-                        </div>
-                    }
-                </div>
-            </div>
-            <ng-template #footer>
-                <p-button label="Cerrar" icon="pi pi-times" text (onClick)="customerDialog = false" />
-            </ng-template>
-        </p-dialog>
-
-        <p-dialog
-            header="Movimiento de Inventario (Sesion TPV)"
-            [(visible)]="sessionMovementDialog"
-            [modal]="true"
-            [style]="{ width: '520px' }"
-            [breakpoints]="{ '960px': '98vw' }"
-        >
-            <div class="flex flex-col gap-4">
-                <div class="text-sm text-gray-600">
-                    TPV: <strong>{{ getSelectedRegisterName() || '-' }}</strong>
-                </div>
-                <div class="text-sm text-gray-600">
-                    Almacen: <strong>{{ registerWarehouseName || '-' }}</strong>
-                </div>
-                @if (posService.currentSession()) {
-                    <div class="text-sm text-gray-600">
-                        Sesion: <strong>{{ posService.currentSession()!.id.substring(0, 8) }}</strong>
-                    </div>
-                }
-                <div class="flex flex-col gap-2">
-                    <label>Tipo</label>
-                    <p-select
-                        [options]="sessionMovementTypeOptions"
-                        [(ngModel)]="sessionMovement.type"
-                        (ngModelChange)="onSessionMovementTypeChange()"
-                        optionLabel="label"
-                        optionValue="value"
-                        class="w-full"
-                    />
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label>Producto *</label>
-                    <p-select
-                        [options]="movementProductOptions"
-                        [(ngModel)]="sessionMovement.productId"
-                        (ngModelChange)="onSessionMovementProductChange()"
-                        optionLabel="label"
-                        optionValue="value"
-                        [filter]="true"
-                        placeholder="Seleccione un producto"
-                        [disabled]="movementProductsLoading"
-                        class="w-full"
-                    />
-                    @if (sessionMovement.type === 'OUT' && sessionMovement.productId) {
-                        <small class="text-gray-500">
-                            Disponible en almacen: {{ getMovementAvailableQty(sessionMovement.productId) }}
-                        </small>
-                    }
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label>Cantidad *</label>
-                    <p-inputnumber
-                        [(ngModel)]="sessionMovement.qty"
-                        [min]="isSessionMovementFractionalProduct() ? 0.01 : 1"
-                        [step]="isSessionMovementFractionalProduct() ? 0.01 : 1"
-                        [minFractionDigits]="0"
-                        [maxFractionDigits]="isSessionMovementFractionalProduct() ? 2 : 0"
-                        locale="es-ES"
-                        [useGrouping]="false"
-                        class="w-full"
-                    />
-                    <small class="text-gray-500">
-                        {{ isSessionMovementFractionalProduct() ? 'Admite fracciones con coma (hasta 2 decimales).' : 'Solo valores enteros mayores a 0.' }}
-                    </small>
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label>Motivo</label>
-                    <input pInputText [(ngModel)]="sessionMovement.reason" class="w-full" placeholder="Opcional" />
-                </div>
-            </div>
-
-            <ng-template #footer>
-                <p-button label="Cancelar" icon="pi pi-times" text (onClick)="sessionMovementDialog = false" />
-                <p-button label="Guardar Movimiento" icon="pi pi-check" (onClick)="saveSessionMovement()" />
-            </ng-template>
-        </p-dialog>
-
-        <p-dialog
-            header="Reporte IPV de la Sesion"
-            [(visible)]="sessionIpvDialog"
-            [modal]="true"
-            [style]="{ width: '1120px' }"
-            [breakpoints]="{ '1400px': '96vw', '960px': '98vw' }"
-            styleClass="tpv-ipv-dialog"
-        >
-            <div class="tpv-ipv-modal">
-                <div class="tpv-ipv-toolbar">
-                    <div class="tpv-ipv-session-meta">
-                        <div>
-                            TPV:
-                            <strong>{{ sessionIpvReport()?.register?.name || '-' }}</strong>
-                        </div>
-                        <div>
-                            Apertura:
-                            <strong>{{ sessionIpvReport()?.openedAt ? (sessionIpvReport()!.openedAt | date:'dd/MM/yyyy HH:mm') : '-' }}</strong>
-                        </div>
-                        <div>
-                            Responsable:
-                            <strong>{{ sessionIpvResponsibleName() }}</strong>
-                        </div>
-                    </div>
-                    <div class="tpv-ipv-toolbar-actions">
-                        <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="openSessionIpvDialog()" />
-                        <p-splitbutton
-                            label="Exportar"
-                            icon="pi pi-download"
-                            severity="secondary"
-                            [model]="sessionIpvExportItems"
-                            [disabled]="!sessionIpvReport() || sessionIpvLoading()"
-                        />
-                    </div>
-                </div>
-
-                @if (sessionIpvLoading()) {
-                    <div class="tpv-ipv-loading">
-                        <i class="pi pi-spin pi-spinner"></i>
-                        <p>Cargando reporte IPV...</p>
-                    </div>
-                } @else if (sessionIpvReport()) {
-                    <div class="tpv-ipv-summary">
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total de ventas</span>
-                            <strong>{{ sessionIpvReport()!.totals.salesCount ?? sessionIpvReport()!.totals.sales }}</strong>
-                        </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total de entradas</span>
-                            <strong>{{ sessionIpvReport()!.totals.entriesCount ?? sessionIpvReport()!.totals.entries }}</strong>
-                        </div>
-                        <div class="tpv-ipv-summary-item">
-                            <span>Total de salidas</span>
-                            <strong>{{ sessionIpvReport()!.totals.outsCount ?? sessionIpvReport()!.totals.outs }}</strong>
-                        </div>
-                        @for (item of sessionIpvPaymentSummaryRows(); track item.code) {
-                            <div class="tpv-ipv-summary-item">
-                                <span>Total {{ item.label.toLowerCase() }}</span>
-                                <strong>{{ item.amount | currency: paymentBaseCurrency() }}</strong>
-                            </div>
-                        }
-                    </div>
-
-                    <div class="tpv-ipv-table-wrap">
-                        <table class="tpv-ipv-table">
-                            <thead>
-                                <tr>
-                                    <th class="text-left">Producto</th>
-                                    <th class="text-right">Inicio</th>
-                                    <th class="text-right">Entradas</th>
-                                    <th class="text-right">Salidas</th>
-                                    <th class="text-right">Ventas</th>
-                                    <th class="text-right">Total</th>
-                                    <th class="text-right">Final</th>
-                                    <th class="text-right">Precio</th>
-                                    <th class="text-right">Importe</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (sessionIpvReport()!.lines.length === 0) {
-                                    <tr>
-                                        <td colspan="9" class="tpv-ipv-empty-cell">
-                                            No hay productos para mostrar en este IPV.
-                                        </td>
-                                    </tr>
-                                } @else {
-                                    @for (line of sessionIpvReport()!.lines; track line.productId) {
-                                        <tr>
-                                            <td>
-                                                <div class="tpv-ipv-product-name">{{ line.name }}</div>
-                                                <div class="tpv-ipv-product-code">{{ line.codigo || '-' }}</div>
-                                            </td>
-                                            <td class="text-right">{{ line.initial }}</td>
-                                            <td class="text-right text-green-700">{{ line.entries }}</td>
-                                            <td class="text-right text-red-600">{{ line.outs }}</td>
-                                            <td class="text-right font-semibold">{{ line.sales }}</td>
-                                            <td class="text-right">{{ line.total }}</td>
-                                            <td class="text-right font-semibold">{{ line.final }}</td>
-                                            <td class="text-right">{{ line.price | currency: paymentBaseCurrency() }}</td>
-                                            <td class="text-right font-semibold">{{ line.amount | currency: paymentBaseCurrency() }}</td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="8" class="text-right">Total Importe</td>
-                                    <td class="text-right">{{ sessionIpvReport()!.totals.amount | currency: paymentBaseCurrency() }}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                } @else {
-                    <div class="tpv-ipv-empty">
-                        <i class="pi pi-folder-open"></i>
-                        <p>No hay reportes IPV generados para esta sesion.</p>
-                    </div>
-                }
-            </div>
-
-            <ng-template #footer>
-                <p-button label="Cerrar" icon="pi pi-times" text (onClick)="sessionIpvDialog = false" />
-            </ng-template>
-        </p-dialog>
-
-        <p-toast />
-    `
+    templateUrl: './tpv.html'
 })
 export class Tpv implements OnInit {
     products = signal<Product[]>([]);
@@ -783,6 +47,17 @@ export class Tpv implements OnInit {
     
     selectedRegisterId: string = '';
     searchQuery: string = '';
+    selectedCategoryFilter = 'all';
+    productCategoryByProductId = signal<Record<string, string>>({});
+    tpvCategoryFilters = computed(() => {
+        const categoryById = this.productCategoryByProductId();
+        const categories = new Set<string>();
+        for (const product of this.products()) {
+            const categoryName = (product.productCategory?.name || categoryById[product.id] || '').trim();
+            if (categoryName) categories.add(categoryName);
+        }
+        return Array.from(categories).sort((a, b) => a.localeCompare(b, 'es'));
+    });
     
     openDialog = false;
     closeDialog = false;
@@ -821,7 +96,17 @@ export class Tpv implements OnInit {
         address: string;
     } = this.getEmptyNewCustomerForm();
 
-    movementProductOptions: Array<{ label: string; value: string }> = [];
+    movementProductOptions: Array<{
+        label: string;
+        value: string;
+        name: string;
+        codigo: string;
+        image?: string;
+        price: number;
+        currency: SystemCurrencyCode;
+        stock: number;
+        allowFractionalQty: boolean;
+    }> = [];
     movementProductsCatalog: Product[] = [];
     movementProductsLoading = false;
     movementStockByProduct = new Map<string, number>();
@@ -899,10 +184,12 @@ export class Tpv implements OnInit {
     loadSessionProducts(cashSessionId: string) {
         this.posService.listSessionProducts(cashSessionId).subscribe({
             next: (products) => {
-                this.products.set(products.map((product) => ({
+                const normalized = products.map((product) => ({
                     ...product,
                     qtyAvailable: this.normalizeAvailableQty(product),
-                })));
+                }));
+                this.mergeProductCategoryMap(normalized);
+                this.products.set(normalized);
                 this.filterProducts();
             },
             error: (err) => {
@@ -944,6 +231,8 @@ export class Tpv implements OnInit {
     onRegisterChange(preferredAction?: 'open' | 'continue') {
         this.posService.clearCart();
         this.clearProducts();
+        this.searchQuery = '';
+        this.selectedCategoryFilter = 'all';
         this.applyRegisterCurrency('CUP');
         this.registerWarehouseId = '';
         this.registerWarehouseName = '';
@@ -990,13 +279,30 @@ export class Tpv implements OnInit {
     filterProducts() {
         const query = this.searchQuery.toLowerCase();
         const filtered = this.products().filter(p => 
-            this.isCurrencyAllowed(p.currency) && (
+            this.isCurrencyAllowed(p.currency) &&
+            this.matchesTpvCategoryFilter(p) &&
+            (
+                !query ||
                 p.name.toLowerCase().includes(query) || 
                 (p.codigo && p.codigo.toLowerCase().includes(query)) ||
                 (p.barcode && p.barcode.toLowerCase().includes(query))
             )
         );
         this.filteredProducts.set(filtered);
+    }
+
+    clearProductSearch() {
+        this.searchQuery = '';
+        this.filterProducts();
+    }
+
+    setTpvCategoryFilter(category: string) {
+        this.selectedCategoryFilter = category || 'all';
+        this.filterProducts();
+    }
+
+    isTpvCategoryActive(category: string): boolean {
+        return this.selectedCategoryFilter === category;
     }
 
     addToCart(product: Product) {
@@ -1270,8 +576,7 @@ export class Tpv implements OnInit {
     canConfirmCloseSession(): boolean {
         if (this.closeSummaryLoading()) return false;
         if (!this.closeSummary()) return false;
-        if (this.closeDenominationLines.length === 0) return this.closeExpectedCash() === 0;
-        return this.closeCashDifference() === 0;
+        return true;
     }
 
     private buildCloseDenominationLines(denominations: Denomination[]) {
@@ -1647,20 +952,14 @@ export class Tpv implements OnInit {
             return;
         }
 
-        const payload: CreateStockMovementDto = {
+        const payload: { type: 'IN' | 'OUT'; productId: string; qty: number; reason?: string } = {
             type: this.sessionMovement.type,
             productId: this.sessionMovement.productId,
             qty,
-            reason: this.sessionMovement.reason?.trim() || 'AJUSTE EN TPV (SESION)'
+            reason: this.sessionMovement.reason?.trim() || undefined
         };
 
-        if (this.sessionMovement.type === 'IN') {
-            payload.toWarehouseId = this.registerWarehouseId;
-        } else {
-            payload.fromWarehouseId = this.registerWarehouseId;
-        }
-
-        this.warehousesService.createMovement(payload).subscribe({
+        this.posService.createSessionMovement(session.id, payload).subscribe({
             next: () => {
                 this.sessionMovementDialog = false;
                 this.loadSessionProducts(session.id);
@@ -1890,7 +1189,9 @@ export class Tpv implements OnInit {
         this.productsService.list().subscribe({
             next: (products) => {
                 this.movementProductsCatalog = products.filter((p) => p.active);
+                this.mergeProductCategoryMap(products);
                 this.refreshMovementProductOptions();
+                this.filterProducts();
             },
             error: () => {
                 this.movementProductsCatalog = [];
@@ -1902,6 +1203,29 @@ export class Tpv implements OnInit {
                 });
             }
         });
+    }
+
+    private matchesTpvCategoryFilter(product: Product): boolean {
+        if (this.selectedCategoryFilter === 'all') return true;
+        return this.getProductCategoryName(product) === this.selectedCategoryFilter;
+    }
+
+    private getProductCategoryName(product: Product): string {
+        const fromProduct = product.productCategory?.name?.trim();
+        if (fromProduct) return fromProduct;
+        return (this.productCategoryByProductId()[product.id] || '').trim();
+    }
+
+    private mergeProductCategoryMap(products: Product[]) {
+        const current = this.productCategoryByProductId();
+        const next: Record<string, string> = { ...current };
+        for (const product of products || []) {
+            const categoryName = product.productCategory?.name?.trim();
+            if (categoryName) {
+                next[product.id] = categoryName;
+            }
+        }
+        this.productCategoryByProductId.set(next);
     }
 
     private loadMovementStockForWarehouse(warehouseId: string) {
@@ -1934,10 +1258,16 @@ export class Tpv implements OnInit {
             })
             .map((product) => {
                 const stock = this.getMovementAvailableQty(product.id);
-                const stockSuffix = isOut ? ` | Stock: ${stock}` : '';
                 return {
-                    label: `${product.codigo ? `${product.name} (${product.codigo})` : product.name}${stockSuffix}`,
-                    value: product.id
+                    label: `${product.codigo ? `${product.name} (${product.codigo})` : product.name}`,
+                    value: product.id,
+                    name: product.name,
+                    codigo: product.codigo || product.barcode || '',
+                    image: product.image || '',
+                    price: Number(product.price || 0),
+                    currency: (product.currency || this.paymentBaseCurrency()) as SystemCurrencyCode,
+                    stock: Number(stock || 0),
+                    allowFractionalQty: !!product.allowFractionalQty
                 };
             });
 

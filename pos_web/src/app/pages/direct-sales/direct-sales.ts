@@ -12,6 +12,7 @@ import { TableModule } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { DirectSaleProduct, DirectSaleTicket, DirectSalesService, PaymentMethodCode } from '@/app/core/services/direct-sales.service';
+import { ProductsService } from '@/app/core/services/products.service';
 import { PaymentMethodSetting, SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 import { Customer, CustomerHistory, CustomersService } from '@/app/core/services/customers.service';
@@ -114,41 +115,56 @@ interface NewCustomerForm {
                 </div>
             </p-card>
 
-            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 direct-sales-layout">
                 <div class="xl:col-span-2">
-                    <p-card>
-                        <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
-                            <h3 class="m-0 text-lg font-semibold">Productos disponibles</h3>
-                            <div class="flex gap-2">
-                                <p-button
-                                    icon="pi pi-th-large"
-                                    label="Cards"
-                                    size="small"
-                                    severity="secondary"
-                                    [outlined]="productsViewMode !== 'cards'"
-                                    (onClick)="setProductsViewMode('cards')"
-                                />
-                                <p-button
-                                    icon="pi pi-table"
-                                    label="Tabla"
-                                    size="small"
-                                    severity="secondary"
-                                    [outlined]="productsViewMode !== 'table'"
-                                    (onClick)="setProductsViewMode('table')"
-                                />
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="block mb-2">Buscar producto</label>
-                            <div class="tpv-search-wrap">
-                                <i class="pi pi-search"></i>
-                                <input
-                                    pInputText
-                                    [(ngModel)]="search"
-                                    (input)="applyFilter()"
-                                    class="w-full tpv-search-input"
-                                    placeholder="Nombre, código o barcode"
-                                />
+                    <p-card styleClass="sales-products-card-shell">
+                        <div class="sales-catalog-toolbar mb-3">
+                            <div class="catalog-header-surface">
+                                <div class="catalog-header-main">
+                                    <div>
+                                        <h3 class="catalog-title">Productos disponibles</h3>
+                                        <p class="sales-catalog-meta">
+                                            Mostrando {{ filteredProducts().length }} de {{ products().length }} productos
+                                            <span class="mx-2">|</span>
+                                            En ticket: {{ cart().length }}
+                                        </p>
+                                    </div>
+
+                                    <div class="catalog-header-actions">
+                                        <div class="catalog-search-wrap">
+                                            <i class="pi pi-search"></i>
+                                            <input
+                                                pInputText
+                                                [(ngModel)]="search"
+                                                (input)="applyFilter()"
+                                                placeholder="Buscar producto, código o barcode..."
+                                            />
+                                            <button type="button" class="catalog-clear-btn" [disabled]="!search" (click)="clearProductSearch()">
+                                                <i class="pi pi-times"></i>
+                                            </button>
+                                        </div>
+
+                                        <div class="catalog-view-toggle compact">
+                                            <button type="button" [class.active]="productsViewMode === 'cards'" (click)="setProductsViewMode('cards')" aria-label="Vista tarjetas">
+                                                <i class="pi pi-th-large"></i>
+                                            </button>
+                                            <button type="button" [class.active]="productsViewMode === 'table'" (click)="setProductsViewMode('table')" aria-label="Vista tabla">
+                                                <i class="pi pi-table"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="catalog-chip-row">
+                                    <button class="catalog-chip" [class.active]="isDirectSaleCategoryActive('all')" (click)="setDirectSaleCategoryFilter('all')">
+                                        Todas
+                                    </button>
+                                    @for (category of directSaleCategoryFilters(); track category) {
+                                        <button class="catalog-chip" [class.active]="isDirectSaleCategoryActive(category)" (click)="setDirectSaleCategoryFilter(category)">
+                                            {{ category }}
+                                        </button>
+                                    }
+                                </div>
                             </div>
                         </div>
 
@@ -162,22 +178,7 @@ interface NewCustomerForm {
                                         [disabled]="(product.qtyAvailable || 0) <= inCartQty(product.id)"
                                         (click)="addToCart(product)"
                                     >
-                                        <div class="tpv-product-head">
-                                            <div class="tpv-product-name">{{ product.name }}</div>
-                                            <span
-                                                class="tpv-stock-pill"
-                                                [class.low]="(product.qtyAvailable || 0) > 0 && (product.qtyAvailable || 0) <= 5"
-                                                [class.empty]="(product.qtyAvailable || 0) <= 0"
-                                            >
-                                                @if ((product.qtyAvailable || 0) > 0) {
-                                                    Stock {{ product.qtyAvailable || 0 }}
-                                                } @else {
-                                                    Sin stock
-                                                }
-                                            </span>
-                                        </div>
-
-                                        <div class="tpv-product-media">
+                                        <div class="tpv-product-media" [class.no-image]="!product.image">
                                             @if (product.image) {
                                                 <img [src]="product.image" class="tpv-product-image" />
                                             } @else {
@@ -185,12 +186,22 @@ interface NewCustomerForm {
                                                     <i class="pi pi-image"></i>
                                                 </div>
                                             }
+                                            <span
+                                                class="tpv-stock-pill"
+                                                [class.low]="(product.qtyAvailable || 0) > 0 && (product.qtyAvailable || 0) <= 5"
+                                                [class.empty]="(product.qtyAvailable || 0) <= 0"
+                                            >
+                                                {{ formatStockBadge(product.qtyAvailable || 0) }}
+                                            </span>
                                         </div>
 
                                         <div class="tpv-product-content">
-                                            <div class="tpv-product-meta">{{ product.codigo || product.barcode || 'Sin identificador' }}</div>
+                                            <div class="tpv-product-headline">
+                                                <div class="tpv-product-name">{{ product.name }}</div>
+                                                <strong class="tpv-product-price whitespace-nowrap">{{ formatProductPrice(product.price, product.currency) }}</strong>
+                                            </div>
+                                            <div class="tpv-product-meta">SKU: {{ product.codigo || product.barcode || 'Sin identificador' }}</div>
                                             <div class="tpv-product-footer">
-                                                <strong class="whitespace-nowrap">{{ formatProductPrice(product.price, product.currency) }}</strong>
                                                 <span class="tpv-add-chip">
                                                     <i class="pi pi-plus"></i>
                                                     Agregar
@@ -245,8 +256,8 @@ interface NewCustomerForm {
                     </p-card>
                 </div>
 
-                <div>
-                    <p-card header="Ticket actual">
+                <div class="direct-sales-ticket-col">
+                    <p-card header="Ticket actual" styleClass="direct-sales-ticket-card">
                         <div class="mb-3">
                             <p-button
                                 label="Limpiar ticket"
@@ -572,6 +583,17 @@ export class DirectSales implements OnInit {
 
     selectedWarehouseId = '';
     search = '';
+    selectedCategoryFilter = 'all';
+    productCategoryByProductId = signal<Record<string, string>>({});
+    directSaleCategoryFilters = computed(() => {
+        const categoryById = this.productCategoryByProductId();
+        const categories = new Set<string>();
+        for (const product of this.products()) {
+            const categoryName = (categoryById[product.id] || '').trim();
+            if (categoryName) categories.add(categoryName);
+        }
+        return Array.from(categories).sort((a, b) => a.localeCompare(b, 'es'));
+    });
 
     paymentLines: PaymentLine[] = [];
     private paymentLineSeq = 1;
@@ -631,6 +653,7 @@ export class DirectSales implements OnInit {
     constructor(
         private readonly warehousesService: WarehousesService,
         private readonly directSalesService: DirectSalesService,
+        private readonly productsService: ProductsService,
         private readonly customersService: CustomersService,
         private readonly settingsService: SettingsService,
         private readonly messageService: MessageService,
@@ -640,6 +663,7 @@ export class DirectSales implements OnInit {
     ngOnInit(): void {
         this.loadSystemSettings();
         this.loadPaymentMethods();
+        this.loadProductCategoryMap();
         this.loadWarehouses();
         this.initPaymentLines();
     }
@@ -851,6 +875,7 @@ export class DirectSales implements OnInit {
     onWarehouseChange() {
         this.cart.set([]);
         this.search = '';
+        this.selectedCategoryFilter = 'all';
 
         if (!this.selectedWarehouseId) {
             this.products.set([]);
@@ -861,7 +886,7 @@ export class DirectSales implements OnInit {
         this.directSalesService.listWarehouseProducts(this.selectedWarehouseId).subscribe({
             next: (products) => {
                 this.products.set(products);
-                this.filteredProducts.set(products);
+                this.applyFilter();
             },
             error: (err) => {
                 this.products.set([]);
@@ -899,22 +924,42 @@ export class DirectSales implements OnInit {
 
     applyFilter() {
         const q = this.search.trim().toLowerCase();
-        if (!q) {
-            this.filteredProducts.set(this.products());
-            return;
-        }
-
         this.filteredProducts.set(
             this.products().filter((p) =>
-                p.name.toLowerCase().includes(q) ||
-                (p.codigo || '').toLowerCase().includes(q) ||
-                (p.barcode || '').toLowerCase().includes(q)
+                this.matchesDirectSaleCategoryFilter(p) &&
+                (
+                    !q ||
+                    p.name.toLowerCase().includes(q) ||
+                    (p.codigo || '').toLowerCase().includes(q) ||
+                    (p.barcode || '').toLowerCase().includes(q)
+                )
             )
         );
     }
 
+    clearProductSearch() {
+        this.search = '';
+        this.applyFilter();
+    }
+
+    setDirectSaleCategoryFilter(category: string) {
+        this.selectedCategoryFilter = category || 'all';
+        this.applyFilter();
+    }
+
+    isDirectSaleCategoryActive(category: string): boolean {
+        return this.selectedCategoryFilter === category;
+    }
+
     setProductsViewMode(mode: 'cards' | 'table') {
         this.productsViewMode = mode;
+    }
+
+    formatStockBadge(value: number): string {
+        const qty = Number(value || 0);
+        if (!Number.isFinite(qty) || qty <= 0) return '0';
+        if (Number.isInteger(qty)) return String(qty);
+        return qty.toFixed(2).replace(/\.?0+$/, '');
     }
 
     inCartQty(productId: string) {
@@ -1246,6 +1291,31 @@ export class DirectSales implements OnInit {
             maximumFractionDigits: 2
         }).format(Number(amount || 0));
         return `${safeCurrency}\u00A0${formattedAmount}`;
+    }
+
+    private loadProductCategoryMap() {
+        this.productsService.list().subscribe({
+            next: (products) => {
+                const next: Record<string, string> = {};
+                for (const product of products || []) {
+                    const categoryName = product.productCategory?.name?.trim();
+                    if (categoryName) {
+                        next[product.id] = categoryName;
+                    }
+                }
+                this.productCategoryByProductId.set(next);
+                this.applyFilter();
+            },
+            error: () => {
+                this.productCategoryByProductId.set({});
+            }
+        });
+    }
+
+    private matchesDirectSaleCategoryFilter(product: DirectSaleProduct): boolean {
+        if (this.selectedCategoryFilter === 'all') return true;
+        const categoryName = this.productCategoryByProductId()[product.id] || '';
+        return categoryName === this.selectedCategoryFilter;
     }
 
     private normalizeDisplayCurrency(currency?: string): SystemCurrencyCode {

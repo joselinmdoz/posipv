@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>License Manager</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --line: #dbe2ef;
+      --text: #1f2a44;
+      --muted: #5b6785;
+      --primary: #2459d1;
+      --danger: #c53939;
+      --ok: #1f8f4a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    .page {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 12px 24px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 4px 20px rgba(14, 37, 88, 0.07);
+    }
+    h1 {
+      grid-column: 1 / -1;
+      margin: 0 0 8px;
+      font-size: 22px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: -4px;
+      margin-bottom: 10px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 8px 0 5px;
+    }
+    input, textarea, button {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button.secondary { background: #5f6b86; }
+    button.danger { background: var(--danger); }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .output {
+      white-space: pre-wrap;
+      background: #0f1a33;
+      color: #dff1ff;
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 80px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      margin-top: 10px;
+      overflow: auto;
+      max-height: 280px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 8px 4px;
+      vertical-align: top;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #fff;
+      display: inline-block;
+    }
+    .active { background: var(--ok); }
+    .revoked { background: var(--danger); }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .toolbar input { width: 320px; max-width: 100%; }
+    .topbar {
+      grid-column: 1 / -1;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: -8px;
+    }
+    @media (max-width: 700px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>License Manager (Web)</h1>
+    <div class="topbar">Panel local offline para emitir y gestionar licencias firmadas Ed25519.</div>
+
+    <section class="card">
+      <h2>1) Generar claves</h2>
+      <label>Directorio salida</label>
+      <input id="keygenOut" value="./license_manager/keys" />
+      <button id="btnKeygen">Generar par de claves</button>
+      <label>Ruta public key (.pem)</label>
+      <input id="publicPath" value="./license_manager/keys/license-public.pem" />
+      <button class="secondary" id="btnPublicEnv">Obtener LICENSE_PUBLIC_KEY_PEM</button>
+      <div class="output" id="outKeygen"></div>
+    </section>
+
+    <section class="card">
+      <h2>2) Emitir licencia</h2>
+      <div class="hint">Puedes usar request JSON pegado o una ruta de archivo.</div>
+      <label>Private key (.pem)</label>
+      <input id="issuePrivate" value="./license_manager/keys/license-private.pem" />
+      <div class="row">
+        <div>
+          <label>License ID</label>
+          <input id="issueLicenseId" placeholder="LIC-000001" />
+        </div>
+        <div>
+          <label>Dias (si no pones expiresAt)</label>
+          <input id="issueDays" value="365" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Cliente</label>
+          <input id="issueCustomer" />
+        </div>
+        <div>
+          <label>Max users</label>
+          <input id="issueMaxUsers" />
+        </div>
+      </div>
+      <label>Features (csv)</label>
+      <input id="issueFeatures" placeholder="pos,inventory,reports" />
+      <label>Request file (opcional)</label>
+      <input id="issueRequestFile" placeholder="./request.json" />
+      <label>Request JSON (opcional)</label>
+      <textarea id="issueRequestJson" placeholder='{"fingerprint":{"deviceHash":"..."}}'></textarea>
+      <label>Archivo de salida (.dat)</label>
+      <input id="issueOut" placeholder="./license_manager/out/LIC-000001.dat" />
+      <label>Registry db</label>
+      <input id="issueDb" value="./license_manager/data/licenses.json" />
+      <button id="btnIssue">Emitir licencia</button>
+      <div class="output" id="outIssue"></div>
+    </section>
+
+    <section class="card">
+      <h2>3) Verificar licencia</h2>
+      <label>Public key (.pem)</label>
+      <input id="verifyPublic" value="./license_manager/keys/license-public.pem" />
+      <label>Archivo licencia (.dat)</label>
+      <input id="verifyLicense" placeholder="./license_manager/out/LIC-000001.dat" />
+      <button id="btnVerify">Verificar</button>
+      <div class="output" id="outVerify"></div>
+    </section>
+
+    <section class="card" style="grid-column: 1 / -1;">
+      <h2>4) Gestion de licencias</h2>
+      <div class="toolbar">
+        <input id="listDb" value="./license_manager/data/licenses.json" />
+        <button id="btnReload" style="width:auto;padding:9px 14px;">Recargar</button>
+      </div>
+      <div id="listStatus" class="hint"></div>
+      <div style="overflow:auto;">
+        <table id="licensesTable">
+          <thead>
+            <tr>
+              <th>License ID</th>
+              <th>Estado</th>
+              <th>Expira</th>
+              <th>Cliente</th>
+              <th>Device</th>
+              <th>Accion</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="output" id="outList"></div>
+    </section>
+  </div>
+
+  <script>
+    async function callApi(path, data, method = "POST") {
+      const options = { method, headers: { "Content-Type": "application/json" } };
+      if (method !== "GET") {
+        options.body = JSON.stringify(data || {});
+      }
+      const res = await fetch(path, options);
+      const json = await res.json().catch(() => ({ ok: false, error: "Respuesta JSON invalida" }));
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Error en API");
+      }
+      return json;
+    }
+
+    function print(id, value) {
+      const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      document.getElementById(id).textContent = text;
+    }
+
+    async function refreshList() {
+      const dbPath = document.getElementById("listDb").value.trim() || "./license_manager/data/licenses.json";
+      try {
+        const res = await callApi("/api/licenses?dbPath=" + encodeURIComponent(dbPath), null, "GET");
+        const tbody = document.querySelector("#licensesTable tbody");
+        tbody.innerHTML = "";
+        for (const row of res.licenses) {
+          const tr = document.createElement("tr");
+          const badge = row.status === "REVOKED"
+            ? '<span class="badge revoked">REVOKED</span>'
+            : '<span class="badge active">ACTIVE</span>';
+          const device = String(row.deviceHash || "");
+          tr.innerHTML =
+            "<td>" + (row.licenseId || "-") + "</td>" +
+            "<td>" + badge + "</td>" +
+            "<td>" + (row.expiresAt || "-") + "</td>" +
+            "<td>" + (row.customerName || "-") + "</td>" +
+            "<td title=\"" + device + "\">" + device.slice(0, 16) + "...</td>" +
+            "<td>" + (row.status === "REVOKED" ? "-" : '<button class="danger" data-license="' + row.licenseId + '" style="width:auto;padding:6px 10px;margin:0;">Revocar</button>') + "</td>";
+          tbody.appendChild(tr);
+        }
+        document.getElementById("listStatus").textContent = "DB: " + res.dbPath + " - " + res.licenses.length + " licencia(s)";
+        print("outList", res.licenses);
+      } catch (error) {
+        print("outList", { error: String(error.message || error) });
+      }
+    }
+
+    document.getElementById("btnKeygen").addEventListener("click", async () => {
+      try {
+        const outDir = document.getElementById("keygenOut").value.trim();
+        const res = await callApi("/api/keygen", { outDir });
+        print("outKeygen", res.result);
+      } catch (error) {
+        print("outKeygen", { error: String(error.message || error) });
+      }
+    });
+
+    document.getElementById("btnPublicEnv").addEventListener("click", async () => {
+      try {
+        const publicFile = document.getElementById("publicPath").value.trim();
+        const res = await callApi("/api/public-env", { publicFile });
+        print("outKeygen", res.envLine);
+      } catch (error) {
+        print("outKeygen", { error: String(error.message || error) });
+      }
+    });
+
+    document.getElementById("btnIssue").addEventListener("click", async () => {
+      try {
+        const data = {
+          privateFile: document.getElementById("issuePrivate").value.trim(),
+          licenseId: document.getElementById("issueLicenseId").value.trim(),
+          days: document.getElementById("issueDays").value.trim(),
+          customer: document.getElementById("issueCustomer").value.trim(),
+          maxUsers: document.getElementById("issueMaxUsers").value.trim(),
+          features: document.getElementById("issueFeatures").value.trim(),
+          requestFile: document.getElementById("issueRequestFile").value.trim(),
+          requestJsonText: document.getElementById("issueRequestJson").value.trim(),
+          outFile: document.getElementById("issueOut").value.trim(),
+          dbPath: document.getElementById("issueDb").value.trim(),
+        };
+        const res = await callApi("/api/issue", data);
+        print("outIssue", res.result);
+        document.getElementById("verifyLicense").value = res.result.outFile;
+        await refreshList();
+      } catch (error) {
+        print("outIssue", { error: String(error.message || error) });
+      }
+    });
+
+    document.getElementById("btnVerify").addEventListener("click", async () => {
+      try {
+        const data = {
+          publicFile: document.getElementById("verifyPublic").value.trim(),
+          licenseFile: document.getElementById("verifyLicense").value.trim(),
+        };
+        const res = await callApi("/api/verify", data);
+        print("outVerify", res.result);
+      } catch (error) {
+        print("outVerify", { error: String(error.message || error) });
+      }
+    });
+
+    document.getElementById("btnReload").addEventListener("click", refreshList);
+
+    document.querySelector("#licensesTable tbody").addEventListener("click", async (event) => {
+      const btn = event.target.closest("button[data-license]");
+      if (!btn) return;
+
+      const licenseId = btn.getAttribute("data-license");
+      const dbPath = document.getElementById("listDb").value.trim();
+      const reason = window.prompt("Motivo de revocacion para " + licenseId + ":", "Revocada manualmente") || "Revocada manualmente";
+      try {
+        const res = await callApi("/api/revoke", { licenseId, dbPath, reason });
+        print("outList", res.result);
+        await refreshList();
+      } catch (error) {
+        print("outList", { error: String(error.message || error) });
+      }
+    });
+
+    refreshList();
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "requestVersion": 1,
+  "generatedAt": "2026-03-28T20:00:00.000Z",
+  "systemName": "POS System",
+  "fingerprint": {
+    "deviceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "platform": "linux",
+    "arch": "x64",
+    "hostnameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "machineIdHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "macHashes": [
+      "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    ]
+  }
+}

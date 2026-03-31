@@ -26,6 +26,7 @@ import { EmployeesModule } from "./modules/employees/employees.module";
 import { UserPermissionsModule } from "./modules/user-permissions/user-permissions.module";
 import { AccountingModule } from "./modules/accounting/accounting.module";
 import { PurchasesModule } from "./modules/purchases/purchases.module";
+import { LicenseModule } from "./modules/license/license.module";
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { PurchasesModule } from "./modules/purchases/purchases.module";
     UserPermissionsModule,
     AccountingModule,
     PurchasesModule,
+    LicenseModule,
   ],
 })
 export class AppModule {}

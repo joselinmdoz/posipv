@@ -223,38 +223,55 @@ export class InventoryReportsService {
     const entriesMap = new Map<string, number>();
     const outsMap = new Map<string, number>();
     const saleReasonRegex = /VENTA/i;
+    const tpvSessionReasonRegex = /TPV[_\s-]*SESION/i;
+    const legacyTpvSessionReasonRegex = /AJUSTE\s+EN\s+TPV\s*\(\s*SESION\s*\)/i;
+    const isFirstKnownSession = !previousClosedSession?.closedAt;
     let entriesCount = 0;
     let outsCount = 0;
     for (const mv of movements) {
       productIds.add(mv.productId);
       const qty = Number(mv.qty);
       const isSessionWindowMovement = mv.createdAt >= session.openedAt;
+      const reason = (mv.reason || '').trim();
+      const isTpvSessionMovement =
+        tpvSessionReasonRegex.test(reason) || legacyTpvSessionReasonRegex.test(reason);
 
       const isInbound =
         (mv.type === 'IN' && mv.toWarehouseId === warehouseId) ||
         (mv.type === 'TRANSFER' && mv.toWarehouseId === warehouseId);
       if (isInbound) {
-        entriesMap.set(mv.productId, (entriesMap.get(mv.productId) || 0) + qty);
-      }
-      if (mv.type === 'IN' && mv.toWarehouseId === warehouseId) {
-        entriesCount += 1;
+        const isCarryIntoInitial = isFirstKnownSession && !isTpvSessionMovement;
+        if (isCarryIntoInitial) {
+          initialMap.set(mv.productId, Number((initialMap.get(mv.productId) || 0) + qty));
+        } else {
+          entriesMap.set(mv.productId, Number((entriesMap.get(mv.productId) || 0) + qty));
+          if (mv.type === 'IN' && mv.toWarehouseId === warehouseId) {
+            entriesCount += 1;
+          }
+        }
       }
 
       const isOutbound =
         (mv.type === 'OUT' && mv.fromWarehouseId === warehouseId) ||
         (mv.type === 'TRANSFER' && mv.fromWarehouseId === warehouseId);
       if (isOutbound) {
-        const reason = (mv.reason || '').trim();
         // Exclude sale movements only during this session to avoid double count with salesMap.
         const isSaleOutInsideSession = isSessionWindowMovement && saleReasonRegex.test(reason);
         if (!isSaleOutInsideSession) {
-          outsMap.set(mv.productId, (outsMap.get(mv.productId) || 0) + qty);
+          const isCarryIntoInitial = isFirstKnownSession && !isTpvSessionMovement;
+          if (isCarryIntoInitial) {
+            initialMap.set(mv.productId, Number((initialMap.get(mv.productId) || 0) - qty));
+          } else {
+            outsMap.set(mv.productId, Number((outsMap.get(mv.productId) || 0) + qty));
+          }
         }
       }
       if (mv.type === 'OUT' && mv.fromWarehouseId === warehouseId) {
-        const reason = (mv.reason || '').trim();
         if (!saleReasonRegex.test(reason)) {
-          outsCount += 1;
+          const isCarryIntoInitial = isFirstKnownSession && !isTpvSessionMovement;
+          if (!isCarryIntoInitial) {
+            outsCount += 1;
+          }
         }
       }
     }

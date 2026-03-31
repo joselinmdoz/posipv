@@ -7,5 +7,6 @@ import { AccountingModule } from "../accounting/accounting.module";
   imports: [AccountingModule],
   controllers: [StockMovementsController],
   providers: [StockMovementsService],
+  exports: [StockMovementsService],
 })
 export class StockMovementsModule {}

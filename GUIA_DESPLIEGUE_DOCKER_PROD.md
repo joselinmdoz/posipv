@@ -27,8 +27,29 @@ Ajustar al menos:
 - `CORS_ORIGIN`
 - `SEED_ADMIN_EMAIL`
 - `SEED_ADMIN_PASSWORD`
+- `LICENSE_PUBLIC_KEY_PEM` (si vas a usar licenciamiento offline)
 
 Verificar que `.env.prod` no quede versionado en Git.
+
+### 2.1 Licenciamiento offline (recomendado)
+1. Generar par de claves Ed25519 en una maquina segura (fuera de produccion):
+
+```bash
+cd pos_api
+npm run license:tool -- keygen --out ./keys
+```
+
+2. Copiar el contenido de `keys/license-public.pem` en `LICENSE_PUBLIC_KEY_PEM` dentro de `.env.prod`.
+   Puedes ponerlo en una sola linea reemplazando saltos por `\n`.
+
+3. Reiniciar API para aplicar la clave publica:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
+```
+
+4. Desde la UI (`Administracion > Licencia`) generar la solicitud de activacion y enviarla al emisor de licencias.
+5. El emisor firma y devuelve `license.dat`; luego se instala desde la misma vista.
 
 ## 3) Primer despliegue (base vacia)
 Ejecutar una sola vez en un entorno nuevo:

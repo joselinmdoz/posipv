@@ -19,6 +19,7 @@ exports.StockMovementsModule = StockMovementsModule = __decorate([
         imports: [accounting_module_1.AccountingModule],
         controllers: [stock_movements_controller_1.StockMovementsController],
         providers: [stock_movements_service_1.StockMovementsService],
+        exports: [stock_movements_service_1.StockMovementsService],
     })
 ], StockMovementsModule);
 //# sourceMappingURL=stock-movements.module.js.map

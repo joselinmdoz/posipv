@@ -45,6 +45,25 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CloseDto.prototype, "note", void 0);
+class SessionMovementDto {
+}
+__decorate([
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], SessionMovementDto.prototype, "productId", void 0);
+__decorate([
+    (0, class_validator_1.IsIn)(["IN", "OUT"]),
+    __metadata("design:type", String)
+], SessionMovementDto.prototype, "type", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], SessionMovementDto.prototype, "qty", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], SessionMovementDto.prototype, "reason", void 0);
 let CashSessionsController = class CashSessionsController {
     constructor(service) {
         this.service = service;
@@ -71,6 +90,16 @@ let CashSessionsController = class CashSessionsController {
     }
     close(id, dto) {
         return this.service.close(id, dto.closingAmount, dto.note);
+    }
+    createSessionMovement(req, id, dto) {
+        return this.service.createSessionMovement({
+            cashSessionId: id,
+            type: dto.type,
+            productId: dto.productId,
+            qty: dto.qty,
+            reason: dto.reason,
+            userId: req.user.userId,
+        });
     }
 };
 exports.CashSessionsController = CashSessionsController;
@@ -123,6 +152,16 @@ __decorate([
     __metadata("design:paramtypes", [String, CloseDto]),
     __metadata("design:returntype", void 0)
 ], CashSessionsController.prototype, "close", null);
+__decorate([
+    (0, common_1.Post)(":id/movement"),
+    (0, permissions_decorator_1.Permissions)("sales.tpv", "tpv.manage"),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)("id")),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, SessionMovementDto]),
+    __metadata("design:returntype", void 0)
+], CashSessionsController.prototype, "createSessionMovement", null);
 exports.CashSessionsController = CashSessionsController = __decorate([
     (0, common_1.Controller)("cash-sessions"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
