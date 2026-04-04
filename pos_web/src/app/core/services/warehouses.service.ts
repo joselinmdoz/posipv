@@ -24,6 +24,7 @@ export interface StockItem {
     barcode?: string;
     price: number;
     cost?: number;
+    allowFractionalQty?: boolean;
     image?: string;
     active: boolean;
     createdAt: Date;
@@ -121,6 +122,27 @@ export class WarehousesService {
   // Stock
   getStock(warehouseId: string): Observable<StockItem[]> {
     return this.http.get<StockItem[]>(`${this.WAREHOUSES_URL}/${warehouseId}/stock`);
+  }
+
+  updateStockItemQty(
+    warehouseId: string,
+    productId: string,
+    payload: { qty: number; reason?: string }
+  ): Observable<StockItem> {
+    return this.http.put<StockItem>(`${this.WAREHOUSES_URL}/${warehouseId}/stock/${productId}`, payload);
+  }
+
+  deleteStockItem(
+    warehouseId: string,
+    productId: string,
+    reason?: string
+  ): Observable<{ ok: boolean; warehouseId: string; productId: string; removedQty: number }> {
+    const queryParams = new URLSearchParams();
+    if (reason?.trim()) queryParams.set('reason', reason.trim());
+    const url = queryParams.toString()
+      ? `${this.WAREHOUSES_URL}/${warehouseId}/stock/${productId}?${queryParams}`
+      : `${this.WAREHOUSES_URL}/${warehouseId}/stock/${productId}`;
+    return this.http.delete<{ ok: boolean; warehouseId: string; productId: string; removedQty: number }>(url);
   }
 
   // Stock Movements

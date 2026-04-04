@@ -3,6 +3,25 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CashSessionStatus, IPVType, InventoryReport, PaymentMethod, SaleStatus } from '@prisma/client';
 import { dec } from '../../common/decimal';
 
+type ManualIvpLineInput = {
+  productId: string;
+  initial: number;
+  entries: number;
+  outs: number;
+  sales: number;
+};
+
+type SaveManualIvpInput = {
+  id?: string;
+  registerId: string;
+  reportDate: string;
+  note?: string;
+  employeeIds?: string[];
+  paymentBreakdown?: Record<string, number>;
+  lines: ManualIvpLineInput[];
+  createdById?: string;
+};
+
 @Injectable()
 export class InventoryReportsService {
   constructor(private prisma: PrismaService) {}
@@ -426,6 +445,715 @@ export class InventoryReportsService {
       paymentTotals,
       closed: session.status === CashSessionStatus.CLOSED,
     };
+  }
+
+  async listManualRegisters() {
+    return this.prisma.register.findMany({
+      where: {
+        active: true,
+        warehouse: { isNot: null },
+      },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async getManualBootstrap(registerId: string, reportDate?: Date | string) {
+    const normalizedDate = this.normalizeManualReportDate(reportDate);
+    const register = await this.prisma.register.findUnique({
+      where: { id: registerId },
+      include: {
+        warehouse: true,
+        settings: {
+          include: {
+            paymentMethods: true,
+          },
+        },
+      },
+    });
+    if (!register || !register.active) {
+      throw new NotFoundException('TPV no encontrado o inactivo.');
+    }
+    if (!register.warehouse?.id) {
+      throw new BadRequestException('El TPV seleccionado no tiene almacén asociado.');
+    }
+
+    const [existingReport, previousReport, stockRows, employees, paymentMethods] = await Promise.all([
+      this.prisma.manualIvpReport.findUnique({
+        where: {
+          registerId_reportDate: {
+            registerId: register.id,
+            reportDate: normalizedDate,
+          },
+        },
+        include: {
+          lines: true,
+        },
+      }),
+      this.prisma.manualIvpReport.findFirst({
+        where: {
+          registerId: register.id,
+          reportDate: { lt: normalizedDate },
+        },
+        include: {
+          lines: true,
+        },
+        orderBy: { reportDate: 'desc' },
+      }),
+      this.prisma.stock.findMany({
+        where: { warehouseId: register.warehouse.id, qty: { gt: 0 } },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              codigo: true,
+              price: true,
+              cost: true,
+              currency: true,
+              allowFractionalQty: true,
+              active: true,
+            },
+          },
+        },
+      }),
+      this.resolveManualEmployees(register.settings?.sellerEmployeeIds || []),
+      this.resolveManualPaymentMethods(register.settings?.paymentMethods || []),
+    ]);
+
+    const seedInitialByProduct = new Map<string, number>();
+    if (previousReport) {
+      for (const line of previousReport.lines) {
+        seedInitialByProduct.set(line.productId, Number(line.finalQty || 0));
+      }
+    } else {
+      for (const row of stockRows) {
+        seedInitialByProduct.set(row.productId, Number(row.qty || 0));
+      }
+    }
+
+    // Include products that may have appeared in stock after previous report.
+    for (const row of stockRows) {
+      if (!seedInitialByProduct.has(row.productId)) {
+        seedInitialByProduct.set(row.productId, Number(row.qty || 0));
+      }
+    }
+
+    const productIds = Array.from(seedInitialByProduct.keys());
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: {
+            id: true,
+            name: true,
+            codigo: true,
+            price: true,
+            cost: true,
+            currency: true,
+            allowFractionalQty: true,
+            active: true,
+          },
+        })
+      : [];
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const existingLineByProduct = new Map((existingReport?.lines || []).map((line) => [line.productId, line]));
+
+    const lines = productIds
+      .map((productId) => {
+        const product = productById.get(productId);
+        if (!product) return null;
+        const currentPrice = Number(product.price || 0);
+        const currentCost = Number(product.cost || 0);
+        const initial = Number(seedInitialByProduct.get(productId) || 0);
+        const existingLine = existingLineByProduct.get(productId);
+        const entries = Number(existingLine?.entriesQty || 0);
+        const outs = Number(existingLine?.outsQty || 0);
+        const sales = Number(existingLine?.salesQty || 0);
+        const total = Number((initial + entries - outs).toFixed(3));
+        const final = Number((total - sales).toFixed(3));
+        const amount = Number((sales * currentPrice).toFixed(2));
+        const gp = Number((currentPrice - currentCost).toFixed(2));
+        const gain = Number((gp * sales).toFixed(2));
+        return {
+          productId: product.id,
+          codigo: product.codigo || '',
+          name: product.name,
+          currency: product.currency,
+          allowFractionalQty: product.allowFractionalQty === true,
+          price: currentPrice,
+          initial,
+          entries,
+          outs,
+          sales,
+          total,
+          final,
+          amount,
+          gp,
+          gain,
+        };
+      })
+      .filter((line): line is NonNullable<typeof line> => !!line)
+      .sort((a, b) => this.compareProductByCodigoThenName(a.codigo, a.name, b.codigo, b.name));
+
+    return {
+      register: {
+        id: register.id,
+        name: register.name,
+        code: register.code,
+      },
+      warehouse: {
+        id: register.warehouse.id,
+        name: register.warehouse.name,
+        code: register.warehouse.code,
+      },
+      reportDate: normalizedDate,
+      isFirstReport: !previousReport,
+      previousReportId: previousReport?.id || null,
+      editing: !!existingReport,
+      existingReportId: existingReport?.id || null,
+      note: existingReport?.note || '',
+      employees,
+      paymentMethods,
+      selectedEmployeeIds: existingReport?.employeeIds || [],
+      paymentBreakdown: this.normalizePaymentBreakdown(paymentMethods, existingReport?.paymentBreakdown),
+      lines,
+    };
+  }
+
+  async findManualById(id: string) {
+    const report = await this.prisma.manualIvpReport.findUnique({
+      where: { id },
+      include: {
+        register: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        lines: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                codigo: true,
+                currency: true,
+                allowFractionalQty: true,
+              },
+            },
+          },
+          orderBy: [
+            { product: { codigo: 'asc' } },
+            { product: { name: 'asc' } },
+          ],
+        },
+      },
+    });
+    if (!report) throw new NotFoundException('IPV manual no encontrado.');
+
+    const paymentMethods = await this.resolveManualPaymentMethodsByRegister(report.registerId);
+    const employees = await this.resolveManualEmployeesByIds(report.employeeIds || []);
+
+    const lines = report.lines.map((line) => ({
+      productId: line.productId,
+      codigo: line.product?.codigo || '',
+      name: line.product?.name || `Producto ${line.productId.slice(0, 8)}`,
+      currency: line.product?.currency || 'CUP',
+      allowFractionalQty: line.product?.allowFractionalQty === true,
+      price: Number(line.price || 0),
+      initial: Number(line.initialQty || 0),
+      entries: Number(line.entriesQty || 0),
+      outs: Number(line.outsQty || 0),
+      sales: Number(line.salesQty || 0),
+      total: Number(line.totalQty || 0),
+      final: Number(line.finalQty || 0),
+      amount: Number(line.amount || 0),
+      gp: Number(line.gp || 0),
+      gain: Number(line.gain || 0),
+    }));
+
+    const totals = this.sumManualLineTotals(lines);
+
+    return {
+      id: report.id,
+      register: report.register,
+      warehouse: report.warehouse,
+      reportDate: report.reportDate,
+      note: report.note || '',
+      employeeIds: report.employeeIds || [],
+      employees,
+      paymentMethods,
+      paymentBreakdown: this.normalizePaymentBreakdown(paymentMethods, report.paymentBreakdown),
+      lines,
+      totals,
+      createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+    };
+  }
+
+  async saveManualReport(input: SaveManualIvpInput) {
+    const registerId = String(input.registerId || '').trim();
+    if (!registerId) {
+      throw new BadRequestException('Debe seleccionar un TPV.');
+    }
+    const reportDate = this.normalizeManualReportDate(input.reportDate);
+    const normalizedLines = Array.isArray(input.lines) ? input.lines : [];
+    if (normalizedLines.length === 0) {
+      throw new BadRequestException('Debe enviar al menos una línea de productos.');
+    }
+
+    const register = await this.prisma.register.findUnique({
+      where: { id: registerId },
+      include: {
+        warehouse: true,
+        settings: {
+          include: {
+            paymentMethods: true,
+          },
+        },
+      },
+    });
+    if (!register || !register.active) {
+      throw new NotFoundException('TPV no encontrado o inactivo.');
+    }
+    if (!register.warehouse?.id) {
+      throw new BadRequestException('El TPV seleccionado no tiene almacén asociado.');
+    }
+
+    const productIds = Array.from(
+      new Set(
+        normalizedLines
+          .map((line) => String(line.productId || '').trim())
+          .filter((id) => !!id),
+      ),
+    );
+    if (productIds.length === 0) {
+      throw new BadRequestException('Debe incluir líneas válidas con producto.');
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        price: true,
+        cost: true,
+        allowFractionalQty: true,
+        codigo: true,
+        name: true,
+        currency: true,
+      },
+    });
+    const productById = new Map(products.map((product) => [product.id, product]));
+    if (productById.size !== productIds.length) {
+      throw new BadRequestException('Uno o más productos no existen.');
+    }
+
+    const resolvedEmployees = await this.resolveManualEmployeesByIds(input.employeeIds || []);
+    const employeeIds = resolvedEmployees.map((employee) => employee.id);
+    const paymentMethods = await this.resolveManualPaymentMethods(register.settings?.paymentMethods || []);
+    const paymentBreakdown = this.normalizePaymentBreakdown(paymentMethods, input.paymentBreakdown);
+    const note = String(input.note || '').trim() || null;
+
+    const lines = normalizedLines.map((line) => {
+      const productId = String(line.productId || '').trim();
+      const product = productById.get(productId);
+      if (!product) {
+        throw new BadRequestException(`Producto inválido en la línea: ${productId || 'N/D'}`);
+      }
+
+      const initial = this.normalizeManualQty(line.initial, product.allowFractionalQty === true, 'inicio');
+      const entries = this.normalizeManualQty(line.entries, product.allowFractionalQty === true, 'entradas');
+      const outs = this.normalizeManualQty(line.outs, product.allowFractionalQty === true, 'salidas');
+      const sales = this.normalizeManualQty(line.sales, product.allowFractionalQty === true, 'ventas');
+      const price = Number(product.price || 0);
+      const cost = Number(product.cost || 0);
+
+      const total = Number((initial + entries - outs).toFixed(3));
+      const final = Number((total - sales).toFixed(3));
+      const amount = Number((sales * price).toFixed(2));
+      const gp = Number((price - cost).toFixed(2));
+      const gain = Number((gp * sales).toFixed(2));
+
+      return {
+        productId,
+        initialQty: initial,
+        entriesQty: entries,
+        outsQty: outs,
+        salesQty: sales,
+        totalQty: total,
+        finalQty: final,
+        price,
+        amount,
+        gp,
+        gain,
+      };
+    });
+
+    const reportId = await this.prisma.$transaction(async (tx) => {
+      let targetId: string | null = null;
+
+      if (input.id) {
+        const current = await tx.manualIvpReport.findUnique({
+          where: { id: input.id },
+          select: { id: true, registerId: true },
+        });
+        if (!current) throw new NotFoundException('IPV manual no encontrado.');
+        if (current.registerId !== registerId) {
+          throw new BadRequestException('El IPV manual no corresponde con el TPV seleccionado.');
+        }
+        targetId = current.id;
+      } else {
+        const existingByDate = await tx.manualIvpReport.findUnique({
+          where: {
+            registerId_reportDate: {
+              registerId,
+              reportDate,
+            },
+          },
+          select: { id: true },
+        });
+        if (existingByDate) {
+          targetId = existingByDate.id;
+        }
+      }
+
+      if (targetId) {
+        await tx.manualIvpReport.update({
+          where: { id: targetId },
+          data: {
+            warehouseId: register.warehouse!.id,
+            reportDate,
+            note,
+            employeeIds,
+            paymentBreakdown: paymentBreakdown as any,
+            createdById: input.createdById || undefined,
+          },
+        });
+        await tx.manualIvpReportLine.deleteMany({ where: { reportId: targetId } });
+        if (lines.length > 0) {
+          await tx.manualIvpReportLine.createMany({
+            data: lines.map((line) => ({
+              reportId: targetId!,
+              productId: line.productId,
+              initialQty: dec(line.initialQty.toString()) as any,
+              entriesQty: dec(line.entriesQty.toString()) as any,
+              outsQty: dec(line.outsQty.toString()) as any,
+              salesQty: dec(line.salesQty.toString()) as any,
+              totalQty: dec(line.totalQty.toString()) as any,
+              finalQty: dec(line.finalQty.toString()) as any,
+              price: dec(line.price.toString()) as any,
+              amount: dec(line.amount.toString()) as any,
+              gp: dec(line.gp.toString()) as any,
+              gain: dec(line.gain.toString()) as any,
+            })),
+          });
+        }
+        return targetId;
+      }
+
+      const created = await tx.manualIvpReport.create({
+        data: {
+          registerId,
+          warehouseId: register.warehouse!.id,
+          reportDate,
+          note,
+          employeeIds,
+          paymentBreakdown: paymentBreakdown as any,
+          createdById: input.createdById || undefined,
+          lines: {
+            create: lines.map((line) => ({
+              productId: line.productId,
+              initialQty: dec(line.initialQty.toString()) as any,
+              entriesQty: dec(line.entriesQty.toString()) as any,
+              outsQty: dec(line.outsQty.toString()) as any,
+              salesQty: dec(line.salesQty.toString()) as any,
+              totalQty: dec(line.totalQty.toString()) as any,
+              finalQty: dec(line.finalQty.toString()) as any,
+              price: dec(line.price.toString()) as any,
+              amount: dec(line.amount.toString()) as any,
+              gp: dec(line.gp.toString()) as any,
+              gain: dec(line.gain.toString()) as any,
+            })),
+          },
+        },
+        select: { id: true },
+      });
+      return created.id;
+    });
+
+    return this.findManualById(reportId);
+  }
+
+  private async resolveManualEmployees(sellerEmployeeIds: string[]) {
+    const ids = Array.isArray(sellerEmployeeIds)
+      ? Array.from(new Set(sellerEmployeeIds.map((id) => String(id || '').trim()).filter(Boolean)))
+      : [];
+
+    const where = ids.length > 0
+      ? { id: { in: ids }, active: true, userId: { not: null } }
+      : { active: true, userId: { not: null } };
+
+    const employees = await this.prisma.employee.findMany({
+      where,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        active: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            active: true,
+          },
+        },
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+
+    return employees.map((employee) => ({
+      ...employee,
+      fullName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+    }));
+  }
+
+  private async resolveManualEmployeesByIds(employeeIds: string[]) {
+    const ids = Array.from(
+      new Set((employeeIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+    );
+    if (ids.length === 0) return [];
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        id: { in: ids },
+        active: true,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        active: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            active: true,
+          },
+        },
+      },
+    });
+
+    const byId = new Map(employees.map((employee) => [employee.id, employee]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((employee): employee is NonNullable<typeof employee> => !!employee)
+      .map((employee) => ({
+        ...employee,
+        fullName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+      }));
+  }
+
+  private async resolveManualPaymentMethods(
+    configured: Array<{ code: string; name: string; enabled: boolean; requiresTransactionCode?: boolean }>,
+  ) {
+    const enabledConfigured = (configured || []).filter((method) => method.enabled !== false);
+    if (enabledConfigured.length > 0) {
+      return enabledConfigured
+        .map((method) => ({
+          code: this.normalizePaymentMethodCode(method.code),
+          name: (method.name || '').trim() || this.getPaymentMethodLabel(method.code),
+          requiresTransactionCode: method.requiresTransactionCode === true,
+        }))
+        .filter((method) => !!method.code) as Array<{ code: string; name: string; requiresTransactionCode: boolean }>;
+    }
+
+    const globalEnabled = await this.prisma.paymentMethodSetting.findMany({
+      where: { enabled: true },
+      select: {
+        code: true,
+        name: true,
+        requiresTransactionCode: true,
+      },
+      orderBy: { code: 'asc' },
+    });
+
+    if (globalEnabled.length > 0) {
+      return globalEnabled.map((method) => ({
+        code: this.normalizePaymentMethodCode(method.code),
+        name: (method.name || '').trim() || this.getPaymentMethodLabel(method.code),
+        requiresTransactionCode: method.requiresTransactionCode === true,
+      }));
+    }
+
+    return [
+      { code: 'CASH', name: 'Efectivo', requiresTransactionCode: false },
+      { code: 'CARD', name: 'Tarjeta', requiresTransactionCode: false },
+      { code: 'TRANSFER', name: 'Transferencia', requiresTransactionCode: false },
+      { code: 'OTHER', name: 'Otro', requiresTransactionCode: false },
+    ];
+  }
+
+  private async resolveManualPaymentMethodsByRegister(registerId: string) {
+    const settings = await this.prisma.registerSettings.findUnique({
+      where: { registerId },
+      include: { paymentMethods: true },
+    });
+    return this.resolveManualPaymentMethods(settings?.paymentMethods || []);
+  }
+
+  private normalizePaymentBreakdown(
+    paymentMethods: Array<{ code: string; name: string; requiresTransactionCode?: boolean }>,
+    raw: unknown,
+  ) {
+    const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const normalized: Record<string, number> = {};
+    for (const method of paymentMethods) {
+      const code = this.normalizePaymentMethodCode(method.code);
+      const value = Number(source[code] || 0);
+      normalized[code] = Number.isFinite(value) && value > 0 ? Number(value.toFixed(2)) : 0;
+    }
+    return normalized;
+  }
+
+  private normalizePaymentMethodCode(code?: string | null): string {
+    const normalized = String(code || '').trim().toUpperCase();
+    switch (normalized) {
+      case 'EFECTIVO':
+      case 'CASH':
+        return 'CASH';
+      case 'TARJETA':
+      case 'CARD':
+        return 'CARD';
+      case 'TRANSFERENCIA':
+      case 'TRANSFER':
+        return 'TRANSFER';
+      case 'OTRO':
+      case 'OTHER':
+      default:
+        return normalized || 'OTHER';
+    }
+  }
+
+  private getPaymentMethodLabel(code: string): string {
+    const normalized = this.normalizePaymentMethodCode(code);
+    if (normalized === 'CASH') return 'Efectivo';
+    if (normalized === 'CARD') return 'Tarjeta';
+    if (normalized === 'TRANSFER') return 'Transferencia';
+    return 'Otro';
+  }
+
+  private normalizeManualReportDate(value?: Date | string) {
+    const base = this.parseManualReportDateInput(value) || new Date();
+    if (Number.isNaN(base.getTime())) {
+      throw new BadRequestException('Fecha de IPV manual inválida.');
+    }
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0);
+  }
+
+  private parseManualReportDateInput(value?: Date | string) {
+    if (value === null || value === undefined) return undefined;
+    if (value instanceof Date) return value;
+
+    const raw = String(value).trim();
+    if (!raw) return undefined;
+
+    const ymdMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymdMatch) {
+      const year = Number(ymdMatch[1]);
+      const month = Number(ymdMatch[2]) - 1;
+      const day = Number(ymdMatch[3]);
+      return new Date(year, month, day, 0, 0, 0, 0);
+    }
+
+    return new Date(raw);
+  }
+
+  private normalizeManualQty(value: unknown, allowFractional: boolean, label: string) {
+    const parsed = Number(value || 0);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(`La cantidad de ${label} debe ser mayor o igual a 0.`);
+    }
+    if (!allowFractional && !Number.isInteger(parsed)) {
+      throw new BadRequestException(`El producto de ${label} solo admite cantidades enteras.`);
+    }
+    if (allowFractional) return Number(parsed.toFixed(3));
+    return Math.floor(parsed);
+  }
+
+  private compareProductByCodigoThenName(
+    codigoA: string,
+    nameA: string,
+    codigoB: string,
+    nameB: string,
+  ): number {
+    const a = String(codigoA || '').trim();
+    const b = String(codigoB || '').trim();
+    if (a && b) {
+      const byCode = a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
+      if (byCode !== 0) return byCode;
+    } else if (a) {
+      return -1;
+    } else if (b) {
+      return 1;
+    }
+    return String(nameA || '').localeCompare(String(nameB || ''), 'es', { sensitivity: 'base' });
+  }
+
+  private sumManualLineTotals(
+    lines: Array<{
+      initial: number;
+      entries: number;
+      outs: number;
+      sales: number;
+      total: number;
+      final: number;
+      amount: number;
+      gain?: number;
+    }>,
+  ) {
+    return lines.reduce<{
+      initial: number;
+      entries: number;
+      outs: number;
+      sales: number;
+      total: number;
+      final: number;
+      amount: number;
+      profit: number;
+    }>(
+      (acc, line) => ({
+        initial: Number((acc.initial + Number(line.initial || 0)).toFixed(3)),
+        entries: Number((acc.entries + Number(line.entries || 0)).toFixed(3)),
+        outs: Number((acc.outs + Number(line.outs || 0)).toFixed(3)),
+        sales: Number((acc.sales + Number(line.sales || 0)).toFixed(3)),
+        total: Number((acc.total + Number(line.total || 0)).toFixed(3)),
+        final: Number((acc.final + Number(line.final || 0)).toFixed(3)),
+        amount: Number((acc.amount + Number(line.amount || 0)).toFixed(2)),
+        profit: Number((acc.profit + Number(line.gain || 0)).toFixed(2)),
+      }),
+      { initial: 0, entries: 0, outs: 0, sales: 0, total: 0, final: 0, amount: 0, profit: 0 },
+    );
   }
 
   private async getPaymentTotals(cashSessionId: string, _from: Date, _to: Date) {

@@ -43,6 +43,17 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], ResetStockDto.prototype, "reason", void 0);
+class UpdateStockQtyDto {
+}
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], UpdateStockQtyDto.prototype, "qty", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], UpdateStockQtyDto.prototype, "reason", void 0);
 let WarehousesController = class WarehousesController {
     constructor(service) {
         this.service = service;
@@ -55,6 +66,12 @@ let WarehousesController = class WarehousesController {
     }
     getStock(warehouseId) {
         return this.service.getStock(warehouseId);
+    }
+    updateStockQty(warehouseId, productId, dto) {
+        return this.service.updateStockQty(warehouseId, productId, dto.qty, dto.reason);
+    }
+    removeStockItem(warehouseId, productId, reason) {
+        return this.service.removeStockItem(warehouseId, productId, reason);
     }
     findOne(id) {
         return this.service.findOne(id);
@@ -93,6 +110,26 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], WarehousesController.prototype, "getStock", null);
+__decorate([
+    (0, common_1.Put)(":id/stock/:productId"),
+    (0, permissions_decorator_1.Permissions)("warehouses.manage", "stock-movements.manage"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("productId")),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, UpdateStockQtyDto]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "updateStockQty", null);
+__decorate([
+    (0, common_1.Delete)(":id/stock/:productId"),
+    (0, permissions_decorator_1.Permissions)("warehouses.delete", "warehouses.manage"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("productId")),
+    __param(2, (0, common_1.Query)("reason")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], WarehousesController.prototype, "removeStockItem", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, permissions_decorator_1.Permissions)("warehouses.view", "reports.view", "sales.direct", "purchases.view", "purchases.manage", "sales.tpv", "tpv.manage"),

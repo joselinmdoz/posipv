@@ -3,10 +3,12 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Param,
   Query,
   Body,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { InventoryReportsService } from './inventory-reports.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -14,10 +16,28 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
+import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
 
 interface CreateReportDto {
   cashSessionId: string;
   warehouseId: string;
+}
+
+class ManualIvpLineDto {
+  @IsString() productId!: string;
+  @IsNumber() initial!: number;
+  @IsNumber() entries!: number;
+  @IsNumber() outs!: number;
+  @IsNumber() sales!: number;
+}
+
+class SaveManualIvpDto {
+  @IsString() registerId!: string;
+  @IsString() reportDate!: string;
+  @IsOptional() @IsString() note?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) employeeIds?: string[];
+  @IsOptional() paymentBreakdown?: Record<string, number>;
+  @IsArray() lines!: ManualIvpLineDto[];
 }
 
 @Controller('inventory-reports')
@@ -92,5 +112,55 @@ export class InventoryReportsController {
   @Permissions('inventory-reports.delete')
   async remove(@Param('id') id: string) {
     return this.inventoryReportsService.delete(id);
+  }
+
+  @Get('manual/registers')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('reports.view', 'tpv.manage')
+  async listManualRegisters() {
+    return this.inventoryReportsService.listManualRegisters();
+  }
+
+  @Get('manual/bootstrap')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('reports.view', 'tpv.manage')
+  async getManualBootstrap(
+    @Query('registerId') registerId: string,
+    @Query('reportDate') reportDate?: string,
+  ) {
+    return this.inventoryReportsService.getManualBootstrap(registerId, reportDate);
+  }
+
+  @Get('manual/:id')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('reports.view', 'tpv.manage')
+  async findManualById(@Param('id') id: string) {
+    return this.inventoryReportsService.findManualById(id);
+  }
+
+  @Post('manual')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('tpv.manage')
+  async createOrUpdateManual(@Req() req: any, @Body() dto: SaveManualIvpDto) {
+    return this.inventoryReportsService.saveManualReport({
+      ...dto,
+      createdById: req.user?.userId || undefined,
+    });
+  }
+
+  @Put('manual/:id')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('tpv.manage')
+  async updateManual(@Param('id') id: string, @Req() req: any, @Body() dto: SaveManualIvpDto) {
+    return this.inventoryReportsService.saveManualReport({
+      ...dto,
+      id,
+      createdById: req.user?.userId || undefined,
+    });
   }
 }

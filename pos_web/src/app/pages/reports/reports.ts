@@ -12,7 +12,8 @@ import { ToastModule } from 'primeng/toast';
 import { SplitButtonModule } from 'primeng/splitbutton';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ConfirmationService, MenuItem, MessageService } from 'primeng/api';
-import { DetailedSale, ReportsService, SalesReport } from '@/app/core/services/reports.service';
+import { forkJoin } from 'rxjs';
+import { DetailedSale, LotProfitReport, ReportsService, SalesReport } from '@/app/core/services/reports.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 import { AuthService } from '@/app/core/services/auth.service';
 import { SettingsService } from '@/app/core/services/settings.service';
@@ -88,6 +89,16 @@ import { SettingsService } from '@/app/core/services/settings.service';
                         <label class="block mb-2">Documento (contiene)</label>
                         <input pInputText [(ngModel)]="documentNumberFilter" class="w-full" [disabled]="loading()" placeholder="VTA-20260227-0001" />
                     </div>
+                    <div class="flex items-end">
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="includeManualIvp"
+                                [disabled]="loading()"
+                            />
+                            <span>Incluir IPV manual en resumen del período</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="flex gap-2 justify-end mt-3">
@@ -111,6 +122,11 @@ import { SettingsService } from '@/app/core/services/settings.service';
                         </div>
                     </p-card>
                 </div>
+                @if (report()?.manualIvpIncluded) {
+                    <div class="mb-4 text-sm text-gray-600">
+                        IPV manual incluido: {{ report()?.manualIvpCount || 0 }} reporte(s), monto {{ (report()?.manualIvpAmount || 0) | currency }}
+                    </div>
+                }
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <p-card header="Ventas por Método de Pago">
@@ -153,6 +169,81 @@ import { SettingsService } from '@/app/core/services/settings.service';
                         </p-table>
                     </p-card>
                 </div>
+
+                @if (lotProfitReport()) {
+                    <p-card header="Ganancia FIFO por compra y lote" class="mb-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                            @for (total of lotProfitReport()?.totalsByCurrency || []; track total.currency) {
+                                <div class="rounded-lg border border-surface-200 p-3 bg-surface-50">
+                                    <div class="text-sm text-surface-500">Moneda {{ total.currency }}</div>
+                                    <div class="text-sm">Ventas: <strong>{{ formatAmountWithCurrency(total.revenue, total.currency) }}</strong></div>
+                                    <div class="text-sm">Costo: <strong>{{ formatAmountWithCurrency(total.cost, total.currency) }}</strong></div>
+                                    <div class="text-sm">Ganancia: <strong>{{ formatAmountWithCurrency(total.profit, total.currency) }}</strong></div>
+                                </div>
+                            }
+                        </div>
+
+                        <p-table [value]="lotProfitReport()?.byPurchase || []" responsiveLayout="scroll" [paginator]="true" [rows]="8" class="mb-4">
+                            <ng-template #header>
+                                <tr>
+                                    <th>Compra</th>
+                                    <th>Proveedor</th>
+                                    <th class="text-right">Lotes</th>
+                                    <th class="text-right">Vendidas</th>
+                                    <th class="text-right">Ventas</th>
+                                    <th class="text-right">Costo</th>
+                                    <th class="text-right">Ganancia</th>
+                                </tr>
+                            </ng-template>
+                            <ng-template #body let-row>
+                                <tr>
+                                    <td>{{ row.purchaseDocumentNumber || row.source }}</td>
+                                    <td>{{ row.purchaseSupplierName || '-' }}</td>
+                                    <td class="text-right">{{ row.lotsCount }}</td>
+                                    <td class="text-right">{{ row.qtySold }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.revenue, row.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.cost, row.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.profit, row.currency) }}</td>
+                                </tr>
+                            </ng-template>
+                            <ng-template #emptymessage>
+                                <tr>
+                                    <td colspan="7" class="text-center">No hay consumo FIFO en el período.</td>
+                                </tr>
+                            </ng-template>
+                        </p-table>
+
+                        <p-table [value]="lotProfitReport()?.byLot || []" responsiveLayout="scroll" [paginator]="true" [rows]="8">
+                            <ng-template #header>
+                                <tr>
+                                    <th>Lote</th>
+                                    <th>Producto</th>
+                                    <th class="text-right">Ventas</th>
+                                    <th class="text-right">Vendidas</th>
+                                    <th class="text-right">Ingreso</th>
+                                    <th class="text-right">Costo</th>
+                                    <th class="text-right">Ganancia</th>
+                                </tr>
+                            </ng-template>
+                            <ng-template #body let-row>
+                                <tr>
+                                    <td>{{ row.purchaseDocumentNumber || row.source }}</td>
+                                    <td>{{ row.product?.name || '-' }}</td>
+                                    <td class="text-right">{{ row.salesCount }}</td>
+                                    <td class="text-right">{{ row.qtySold }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.revenue, row.product?.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.cost, row.product?.currency) }}</td>
+                                    <td class="text-right whitespace-nowrap">{{ formatAmountWithCurrency(row.profit, row.product?.currency) }}</td>
+                                </tr>
+                            </ng-template>
+                            <ng-template #emptymessage>
+                                <tr>
+                                    <td colspan="7" class="text-center">No hay lotes consumidos en el período.</td>
+                                </tr>
+                            </ng-template>
+                        </p-table>
+                    </p-card>
+                }
 
                 <p-card header="Detalle de Ventas">
                     <p-table [value]="report()?.detailedSales || []" [paginator]="true" [rows]="10" responsiveLayout="scroll">
@@ -313,6 +404,7 @@ export class Reports implements OnInit {
     startDate: Date | null = null;
     endDate: Date | null = null;
     report = signal<SalesReport | null>(null);
+    lotProfitReport = signal<LotProfitReport | null>(null);
     loading = signal<boolean>(false);
     serverTimezone = signal<string>('');
     selectedSale = signal<DetailedSale | null>(null);
@@ -323,6 +415,7 @@ export class Reports implements OnInit {
     cashierEmailFilter = '';
     customerNameFilter = '';
     documentNumberFilter = '';
+    includeManualIvp = true;
 
     channelOptions: Array<{ label: string; value: 'TPV' | 'DIRECT' | '' }> = [
         { label: 'Todos', value: '' },
@@ -400,20 +493,7 @@ export class Reports implements OnInit {
 
     loadServerTodayReport() {
         this.loading.set(true);
-        this.reportsService.getSalesReport(undefined, undefined, this.buildReportFilters()).subscribe({
-            next: (report) => {
-                this.applyReport(report);
-                this.loading.set(false);
-            },
-            error: () => {
-                this.loading.set(false);
-                this.messageService.add({
-                    severity: 'error',
-                    summary: 'Error',
-                    detail: 'No se pudo cargar el reporte de hoy del servidor.'
-                });
-            }
-        });
+        this.loadCombinedReports(undefined, undefined);
     }
 
     generateReport() {
@@ -439,20 +519,7 @@ export class Reports implements OnInit {
         const endStr = this.formatDate(this.endDate);
 
         this.loading.set(true);
-        this.reportsService.getSalesReport(startStr, endStr, this.buildReportFilters()).subscribe({
-            next: (report) => {
-                this.applyReport(report);
-                this.loading.set(false);
-            },
-            error: () => {
-                this.loading.set(false);
-                this.messageService.add({
-                    severity: 'error',
-                    summary: 'Error',
-                    detail: 'Error al generar reporte'
-                });
-            }
-        });
+        this.loadCombinedReports(startStr, endStr);
     }
 
     clearAdvancedFilters() {
@@ -461,6 +528,7 @@ export class Reports implements OnInit {
         this.cashierEmailFilter = '';
         this.customerNameFilter = '';
         this.documentNumberFilter = '';
+        this.includeManualIvp = true;
         if (this.startDate && this.endDate) {
             this.generateReport();
             return;
@@ -627,6 +695,32 @@ export class Reports implements OnInit {
             return;
         }
         this.loadServerTodayReport();
+    }
+
+    private loadCombinedReports(startDate?: string, endDate?: string) {
+        const filters = this.buildReportFilters();
+        forkJoin({
+            sales: this.reportsService.getSalesReport(startDate, endDate, filters),
+            lotProfit: this.reportsService.getLotProfitReport(startDate, endDate, {
+                channel: this.selectedChannel,
+                warehouseId: this.selectedWarehouseId || undefined,
+                includeAdjustments: true
+            })
+        }).subscribe({
+            next: ({ sales, lotProfit }) => {
+                this.applyReport(sales);
+                this.lotProfitReport.set(lotProfit);
+                this.loading.set(false);
+            },
+            error: () => {
+                this.loading.set(false);
+                this.messageService.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo cargar el reporte solicitado.'
+                });
+            }
+        });
     }
 
     private buildSalesPdfLines(report: SalesReport): string[] {
@@ -1014,6 +1108,7 @@ export class Reports implements OnInit {
             cashierEmail?: string;
             customerName?: string;
             documentNumber?: string;
+            includeManualIvp?: boolean;
         } = {};
 
         if (this.selectedChannel) filters.channel = this.selectedChannel;
@@ -1021,6 +1116,7 @@ export class Reports implements OnInit {
         if (this.cashierEmailFilter.trim()) filters.cashierEmail = this.cashierEmailFilter.trim();
         if (this.customerNameFilter.trim()) filters.customerName = this.customerNameFilter.trim();
         if (this.documentNumberFilter.trim()) filters.documentNumber = this.documentNumberFilter.trim();
+        filters.includeManualIvp = this.includeManualIvp;
 
         return filters;
     }

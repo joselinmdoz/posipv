@@ -15,10 +15,12 @@ const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const decimal_1 = require("../../common/decimal");
 const accounting_service_1 = require("../accounting/accounting.service");
+const inventory_costing_service_1 = require("../inventory-costing/inventory-costing.service");
 let SalesService = class SalesService {
-    constructor(prisma, accountingService) {
+    constructor(prisma, accountingService, inventoryCostingService) {
         this.prisma = prisma;
         this.accountingService = accountingService;
+        this.inventoryCostingService = inventoryCostingService;
     }
     async listSessionProducts(cashSessionId) {
         const session = await this.prisma.cashSession.findUnique({
@@ -145,6 +147,7 @@ let SalesService = class SalesService {
             }
         }
         const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
+        const fallbackCostByProduct = new Map(stockRows.map((s) => [s.productId, s.product.cost || 0]));
         let total = new client_1.Prisma.Decimal(0);
         const itemsData = normalizedItems.map((i) => {
             const price = priceMap.get(i.productId);
@@ -156,7 +159,7 @@ let SalesService = class SalesService {
                 productId: i.productId,
                 qty: i.qty,
                 price: price,
-                costSnapshot: product.cost ?? null,
+                costSnapshot: null,
             };
         });
         const normalizedPayments = dto.payments.map((rawPayment) => {
@@ -215,6 +218,24 @@ let SalesService = class SalesService {
                 },
                 include: { items: true, payments: true },
             });
+            const averageCostByItem = await this.inventoryCostingService.consumeSaleItemsWithFifo(tx, sale.items.map((item) => ({
+                saleId: sale.id,
+                saleItemId: item.id,
+                warehouseId: tpvWarehouseId,
+                productId: item.productId,
+                qty: item.qty,
+                unitPrice: item.price,
+                fallbackUnitCost: fallbackCostByProduct.get(item.productId) || 0,
+            })));
+            for (const item of sale.items) {
+                const averageCost = averageCostByItem.get(item.id);
+                await tx.saleItem.update({
+                    where: { id: item.id },
+                    data: {
+                        costSnapshot: averageCost ? (0, decimal_1.dec)(averageCost.toFixed(2)) : null,
+                    },
+                });
+            }
             for (const [productId, requestedQty] of qtyByProduct.entries()) {
                 const updated = await tx.stock.updateMany({
                     where: {
@@ -257,6 +278,7 @@ let SalesService = class SalesService {
             let restockedQty = 0;
             let restockedProducts = 0;
             if (sale.status === client_1.SaleStatus.PAID) {
+                await this.inventoryCostingService.restoreSaleLots(tx, sale.id);
                 if (!sale.warehouseId) {
                     throw new common_1.BadRequestException("La venta no tiene almacén asociado para revertir stock.");
                 }
@@ -490,6 +512,7 @@ exports.SalesService = SalesService;
 exports.SalesService = SalesService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        accounting_service_1.AccountingService])
+        accounting_service_1.AccountingService,
+        inventory_costing_service_1.InventoryCostingService])
 ], SalesService);
 //# sourceMappingURL=sales.service.js.map

@@ -24,6 +24,7 @@ import {
 } from '@/app/core/services/warehouses.service';
 import { ProductsService, Product } from '@/app/core/services/products.service';
 import { AuthService } from '@/app/core/services/auth.service';
+import { Router } from '@angular/router';
 
 type StockColumnKey =
     | 'image'
@@ -69,6 +70,7 @@ type StockColumnKey =
                 }
                 @if (canManageMovements()) {
                     <p-button label="Nuevo Movimiento" icon="pi pi-arrow-right-arrow-left" severity="secondary" (onClick)="openNewMovement()" />
+                    <p-button label="Carga Masiva Stock" icon="pi pi-list-check" severity="secondary" class="ml-2" [outlined]="true" (onClick)="openBulkStockUpdatePage()" />
                 }
             </ng-template>
         </p-toolbar>
@@ -333,6 +335,7 @@ type StockColumnKey =
                         @if (isStockColumnVisible('active')) { <th class="whitespace-nowrap" style="width: 110px;">Estado</th> }
                         @if (isStockColumnVisible('createdAt')) { <th class="whitespace-nowrap" style="width: 165px;">Creado</th> }
                         @if (isStockColumnVisible('qty')) { <th class="whitespace-nowrap text-center" style="width: 110px;">Cantidad</th> }
+                        @if (showStockActionsColumn()) { <th class="whitespace-nowrap text-center" style="width: 130px;">Acciones</th> }
                     </tr>
                 </ng-template>
                 <ng-template #body let-item>
@@ -395,12 +398,89 @@ type StockColumnKey =
                                 <p-tag [value]="item.qty" [severity]="getQtySeverity(item.qty)" styleClass="font-semibold" />
                             </td>
                         }
+                        @if (showStockActionsColumn()) {
+                            <td class="text-center whitespace-nowrap" style="width: 130px;">
+                                @if (canEditStockInWarehouse()) {
+                                    <p-button
+                                        icon="pi pi-pencil"
+                                        [rounded]="true"
+                                        [outlined]="true"
+                                        severity="success"
+                                        class="mr-2"
+                                        pTooltip="Editar stock"
+                                        (onClick)="openEditStockDialog(item)"
+                                    />
+                                }
+                                @if (canDeleteStockFromWarehouse()) {
+                                    <p-button
+                                        icon="pi pi-trash"
+                                        [rounded]="true"
+                                        [outlined]="true"
+                                        severity="danger"
+                                        pTooltip="Eliminar del almacén"
+                                        (onClick)="deleteStockItem(item)"
+                                    />
+                                }
+                            </td>
+                        }
                     </tr>
                 </ng-template>
                 <ng-template #emptymessage>
-                    <tr><td [attr.colspan]="visibleStockColumnCount()">No hay productos en stock.</td></tr>
+                    <tr><td [attr.colspan]="visibleStockTableColumnCount()">No hay productos en stock.</td></tr>
                 </ng-template>
             </p-table>
+        </p-dialog>
+
+        <p-dialog
+            header="Editar stock del producto"
+            [(visible)]="editStockDialog"
+            [modal]="true"
+            [style]="{ width: '520px', maxWidth: '96vw' }"
+            [breakpoints]="{ '960px': '98vw' }"
+            [draggable]="false"
+        >
+            @if (selectedStockItemForEdit) {
+                <div class="flex flex-col gap-3">
+                    <div class="rounded-lg border border-surface-200 bg-surface-50 p-3">
+                        <div class="text-sm text-color-secondary">Producto</div>
+                        <div class="font-semibold">{{ selectedStockItemForEdit.product.name }}</div>
+                        <div class="text-xs text-color-secondary mt-1">
+                            Stock actual: <strong>{{ selectedStockItemForEdit.qty }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label class="font-medium">Nueva cantidad</label>
+                        <p-inputnumber
+                            [(ngModel)]="stockEditForm.qty"
+                            [min]="0"
+                            [step]="isEditingFractionalStockProduct() ? 0.01 : 1"
+                            [minFractionDigits]="0"
+                            [maxFractionDigits]="isEditingFractionalStockProduct() ? 2 : 0"
+                            [showButtons]="true"
+                            buttonLayout="horizontal"
+                            decrementButtonClass="p-button-secondary"
+                            incrementButtonClass="p-button-secondary"
+                            incrementButtonIcon="pi pi-plus"
+                            decrementButtonIcon="pi pi-minus"
+                            locale="es-ES"
+                            [useGrouping]="false"
+                        />
+                        <small class="text-color-secondary">
+                            {{ isEditingFractionalStockProduct() ? 'Permite decimales hasta 2 lugares.' : 'Solo números enteros.' }}
+                        </small>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label class="font-medium">Motivo (opcional)</label>
+                        <input pInputText [(ngModel)]="stockEditForm.reason" placeholder="Ej: ajuste por conteo físico" />
+                    </div>
+                </div>
+            }
+            <ng-template #footer>
+                <p-button label="Cancelar" icon="pi pi-times" text (onClick)="hideEditStockDialog()" />
+                <p-button label="Guardar" icon="pi pi-check" [disabled]="!canEditStockInWarehouse()" (onClick)="saveEditedStockQty()" />
+            </ng-template>
         </p-dialog>
 
         <!-- Dialog para nuevo movimiento -->
@@ -572,10 +652,12 @@ export class Warehouses implements OnInit {
 
     warehouseDialog = false;
     stockDialog = false;
+    editStockDialog = false;
     movementDialog = false;
     loadingMovements = false;
     
     selectedWarehouse: Warehouse | null = null;
+    selectedStockItemForEdit: StockItem | null = null;
     selectedWarehouseFilter: string | null = null;
     selectedFromDateFilter: Date | null = null;
     selectedToDateFilter: Date | null = null;
@@ -586,6 +668,7 @@ export class Warehouses implements OnInit {
 
     warehouse: any = { name: '', code: '', type: 'TPV', active: true };
     movement: any = { type: 'IN', productId: '', qty: 1, fromWarehouseId: '', toWarehouseId: '', reason: '' };
+    stockEditForm: { qty: number; reason: string } = { qty: 0, reason: '' };
 
     typeOptions = [
         { label: 'TPV', value: 'TPV' },
@@ -632,7 +715,8 @@ export class Warehouses implements OnInit {
         private productsService: ProductsService,
         private messageService: MessageService,
         private confirmationService: ConfirmationService,
-        private authService: AuthService
+        private authService: AuthService,
+        private router: Router
     ) {}
 
     ngOnInit() {
@@ -826,6 +910,103 @@ export class Warehouses implements OnInit {
         });
     }
 
+    openEditStockDialog(item: StockItem) {
+        if (!this.canEditStockInWarehouse()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para editar stock.' });
+            return;
+        }
+        this.selectedStockItemForEdit = item;
+        this.stockEditForm = {
+            qty: Number(item.qty || 0),
+            reason: ''
+        };
+        this.editStockDialog = true;
+    }
+
+    hideEditStockDialog() {
+        this.editStockDialog = false;
+        this.selectedStockItemForEdit = null;
+        this.stockEditForm = { qty: 0, reason: '' };
+    }
+
+    isEditingFractionalStockProduct(): boolean {
+        return !!this.selectedStockItemForEdit?.product?.allowFractionalQty;
+    }
+
+    saveEditedStockQty() {
+        if (!this.canEditStockInWarehouse()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para editar stock.' });
+            return;
+        }
+        if (!this.selectedWarehouse || !this.selectedStockItemForEdit) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay producto seleccionado para ajustar.' });
+            return;
+        }
+
+        const allowFractional = !!this.selectedStockItemForEdit.product.allowFractionalQty;
+        const qty = this.normalizeStockQty(this.stockEditForm.qty, allowFractional);
+        if (!Number.isFinite(qty) || qty < 0) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'Ingrese una cantidad válida mayor o igual a 0.' });
+            return;
+        }
+
+        this.warehousesService.updateStockItemQty(this.selectedWarehouse.id, this.selectedStockItemForEdit.productId, {
+            qty,
+            reason: this.stockEditForm.reason?.trim() || undefined
+        }).subscribe({
+            next: () => {
+                this.messageService.add({ severity: 'success', summary: 'Stock actualizado', detail: 'La cantidad fue actualizada correctamente.' });
+                this.hideEditStockDialog();
+                this.loadMovements();
+                if (this.selectedWarehouse) {
+                    this.viewStock(this.selectedWarehouse);
+                }
+            },
+            error: (err) => this.messageService.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: err?.error?.message || 'No se pudo actualizar el stock'
+            })
+        });
+    }
+
+    deleteStockItem(item: StockItem) {
+        if (!this.canDeleteStockFromWarehouse()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para eliminar productos del stock.' });
+            return;
+        }
+        if (!this.selectedWarehouse) {
+            this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay almacén seleccionado.' });
+            return;
+        }
+
+        this.confirmationService.confirm({
+            message: `Se eliminará "${item.product.name}" del stock de este almacén. ¿Desea continuar?`,
+            header: 'Eliminar producto del stock',
+            icon: 'pi pi-exclamation-triangle',
+            accept: () => {
+                this.warehousesService.deleteStockItem(this.selectedWarehouse!.id, item.productId).subscribe({
+                    next: (result) => {
+                        this.messageService.add({
+                            severity: 'success',
+                            summary: 'Producto eliminado',
+                            detail: `Stock eliminado correctamente. Cantidad retirada: ${result.removedQty}.`
+                        });
+                        this.loadMovements();
+                        if (this.selectedWarehouse) {
+                            this.viewStock(this.selectedWarehouse);
+                        }
+                    },
+                    error: (err) => this.messageService.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: err?.error?.message || 'No se pudo eliminar el producto del stock'
+                    })
+                });
+            }
+        });
+    }
+
     openNewMovement() {
         if (!this.canManageMovements()) {
             this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar movimientos.' });
@@ -833,6 +1014,14 @@ export class Warehouses implements OnInit {
         }
         this.movement = { type: 'IN', productId: '', qty: 1, fromWarehouseId: '', toWarehouseId: '', reason: '' };
         this.movementDialog = true;
+    }
+
+    openBulkStockUpdatePage() {
+        if (!this.canManageMovements()) {
+            this.messageService.add({ severity: 'warn', summary: 'Sin permisos', detail: 'No tiene permisos para gestionar movimientos.' });
+            return;
+        }
+        this.router.navigate(['/warehouses/stock-bulk-update']);
     }
 
     hideMovementDialog() {
@@ -877,6 +1066,15 @@ export class Warehouses implements OnInit {
             : compact.replace(',', '.');
 
         return Number(normalized);
+    }
+
+    private normalizeStockQty(value: unknown, allowFractional: boolean): number {
+        const parsed = this.parseInputNumberValue(value);
+        if (!Number.isFinite(parsed) || parsed < 0) return NaN;
+        if (allowFractional) {
+            return Number(parsed.toFixed(2));
+        }
+        return Math.floor(parsed);
     }
 
     isMovementFormValid(): boolean {
@@ -1021,6 +1219,18 @@ export class Warehouses implements OnInit {
         return this.authService.hasPermission('stock-movements.delete');
     }
 
+    canEditStockInWarehouse() {
+        return this.authService.hasAnyPermission(['warehouses.manage', 'stock-movements.manage']);
+    }
+
+    canDeleteStockFromWarehouse() {
+        return this.authService.hasAnyPermission(['warehouses.delete', 'warehouses.manage']);
+    }
+
+    showStockActionsColumn() {
+        return this.canEditStockInWarehouse() || this.canDeleteStockFromWarehouse();
+    }
+
     getMovementTypeLabel(type: string): string {
         const labels: any = { 'IN': 'Entrada', 'OUT': 'Salida', 'TRANSFER': 'Transferencia' };
         return labels[type] || type;
@@ -1071,6 +1281,10 @@ export class Warehouses implements OnInit {
 
     visibleStockColumnCount(): number {
         return Math.max(1, this.visibleStockColumns.length);
+    }
+
+    visibleStockTableColumnCount(): number {
+        return this.visibleStockColumnCount() + (this.showStockActionsColumn() ? 1 : 0);
     }
 
     private formatDateAsYmd(date: Date): string {

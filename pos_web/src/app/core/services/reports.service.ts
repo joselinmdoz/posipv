@@ -61,6 +61,9 @@ export interface SalesReport {
   totalSales: number;
   totalAmount: number;
   averageTicket: number;
+  manualIvpIncluded?: boolean;
+  manualIvpCount?: number;
+  manualIvpAmount?: number;
   salesByPaymentMethod: {
     method: string;
     currency: 'CUP' | 'USD' | string;
@@ -84,6 +87,62 @@ export interface SalesReportFilters {
   cashierEmail?: string;
   customerName?: string;
   documentNumber?: string;
+  includeManualIvp?: boolean;
+}
+
+export interface LotProfitReportFilters {
+  channel?: 'TPV' | 'DIRECT' | '';
+  warehouseId?: string;
+  productId?: string;
+  purchaseId?: string;
+  includeAdjustments?: boolean;
+}
+
+export interface LotProfitReport {
+  serverDate: string;
+  serverTimezone: string;
+  startDate: string;
+  endDate: string;
+  totalsByCurrency: Array<{
+    currency: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+  }>;
+  byPurchase: Array<{
+    purchaseId: string | null;
+    purchaseDocumentNumber: string | null;
+    purchaseSupplierName: string | null;
+    purchaseCreatedAt: string | null;
+    source: string;
+    currency: string;
+    lotsCount: number;
+    qtySold: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+  }>;
+  byLot: Array<{
+    lotId: string;
+    source: string;
+    reference: string | null;
+    receivedAt: string;
+    purchaseId: string | null;
+    purchaseDocumentNumber: string | null;
+    purchaseSupplierName: string | null;
+    purchaseCreatedAt: string | null;
+    product: {
+      id: string;
+      name: string;
+      codigo: string | null;
+      currency: string;
+    };
+    salesCount: number;
+    qtySold: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+  }>;
 }
 
 @Injectable({
@@ -104,11 +163,28 @@ export class ReportsService {
     if (filters?.cashierEmail) params = params.set('cashierEmail', filters.cashierEmail.trim());
     if (filters?.customerName) params = params.set('customerName', filters.customerName.trim());
     if (filters?.documentNumber) params = params.set('documentNumber', filters.documentNumber.trim());
+    if (typeof filters?.includeManualIvp === 'boolean') {
+      params = params.set('includeManualIvp', String(filters.includeManualIvp));
+    }
     return this.http.get<SalesReport>(`${this.API_URL}/sales`, { params });
   }
 
   getServerDateInfo(): Observable<ServerDateInfo> {
     return this.http.get<ServerDateInfo>(`${this.API_URL}/server-date`);
+  }
+
+  getLotProfitReport(startDate?: string, endDate?: string, filters?: LotProfitReportFilters): Observable<LotProfitReport> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    if (filters?.channel) params = params.set('channel', filters.channel);
+    if (filters?.warehouseId) params = params.set('warehouseId', filters.warehouseId);
+    if (filters?.productId) params = params.set('productId', filters.productId);
+    if (filters?.purchaseId) params = params.set('purchaseId', filters.purchaseId);
+    if (typeof filters?.includeAdjustments === 'boolean') {
+      params = params.set('includeAdjustments', String(filters.includeAdjustments));
+    }
+    return this.http.get<LotProfitReport>(`${this.API_URL}/lot-profit`, { params });
   }
 
   deleteSale(saleId: string): Observable<{ ok: boolean; deletedSaleId: string; restockedProducts: number; restockedQty: number }> {

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { Prisma, SaleChannel } from "@prisma/client";
+import { Prisma, PurchaseLotSource, SaleChannel, SaleStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { dec } from "../../common/decimal";
 
@@ -9,6 +9,15 @@ type SalesReportFilters = {
   cashierEmail?: string;
   customerName?: string;
   documentNumber?: string;
+  includeManualIvp?: string | boolean;
+};
+
+type LotProfitFilters = {
+  channel?: string;
+  warehouseId?: string;
+  productId?: string;
+  purchaseId?: string;
+  includeAdjustments?: string | boolean;
 };
 
 type DetailedSale = {
@@ -156,20 +165,321 @@ export class ReportsService {
       cashier: sale.cashier,
     }));
 
+    const includeManualIvp = this.parseIncludeManualIvpFlag(filters.includeManualIvp);
+    const channel = this.parseChannelFilter(filters.channel);
+    const shouldIncludeManualIvp = includeManualIvp && channel !== SaleChannel.DIRECT;
+    const warehouseId = this.cleanFilter(filters.warehouseId);
+    const manualIvpSummary = shouldIncludeManualIvp
+      ? await this.getManualIvpSummary(range.start, range.end, warehouseId || undefined)
+      : { count: 0, amount: 0, paymentTotals: {} as Record<string, number> };
+
+    const salesAmount = Number(sales.reduce((sum, sale) => sum.add(sale.total), dec(0)).toFixed(2));
+    const totalAmount = Number((salesAmount + Number(manualIvpSummary.amount || 0)).toFixed(2));
+    const salesByPaymentMethod = this.mergePaymentMethodTotals(
+      this.groupSalesByPaymentMethod(detailedSales),
+      manualIvpSummary.paymentTotals,
+    );
+
     return {
       serverDate: range.serverDate,
       serverTimezone: range.serverTimezone,
       startDate: range.startDate,
       endDate: range.endDate,
       totalSales: sales.length,
-      totalAmount: Number(sales.reduce((sum, sale) => sum.add(sale.total), dec(0)).toFixed(2)),
+      totalAmount,
       averageTicket:
         sales.length > 0
           ? Number((sales.reduce((sum, sale) => sum.add(sale.total), dec(0)).toNumber() / sales.length).toFixed(2))
           : 0,
-      salesByPaymentMethod: this.groupSalesByPaymentMethod(detailedSales),
+      salesByPaymentMethod,
       salesByCashier: this.groupSalesByCashier(detailedSales),
+      manualIvpIncluded: shouldIncludeManualIvp,
+      manualIvpCount: manualIvpSummary.count,
+      manualIvpAmount: Number(manualIvpSummary.amount || 0),
       detailedSales,
+    };
+  }
+
+  async getLotProfitReport(startDate?: string, endDate?: string, filters: LotProfitFilters = {}) {
+    const range = this.resolveDateRange(startDate, endDate);
+    const channel = this.parseChannelFilter(filters.channel);
+    const warehouseId = this.cleanFilter(filters.warehouseId);
+    const productId = this.cleanFilter(filters.productId);
+    const purchaseId = this.cleanFilter(filters.purchaseId);
+    const includeAdjustments = this.parseFlexibleBoolean(filters.includeAdjustments, true);
+
+    const andWhere: Prisma.SaleItemLotConsumptionWhereInput[] = [
+      {
+        saleItem: {
+          sale: {
+            createdAt: { gte: range.start, lte: range.end },
+            status: { not: SaleStatus.VOID },
+            ...(channel ? { channel } : {}),
+            ...(warehouseId ? { warehouseId } : {}),
+          },
+        },
+      },
+    ];
+
+    if (productId) {
+      andWhere.push({ saleItem: { productId } });
+    }
+    if (purchaseId) {
+      andWhere.push({ purchaseLot: { purchaseId } });
+    }
+    if (!includeAdjustments) {
+      andWhere.push({ purchaseLot: { source: PurchaseLotSource.PURCHASE } });
+    }
+
+    const rows = await this.prisma.saleItemLotConsumption.findMany({
+      where: { AND: andWhere },
+      select: {
+        qty: true,
+        lineCost: true,
+        lineRevenue: true,
+        saleItem: {
+          select: {
+            saleId: true,
+            productId: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                codigo: true,
+                currency: true,
+              },
+            },
+            sale: {
+              select: {
+                id: true,
+                createdAt: true,
+                channel: true,
+                warehouseId: true,
+                warehouse: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        purchaseLot: {
+          select: {
+            id: true,
+            source: true,
+            reference: true,
+            receivedAt: true,
+            purchaseId: true,
+            warehouseId: true,
+            warehouse: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+            purchase: {
+              select: {
+                id: true,
+                documentNumber: true,
+                supplierName: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "asc" }],
+    });
+
+    const byLotMap = new Map<
+      string,
+      {
+        lotId: string;
+        source: string;
+        reference: string | null;
+        receivedAt: Date;
+        purchaseId: string | null;
+        purchaseDocumentNumber: string | null;
+        purchaseSupplierName: string | null;
+        purchaseCreatedAt: Date | null;
+        warehouse: { id: string; name: string; code: string } | null;
+        product: { id: string; name: string; codigo: string | null; currency: string };
+        qtySold: number;
+        revenue: number;
+        cost: number;
+        profit: number;
+        saleIds: Set<string>;
+      }
+    >();
+
+    const byPurchaseMap = new Map<
+      string,
+      {
+        purchaseId: string | null;
+        purchaseDocumentNumber: string | null;
+        purchaseSupplierName: string | null;
+        purchaseCreatedAt: Date | null;
+        source: string;
+        currency: string;
+        qtySold: number;
+        revenue: number;
+        cost: number;
+        profit: number;
+        lots: Set<string>;
+      }
+    >();
+
+    const totalsByCurrencyMap = new Map<string, { currency: string; revenue: number; cost: number; profit: number }>();
+
+    for (const row of rows) {
+      const lot = row.purchaseLot;
+      const saleItem = row.saleItem;
+      const product = saleItem.product;
+      const currency = String(product.currency || "CUP").toUpperCase();
+      const qty = Number(dec(row.qty).toFixed(3));
+      const lineCost = Number(dec(row.lineCost).toFixed(2));
+      const lineRevenue = Number(dec(row.lineRevenue).toFixed(2));
+      const lineProfit = Number((lineRevenue - lineCost).toFixed(2));
+
+      const lotKey = lot.id;
+      const existingLot = byLotMap.get(lotKey);
+      if (!existingLot) {
+        byLotMap.set(lotKey, {
+          lotId: lot.id,
+          source: lot.source,
+          reference: lot.reference || null,
+          receivedAt: lot.receivedAt,
+          purchaseId: lot.purchaseId || null,
+          purchaseDocumentNumber: lot.purchase?.documentNumber || null,
+          purchaseSupplierName: lot.purchase?.supplierName || null,
+          purchaseCreatedAt: lot.purchase?.createdAt || null,
+          warehouse: lot.warehouse
+            ? { id: lot.warehouse.id, name: lot.warehouse.name, code: lot.warehouse.code }
+            : null,
+          product: {
+            id: product.id,
+            name: product.name,
+            codigo: product.codigo,
+            currency,
+          },
+          qtySold: qty,
+          revenue: lineRevenue,
+          cost: lineCost,
+          profit: lineProfit,
+          saleIds: new Set([saleItem.saleId]),
+        });
+      } else {
+        existingLot.qtySold = Number((existingLot.qtySold + qty).toFixed(3));
+        existingLot.revenue = Number((existingLot.revenue + lineRevenue).toFixed(2));
+        existingLot.cost = Number((existingLot.cost + lineCost).toFixed(2));
+        existingLot.profit = Number((existingLot.revenue - existingLot.cost).toFixed(2));
+        existingLot.saleIds.add(saleItem.saleId);
+      }
+
+      const purchaseKey = `${lot.purchaseId || "NO_PURCHASE"}::${currency}`;
+      const existingPurchase = byPurchaseMap.get(purchaseKey);
+      if (!existingPurchase) {
+        byPurchaseMap.set(purchaseKey, {
+          purchaseId: lot.purchaseId || null,
+          purchaseDocumentNumber: lot.purchase?.documentNumber || null,
+          purchaseSupplierName: lot.purchase?.supplierName || null,
+          purchaseCreatedAt: lot.purchase?.createdAt || null,
+          source: lot.source,
+          currency,
+          qtySold: qty,
+          revenue: lineRevenue,
+          cost: lineCost,
+          profit: lineProfit,
+          lots: new Set([lot.id]),
+        });
+      } else {
+        existingPurchase.qtySold = Number((existingPurchase.qtySold + qty).toFixed(3));
+        existingPurchase.revenue = Number((existingPurchase.revenue + lineRevenue).toFixed(2));
+        existingPurchase.cost = Number((existingPurchase.cost + lineCost).toFixed(2));
+        existingPurchase.profit = Number((existingPurchase.revenue - existingPurchase.cost).toFixed(2));
+        existingPurchase.lots.add(lot.id);
+      }
+
+      const currentTotals = totalsByCurrencyMap.get(currency) || {
+        currency,
+        revenue: 0,
+        cost: 0,
+        profit: 0,
+      };
+      currentTotals.revenue = Number((currentTotals.revenue + lineRevenue).toFixed(2));
+      currentTotals.cost = Number((currentTotals.cost + lineCost).toFixed(2));
+      currentTotals.profit = Number((currentTotals.revenue - currentTotals.cost).toFixed(2));
+      totalsByCurrencyMap.set(currency, currentTotals);
+    }
+
+    const byLot = Array.from(byLotMap.values())
+      .map((row) => ({
+        lotId: row.lotId,
+        source: row.source,
+        reference: row.reference,
+        receivedAt: row.receivedAt,
+        purchaseId: row.purchaseId,
+        purchaseDocumentNumber: row.purchaseDocumentNumber,
+        purchaseSupplierName: row.purchaseSupplierName,
+        purchaseCreatedAt: row.purchaseCreatedAt,
+        warehouse: row.warehouse,
+        product: row.product,
+        salesCount: row.saleIds.size,
+        qtySold: Number(row.qtySold.toFixed(3)),
+        revenue: Number(row.revenue.toFixed(2)),
+        cost: Number(row.cost.toFixed(2)),
+        profit: Number(row.profit.toFixed(2)),
+      }))
+      .sort((a, b) => {
+        const dateDiff = new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return (a.product?.name || "").localeCompare(b.product?.name || "");
+      });
+
+    const byPurchase = Array.from(byPurchaseMap.values())
+      .map((row) => ({
+        purchaseId: row.purchaseId,
+        purchaseDocumentNumber: row.purchaseDocumentNumber,
+        purchaseSupplierName: row.purchaseSupplierName,
+        purchaseCreatedAt: row.purchaseCreatedAt,
+        source: row.source,
+        currency: row.currency,
+        lotsCount: row.lots.size,
+        qtySold: Number(row.qtySold.toFixed(3)),
+        revenue: Number(row.revenue.toFixed(2)),
+        cost: Number(row.cost.toFixed(2)),
+        profit: Number(row.profit.toFixed(2)),
+      }))
+      .sort((a, b) => {
+        const aDate = a.purchaseCreatedAt ? new Date(a.purchaseCreatedAt).getTime() : 0;
+        const bDate = b.purchaseCreatedAt ? new Date(b.purchaseCreatedAt).getTime() : 0;
+        if (aDate !== bDate) return aDate - bDate;
+        return (a.purchaseDocumentNumber || "").localeCompare(b.purchaseDocumentNumber || "");
+      });
+
+    const totalsByCurrency = Array.from(totalsByCurrencyMap.values()).sort((a, b) =>
+      a.currency.localeCompare(b.currency),
+    );
+
+    return {
+      serverDate: range.serverDate,
+      serverTimezone: range.serverTimezone,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      filtersApplied: {
+        channel: channel || null,
+        warehouseId: warehouseId || null,
+        productId: productId || null,
+        purchaseId: purchaseId || null,
+        includeAdjustments,
+      },
+      totalsByCurrency,
+      byPurchase,
+      byLot,
     };
   }
 
@@ -271,6 +581,133 @@ export class ReportsService {
         if (methodOrder !== 0) return methodOrder;
         return a.currency.localeCompare(b.currency);
       });
+  }
+
+  private async getManualIvpSummary(start: Date, end: Date, warehouseId?: string) {
+    const reports = await this.prisma.manualIvpReport.findMany({
+      where: {
+        reportDate: {
+          gte: start,
+          lte: end,
+        },
+        ...(warehouseId ? { warehouseId } : {}),
+      },
+      select: {
+        paymentBreakdown: true,
+        lines: {
+          select: {
+            amount: true,
+          },
+        },
+      },
+    });
+
+    const paymentTotals: Record<string, number> = {};
+    let amount = 0;
+
+    for (const report of reports) {
+      for (const line of report.lines || []) {
+        amount += Number(line.amount || 0);
+      }
+
+      const breakdown = report.paymentBreakdown && typeof report.paymentBreakdown === "object"
+        ? (report.paymentBreakdown as Record<string, unknown>)
+        : {};
+
+      for (const [code, value] of Object.entries(breakdown)) {
+        const normalizedCode = this.normalizePaymentMethodCode(code);
+        const numeric = Number(value || 0);
+        if (!Number.isFinite(numeric) || numeric === 0) continue;
+        paymentTotals[normalizedCode] = Number(((paymentTotals[normalizedCode] || 0) + numeric).toFixed(2));
+      }
+    }
+
+    return {
+      count: reports.length,
+      amount: Number(amount.toFixed(2)),
+      paymentTotals,
+    };
+  }
+
+  private mergePaymentMethodTotals(
+    salesRows: Array<{ method: string; currency: string; amountOriginal: number; amountBase: number }>,
+    manualPaymentTotals: Record<string, number>,
+  ) {
+    const map = new Map<string, { method: string; currency: string; amountOriginal: number; amountBase: number }>();
+
+    for (const row of salesRows) {
+      const method = this.normalizePaymentMethodCode(row.method);
+      const currency = String(row.currency || "CUP").toUpperCase();
+      const key = `${method}::${currency}`;
+      map.set(key, {
+        method,
+        currency,
+        amountOriginal: Number(row.amountOriginal || 0),
+        amountBase: Number(row.amountBase || 0),
+      });
+    }
+
+    for (const [code, value] of Object.entries(manualPaymentTotals || {})) {
+      const method = this.normalizePaymentMethodCode(code);
+      const numeric = Number(value || 0);
+      if (!Number.isFinite(numeric) || numeric === 0) continue;
+      const key = `${method}::CUP`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.amountOriginal = Number((existing.amountOriginal + numeric).toFixed(2));
+        existing.amountBase = Number((existing.amountBase + numeric).toFixed(2));
+      } else {
+        map.set(key, {
+          method,
+          currency: "CUP",
+          amountOriginal: Number(numeric.toFixed(2)),
+          amountBase: Number(numeric.toFixed(2)),
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      const methodOrder = a.method.localeCompare(b.method);
+      if (methodOrder !== 0) return methodOrder;
+      return a.currency.localeCompare(b.currency);
+    });
+  }
+
+  private parseIncludeManualIvpFlag(value?: string | boolean) {
+    if (typeof value === "boolean") return value;
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (!normalized) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    return true;
+  }
+
+  private parseFlexibleBoolean(value: string | boolean | undefined, defaultValue: boolean) {
+    if (typeof value === "boolean") return value;
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (!normalized) return defaultValue;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    return defaultValue;
+  }
+
+  private normalizePaymentMethodCode(code?: string | null) {
+    const normalized = String(code || "").trim().toUpperCase();
+    switch (normalized) {
+      case "EFECTIVO":
+      case "CASH":
+        return "CASH";
+      case "TARJETA":
+      case "CARD":
+        return "CARD";
+      case "TRANSFERENCIA":
+      case "TRANSFER":
+        return "TRANSFER";
+      case "OTRO":
+      case "OTHER":
+      default:
+        return normalized || "OTHER";
+    }
   }
 
   private groupSalesByCashier(sales: DetailedSale[]) {

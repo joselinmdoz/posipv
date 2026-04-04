@@ -33,6 +33,13 @@ enum PurchaseStatus {
   VOID
 }
 
+enum PurchaseLotSource {
+  PURCHASE
+  MANUAL_IN
+  TRANSFER_IN
+  ADJUSTMENT
+}
+
 enum SaleChannel {
   TPV
   DIRECT
@@ -98,6 +105,7 @@ model User {
   journalEntriesPosted  JournalEntry[] @relation("JournalEntryPostedBy")
   periodsClosed         FiscalPeriod[] @relation("FiscalPeriodClosedBy")
   purchasesCreated      Purchase[]     @relation("PurchaseCreatedBy")
+  manualIvpReportsCreated ManualIvpReport[] @relation("ManualIvpCreatedBy")
 }
 
 model Employee {
@@ -133,6 +141,7 @@ model Register {
   cashSessions CashSession[]
   settings     RegisterSettings?
   warehouse    Warehouse?
+  manualIvpReports ManualIvpReport[]
 }
 
 model CashSession {
@@ -179,9 +188,11 @@ model Product {
 
   items                 SaleItem[]
   purchaseItems         PurchaseItem[]
+  purchaseLots          PurchaseLot[]
   stock                 Stock[]
   stockMovements        StockMovement[]
   inventoryReportItems  InventoryReportItem[]
+  manualIvpReportLines  ManualIvpReportLine[]
 }
 
 model Sale {
@@ -236,6 +247,7 @@ model SaleItem {
   qty       Decimal  @db.Decimal(12,3)
   price     Decimal  @db.Decimal(12,2)
   costSnapshot Decimal? @db.Decimal(12,2)
+  lotConsumptions SaleItemLotConsumption[]
 }
 
 model Purchase {
@@ -260,6 +272,7 @@ model Purchase {
   createdBy       User           @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
 
   items           PurchaseItem[]
+  lots            PurchaseLot[]
 
   @@index([warehouseId, createdAt])
   @@index([status, createdAt])
@@ -276,9 +289,58 @@ model PurchaseItem {
   qty        Decimal   @db.Decimal(12,3)
   cost       Decimal   @db.Decimal(12,2)
   total      Decimal   @db.Decimal(12,2)
+  lots       PurchaseLot[]
 
   @@index([purchaseId])
   @@index([productId])
+}
+
+model PurchaseLot {
+  id             String            @id @default(cuid())
+  source         PurchaseLotSource @default(PURCHASE)
+
+  purchaseId     String?
+  purchase       Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  purchaseItemId String?
+  purchaseItem   PurchaseItem?     @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+
+  warehouseId    String
+  warehouse      Warehouse         @relation(fields: [warehouseId], references: [id])
+
+  productId      String
+  product        Product           @relation(fields: [productId], references: [id])
+
+  reference      String?
+  initialQty     Decimal           @db.Decimal(12,3)
+  remainingQty   Decimal           @db.Decimal(12,3)
+  unitCost       Decimal           @db.Decimal(12,2)
+  receivedAt     DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  consumptions   SaleItemLotConsumption[]
+
+  @@index([purchaseId, productId])
+  @@index([warehouseId, productId, receivedAt])
+}
+
+model SaleItemLotConsumption {
+  id            String      @id @default(cuid())
+  saleItemId    String
+  saleItem      SaleItem    @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+
+  purchaseLotId String
+  purchaseLot   PurchaseLot @relation(fields: [purchaseLotId], references: [id], onDelete: Restrict)
+
+  qty           Decimal     @db.Decimal(12,3)
+  unitCost      Decimal     @db.Decimal(12,2)
+  lineCost      Decimal     @db.Decimal(12,2)
+  lineRevenue   Decimal     @db.Decimal(12,2)
+  createdAt     DateTime    @default(now())
+
+  @@index([saleItemId])
+  @@index([purchaseLotId])
 }
 
 model Payment {
@@ -318,8 +380,10 @@ model Warehouse {
   fromMovements         StockMovement[] @relation("FromWarehouse")
   toMovements           StockMovement[] @relation("ToWarehouse")
   inventoryReports      InventoryReport[]
+  manualIvpReports      ManualIvpReport[]
   sales                 Sale[]
   purchases             Purchase[]
+  purchaseLots          PurchaseLot[]
 }
 
 model Stock {
@@ -469,6 +533,55 @@ model InventoryReportItem {
 
   inventoryReportId String
   inventoryReport   InventoryReport @relation(fields: [inventoryReportId], references: [id])
+}
+
+model ManualIvpReport {
+  id               String   @id @default(cuid())
+  registerId       String
+  register         Register @relation(fields: [registerId], references: [id])
+
+  warehouseId      String
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+
+  reportDate       DateTime
+  note             String?
+  employeeIds      String[] @default([])
+  paymentBreakdown Json?
+
+  createdById      String?
+  createdBy        User?    @relation("ManualIvpCreatedBy", fields: [createdById], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  lines            ManualIvpReportLine[]
+
+  @@unique([registerId, reportDate])
+  @@index([registerId, createdAt])
+  @@index([warehouseId, createdAt])
+}
+
+model ManualIvpReportLine {
+  id         String   @id @default(cuid())
+  reportId   String
+  report     ManualIvpReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+
+  initialQty Decimal  @db.Decimal(12,3)
+  entriesQty Decimal  @db.Decimal(12,3) @default(0)
+  outsQty    Decimal  @db.Decimal(12,3) @default(0)
+  salesQty   Decimal  @db.Decimal(12,3) @default(0)
+  totalQty   Decimal  @db.Decimal(12,3) @default(0)
+  finalQty   Decimal  @db.Decimal(12,3) @default(0)
+  price      Decimal  @db.Decimal(12,2)
+  amount     Decimal  @db.Decimal(12,2) @default(0)
+  gp         Decimal  @db.Decimal(12,2) @default(0)
+  gain       Decimal  @db.Decimal(12,2) @default(0)
+
+  @@unique([reportId, productId])
+  @@index([productId])
 }
 
 // Catálogos de productos

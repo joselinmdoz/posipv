@@ -3,12 +3,14 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CashSessionStatus, CurrencyCode, PaymentMethod, Prisma, SaleChannel, SaleStatus, StockMovementType } from "@prisma/client";
 import { dec, moneyEq } from "../../common/decimal";
 import { AccountingService } from "../accounting/accounting.service";
+import { InventoryCostingService } from "../inventory-costing/inventory-costing.service";
 
 @Injectable()
 export class SalesService {
   constructor(
     private prisma: PrismaService,
     private accountingService: AccountingService,
+    private inventoryCostingService: InventoryCostingService,
   ) {}
 
   async listSessionProducts(cashSessionId: string) {
@@ -145,6 +147,7 @@ export class SalesService {
     }
 
     const priceMap = new Map(stockRows.map((s) => [s.productId, s.product.price]));
+    const fallbackCostByProduct = new Map(stockRows.map((s) => [s.productId, s.product.cost || 0]));
 
     let total = new Prisma.Decimal(0);
 
@@ -157,7 +160,7 @@ export class SalesService {
         productId: i.productId,
         qty: i.qty,
         price: price as any,
-        costSnapshot: product.cost ?? null,
+        costSnapshot: null,
       };
     });
 
@@ -227,6 +230,29 @@ export class SalesService {
         include: { items: true, payments: true },
       });
 
+      const averageCostByItem = await this.inventoryCostingService.consumeSaleItemsWithFifo(
+        tx,
+        sale.items.map((item) => ({
+          saleId: sale.id,
+          saleItemId: item.id,
+          warehouseId: tpvWarehouseId,
+          productId: item.productId,
+          qty: item.qty,
+          unitPrice: item.price,
+          fallbackUnitCost: fallbackCostByProduct.get(item.productId) || 0,
+        })),
+      );
+
+      for (const item of sale.items) {
+        const averageCost = averageCostByItem.get(item.id);
+        await tx.saleItem.update({
+          where: { id: item.id },
+          data: {
+            costSnapshot: averageCost ? dec(averageCost.toFixed(2)) : null,
+          },
+        });
+      }
+
       for (const [productId, requestedQty] of qtyByProduct.entries()) {
         const updated = await tx.stock.updateMany({
           where: {
@@ -275,6 +301,8 @@ export class SalesService {
       let restockedProducts = 0;
 
       if (sale.status === SaleStatus.PAID) {
+        await this.inventoryCostingService.restoreSaleLots(tx, sale.id);
+
         if (!sale.warehouseId) {
           throw new BadRequestException("La venta no tiene almacén asociado para revertir stock.");
         }

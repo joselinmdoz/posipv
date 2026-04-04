@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { dec, moneyEq } from "../../common/decimal";
 import { SettingsService } from "../settings/settings.service";
 import { AccountingService } from "../accounting/accounting.service";
+import { InventoryCostingService } from "../inventory-costing/inventory-costing.service";
 
 @Injectable()
 export class DirectSalesService {
@@ -11,6 +12,7 @@ export class DirectSalesService {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly accountingService: AccountingService,
+    private readonly inventoryCostingService: InventoryCostingService,
   ) {}
 
   async listWarehouseProducts(warehouseId: string) {
@@ -79,6 +81,7 @@ export class DirectSalesService {
 
     const stockByProduct = new Map(stockRows.map((s) => [s.productId, s]));
     const productById = new Map(stockRows.map((s) => [s.productId, s.product]));
+    const fallbackCostByProduct = new Map(stockRows.map((s) => [s.productId, s.product.cost || 0]));
 
     for (const item of normalizedItems) {
       const product = productById.get(item.productId);
@@ -116,7 +119,7 @@ export class DirectSalesService {
         productId: i.productId,
         qty: i.qty,
         price: linePrice as any,
-        costSnapshot: product.cost ?? null,
+        costSnapshot: null,
       };
     });
 
@@ -211,6 +214,29 @@ export class DirectSalesService {
           },
         },
       });
+
+      const averageCostByItem = await this.inventoryCostingService.consumeSaleItemsWithFifo(
+        tx,
+        sale.items.map((item) => ({
+          saleId: sale.id,
+          saleItemId: item.id,
+          warehouseId: warehouse.id,
+          productId: item.productId,
+          qty: item.qty,
+          unitPrice: item.price,
+          fallbackUnitCost: fallbackCostByProduct.get(item.productId) || 0,
+        })),
+      );
+
+      for (const item of sale.items) {
+        const averageCost = averageCostByItem.get(item.id);
+        await tx.saleItem.update({
+          where: { id: item.id },
+          data: {
+            costSnapshot: averageCost ? dec(averageCost.toFixed(2)) : null,
+          },
+        });
+      }
 
       for (const [productId, requestedQty] of qtyByProduct.entries()) {
         const updated = await tx.stock.updateMany({

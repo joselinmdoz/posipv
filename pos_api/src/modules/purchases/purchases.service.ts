@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { CurrencyCode, Prisma, PurchaseStatus, StockMovementType } from "@prisma/client";
 import { dec } from "../../common/decimal";
 import { PrismaService } from "../../prisma/prisma.service";
+import { InventoryCostingService } from "../inventory-costing/inventory-costing.service";
 
 type PurchaseItemInput = {
   productId: string;
@@ -41,7 +42,10 @@ type ListPurchasesInput = {
 
 @Injectable()
 export class PurchasesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryCostingService: InventoryCostingService,
+  ) {}
 
   async list(input: ListPurchasesInput) {
     const q = this.normalize(input.q);
@@ -106,6 +110,30 @@ export class PurchasesService {
                 currency: true,
               },
             },
+            lots: {
+              select: {
+                id: true,
+                source: true,
+                initialQty: true,
+                remainingQty: true,
+                unitCost: true,
+                receivedAt: true,
+                reference: true,
+              },
+            },
+          },
+        },
+        lots: {
+          select: {
+            id: true,
+            source: true,
+            productId: true,
+            purchaseItemId: true,
+            initialQty: true,
+            remainingQty: true,
+            unitCost: true,
+            receivedAt: true,
+            reference: true,
           },
         },
       },
@@ -355,8 +383,18 @@ export class PurchasesService {
     tx: Prisma.TransactionClient,
     purchaseId: string,
     warehouseId: string,
-    items: Array<{ productId: string; qty: number | Prisma.Decimal }>
+    items: Array<{ id?: string; productId: string; qty: number | Prisma.Decimal; cost?: number | Prisma.Decimal }>
   ) {
+    const lotRows: Array<{
+      purchaseId: string;
+      purchaseItemId?: string | null;
+      warehouseId: string;
+      productId: string;
+      qty: number;
+      unitCost: number;
+      reference: string;
+    }> = [];
+
     for (const item of items) {
       const qty = Number(item.qty);
       const existing = await tx.stock.findUnique({
@@ -399,7 +437,30 @@ export class PurchasesService {
           reason: `COMPRA:${purchaseId}`,
         },
       });
+
+      lotRows.push({
+        purchaseId,
+        purchaseItemId: item.id || null,
+        warehouseId,
+        productId: item.productId,
+        qty,
+        unitCost: Number(item.cost ?? 0),
+        reference: `COMPRA:${purchaseId}`,
+      });
     }
+
+    await this.inventoryCostingService.createPurchaseLots(
+      tx,
+      lotRows.map((row) => ({
+        purchaseId: row.purchaseId,
+        purchaseItemId: row.purchaseItemId,
+        warehouseId: row.warehouseId,
+        productId: row.productId,
+        qty: row.qty,
+        unitCost: row.unitCost,
+        reference: row.reference,
+      })),
+    );
   }
 
   private async revertPurchaseStock(
@@ -408,6 +469,9 @@ export class PurchasesService {
     warehouseId: string,
     items: Array<{ productId: string; qty: number | Prisma.Decimal }>
   ) {
+    await this.inventoryCostingService.ensurePurchaseLotsCanBeVoided(tx, purchaseId);
+    await this.inventoryCostingService.deletePurchaseLots(tx, purchaseId);
+
     for (const item of items) {
       const qty = Number(item.qty);
       const stock = await tx.stock.findUnique({
@@ -542,6 +606,30 @@ export class PurchasesService {
                 currency: true,
               },
             },
+            lots: {
+              select: {
+                id: true,
+                source: true,
+                initialQty: true,
+                remainingQty: true,
+                unitCost: true,
+                receivedAt: true,
+                reference: true,
+              },
+            },
+          },
+        },
+        lots: {
+          select: {
+            id: true,
+            source: true,
+            productId: true,
+            purchaseItemId: true,
+            initialQty: true,
+            remainingQty: true,
+            unitCost: true,
+            receivedAt: true,
+            reference: true,
           },
         },
       },

@@ -25,13 +25,23 @@ let ReportsController = class ReportsController {
     getServerDate() {
         return this.reportsService.getServerDateInfo();
     }
-    async getSalesReport(startDate, endDate, channel, warehouseId, cashierEmail, customerName, documentNumber) {
+    async getSalesReport(startDate, endDate, channel, warehouseId, cashierEmail, customerName, documentNumber, includeManualIvp) {
         return this.reportsService.getSalesReport(startDate, endDate, {
             channel,
             warehouseId,
             cashierEmail,
             customerName,
             documentNumber,
+            includeManualIvp,
+        });
+    }
+    async getLotProfitReport(startDate, endDate, channel, warehouseId, productId, purchaseId, includeAdjustments) {
+        return this.reportsService.getLotProfitReport(startDate, endDate, {
+            channel,
+            warehouseId,
+            productId,
+            purchaseId,
+            includeAdjustments,
         });
     }
 };
@@ -53,10 +63,25 @@ __decorate([
     __param(4, (0, common_1.Query)("cashierEmail")),
     __param(5, (0, common_1.Query)("customerName")),
     __param(6, (0, common_1.Query)("documentNumber")),
+    __param(7, (0, common_1.Query)("includeManualIvp")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String, String, String, String, String]),
+    __metadata("design:returntype", Promise)
+], ReportsController.prototype, "getSalesReport", null);
+__decorate([
+    (0, common_1.Get)("lot-profit"),
+    (0, permissions_decorator_1.Permissions)("reports.view", "dashboard.view"),
+    __param(0, (0, common_1.Query)("startDate")),
+    __param(1, (0, common_1.Query)("endDate")),
+    __param(2, (0, common_1.Query)("channel")),
+    __param(3, (0, common_1.Query)("warehouseId")),
+    __param(4, (0, common_1.Query)("productId")),
+    __param(5, (0, common_1.Query)("purchaseId")),
+    __param(6, (0, common_1.Query)("includeAdjustments")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
-], ReportsController.prototype, "getSalesReport", null);
+], ReportsController.prototype, "getLotProfitReport", null);
 exports.ReportsController = ReportsController = __decorate([
     (0, common_1.Controller)("reports"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),

@@ -95,6 +95,127 @@ export interface SessionIvpReport {
   closed: boolean;
 }
 
+export interface ManualIvpRegisterOption {
+  id: string;
+  name: string;
+  code: string;
+  warehouse: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+}
+
+export interface ManualIvpEmployeeOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+  active: boolean;
+  userId: string | null;
+  user?: {
+    id: string;
+    email: string;
+    active: boolean;
+  } | null;
+}
+
+export interface ManualIvpPaymentMethodOption {
+  code: string;
+  name: string;
+  requiresTransactionCode?: boolean;
+}
+
+export interface ManualIvpLine {
+  productId: string;
+  codigo?: string;
+  name: string;
+  currency?: string;
+  allowFractionalQty?: boolean;
+  price: number;
+  initial: number;
+  entries: number;
+  outs: number;
+  sales: number;
+  total: number;
+  final: number;
+  amount: number;
+  gp?: number;
+  gain?: number;
+}
+
+export interface ManualIvpBootstrap {
+  register: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  warehouse: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  reportDate: string;
+  isFirstReport: boolean;
+  previousReportId?: string | null;
+  editing: boolean;
+  existingReportId?: string | null;
+  note?: string;
+  employees: ManualIvpEmployeeOption[];
+  paymentMethods: ManualIvpPaymentMethodOption[];
+  selectedEmployeeIds: string[];
+  paymentBreakdown: Record<string, number>;
+  lines: ManualIvpLine[];
+}
+
+export interface ManualIvpReport {
+  id: string;
+  register: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  warehouse: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  reportDate: string;
+  note?: string;
+  employeeIds: string[];
+  employees: ManualIvpEmployeeOption[];
+  paymentMethods: ManualIvpPaymentMethodOption[];
+  paymentBreakdown: Record<string, number>;
+  lines: ManualIvpLine[];
+  totals: {
+    initial: number;
+    entries: number;
+    outs: number;
+    sales: number;
+    total: number;
+    final: number;
+    amount: number;
+    profit?: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveManualIvpPayload {
+  registerId: string;
+  reportDate: string;
+  note?: string;
+  employeeIds?: string[];
+  paymentBreakdown?: Record<string, number>;
+  lines: Array<{
+    productId: string;
+    initial: number;
+    entries: number;
+    outs: number;
+    sales: number;
+  }>;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -153,5 +274,27 @@ export class InventoryReportsService {
     return this.http.delete<{ ok: boolean; cashSessionId: string; deletedReports: number }>(
       `${this.baseUrl}/session/${cashSessionId}`
     );
+  }
+
+  listManualRegisters(): Observable<ManualIvpRegisterOption[]> {
+    return this.http.get<ManualIvpRegisterOption[]>(`${this.baseUrl}/manual/registers`);
+  }
+
+  getManualBootstrap(registerId: string, reportDate?: string): Observable<ManualIvpBootstrap> {
+    let params = new HttpParams().set('registerId', registerId);
+    if (reportDate) params = params.set('reportDate', reportDate);
+    return this.http.get<ManualIvpBootstrap>(`${this.baseUrl}/manual/bootstrap`, { params });
+  }
+
+  getManualById(id: string): Observable<ManualIvpReport> {
+    return this.http.get<ManualIvpReport>(`${this.baseUrl}/manual/${id}`);
+  }
+
+  saveManual(payload: SaveManualIvpPayload): Observable<ManualIvpReport> {
+    return this.http.post<ManualIvpReport>(`${this.baseUrl}/manual`, payload);
+  }
+
+  updateManual(id: string, payload: SaveManualIvpPayload): Observable<ManualIvpReport> {
+    return this.http.put<ManualIvpReport>(`${this.baseUrl}/manual/${id}`, payload);
   }
 }

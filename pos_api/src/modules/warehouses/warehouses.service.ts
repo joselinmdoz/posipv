@@ -137,4 +137,148 @@ export class WarehousesService {
       };
     });
   }
+
+  async updateStockQty(warehouseId: string, productId: string, qty: number, reason?: string) {
+    const normalizedQty = Number(qty);
+    if (!Number.isFinite(normalizedQty) || normalizedQty < 0) {
+      throw new BadRequestException("La cantidad debe ser un número válido mayor o igual a 0.");
+    }
+
+    const [warehouse, product, existing] = await Promise.all([
+      this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, active: true },
+      }),
+      this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { id: true, active: true, allowFractionalQty: true },
+      }),
+      this.prisma.stock.findUnique({
+        where: { warehouseId_productId: { warehouseId, productId } },
+        select: { id: true, qty: true },
+      }),
+    ]);
+
+    if (!warehouse || !warehouse.active) {
+      throw new NotFoundException("Almacén no encontrado o inactivo.");
+    }
+    if (!product || !product.active) {
+      throw new NotFoundException("Producto no encontrado o inactivo.");
+    }
+    if (!existing) {
+      throw new NotFoundException("No existe stock de este producto en el almacén.");
+    }
+
+    const safeQty = product.allowFractionalQty
+      ? Number(normalizedQty.toFixed(2))
+      : Math.floor(normalizedQty);
+    if (!product.allowFractionalQty && !Number.isInteger(normalizedQty)) {
+      throw new BadRequestException("Este producto solo admite cantidades enteras.");
+    }
+
+    const currentQty = Number(existing.qty);
+    const delta = Number((safeQty - currentQty).toFixed(2));
+    if (delta === 0) {
+      return this.prisma.stock.findUnique({
+        where: { id: existing.id },
+        include: {
+          product: {
+            include: {
+              productType: true,
+              productCategory: true,
+              measurementUnit: true,
+            },
+          },
+        },
+      });
+    }
+
+    const movementReason = `AJUSTE_STOCK:${(reason || "Ajuste manual de stock").trim()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (delta > 0) {
+        await tx.stockMovement.create({
+          data: {
+            type: StockMovementType.IN,
+            productId,
+            qty: delta,
+            toWarehouseId: warehouseId,
+            reason: movementReason,
+          },
+        });
+      } else {
+        await tx.stockMovement.create({
+          data: {
+            type: StockMovementType.OUT,
+            productId,
+            qty: Math.abs(delta),
+            fromWarehouseId: warehouseId,
+            reason: movementReason,
+          },
+        });
+      }
+
+      return tx.stock.update({
+        where: { warehouseId_productId: { warehouseId, productId } },
+        data: { qty: safeQty },
+        include: {
+          product: {
+            include: {
+              productType: true,
+              productCategory: true,
+              measurementUnit: true,
+            },
+          },
+        },
+      });
+    });
+  }
+
+  async removeStockItem(warehouseId: string, productId: string, reason?: string) {
+    const [warehouse, existing] = await Promise.all([
+      this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, active: true },
+      }),
+      this.prisma.stock.findUnique({
+        where: { warehouseId_productId: { warehouseId, productId } },
+        select: { id: true, qty: true },
+      }),
+    ]);
+
+    if (!warehouse || !warehouse.active) {
+      throw new NotFoundException("Almacén no encontrado o inactivo.");
+    }
+    if (!existing) {
+      throw new NotFoundException("No existe stock de este producto en el almacén.");
+    }
+
+    const removedQty = Number(existing.qty);
+    const movementReason = `ELIMINAR_STOCK:${(reason || "Eliminación manual desde stock").trim()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (removedQty > 0) {
+        await tx.stockMovement.create({
+          data: {
+            type: StockMovementType.OUT,
+            productId,
+            qty: removedQty,
+            fromWarehouseId: warehouseId,
+            reason: movementReason,
+          },
+        });
+      }
+
+      await tx.stock.delete({
+        where: { warehouseId_productId: { warehouseId, productId } },
+      });
+
+      return {
+        ok: true,
+        warehouseId,
+        productId,
+        removedQty,
+      };
+    });
+  }
 }

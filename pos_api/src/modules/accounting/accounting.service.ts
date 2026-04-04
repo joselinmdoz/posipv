@@ -1386,7 +1386,8 @@ export class AccountingService {
 
     let cogsTotalCup = dec(0);
     for (const item of sale.items || []) {
-      const unitCost = item.product.cost ? dec(item.product.cost) : dec(0);
+      const snapshotCost = item.costSnapshot ? dec(item.costSnapshot) : null;
+      const unitCost = snapshotCost || (item.product.cost ? dec(item.product.cost) : dec(0));
       if (unitCost.lte(0)) continue;
       let lineTotal = dec(unitCost.mul(item.qty).toFixed(2));
 

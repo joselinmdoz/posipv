@@ -12,12 +12,13 @@ const sales_controller_1 = require("./sales.controller");
 const sales_service_1 = require("./sales.service");
 const settings_module_1 = require("../settings/settings.module");
 const accounting_module_1 = require("../accounting/accounting.module");
+const inventory_costing_module_1 = require("../inventory-costing/inventory-costing.module");
 let SalesModule = class SalesModule {
 };
 exports.SalesModule = SalesModule;
 exports.SalesModule = SalesModule = __decorate([
     (0, common_1.Module)({
-        imports: [settings_module_1.SettingsModule, accounting_module_1.AccountingModule],
+        imports: [settings_module_1.SettingsModule, accounting_module_1.AccountingModule, inventory_costing_module_1.InventoryCostingModule],
         controllers: [sales_controller_1.SalesController],
         providers: [sales_service_1.SalesService],
     })

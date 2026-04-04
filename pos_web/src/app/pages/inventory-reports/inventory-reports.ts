@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -52,6 +53,9 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
+                    @if (canManageManualIvp()) {
+                        <p-button label="IPV Manual" icon="pi pi-file-edit" severity="secondary" [outlined]="true" (onClick)="openManualIvpEditor()" />
+                    }
                     <p-button label="Actualizar" icon="pi pi-refresh" severity="secondary" [outlined]="true" [loading]="loading()" (onClick)="refreshData()" />
                 </div>
             </div>
@@ -391,6 +395,7 @@ export class InventoryReportsComponent implements OnInit {
     private readonly messageService = inject(MessageService);
     private readonly confirmationService = inject(ConfirmationService);
     private readonly authService = inject(AuthService);
+    private readonly router = inject(Router);
 
     readonly sessions = signal<CashSession[]>([]);
     readonly warehouses = signal<Warehouse[]>([]);
@@ -571,6 +576,14 @@ export class InventoryReportsComponent implements OnInit {
     canViewAdminProfitInfo() {
         const role = String(this.authService.getUser()?.role || '').trim().toUpperCase();
         return role === 'ADMIN';
+    }
+
+    canManageManualIvp() {
+        return this.authService.hasPermission('tpv.manage');
+    }
+
+    openManualIvpEditor() {
+        this.router.navigate(['/inventory-reports/manual-editor']);
     }
 
     selectedReportProfitTotal() {

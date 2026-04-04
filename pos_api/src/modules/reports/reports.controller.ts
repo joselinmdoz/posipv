@@ -25,6 +25,7 @@ export class ReportsController {
     @Query("cashierEmail") cashierEmail?: string,
     @Query("customerName") customerName?: string,
     @Query("documentNumber") documentNumber?: string,
+    @Query("includeManualIvp") includeManualIvp?: string,
   ) {
     return this.reportsService.getSalesReport(startDate, endDate, {
       channel,
@@ -32,6 +33,27 @@ export class ReportsController {
       cashierEmail,
       customerName,
       documentNumber,
+      includeManualIvp,
+    });
+  }
+
+  @Get("lot-profit")
+  @Permissions("reports.view", "dashboard.view")
+  async getLotProfitReport(
+    @Query("startDate") startDate?: string,
+    @Query("endDate") endDate?: string,
+    @Query("channel") channel?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("productId") productId?: string,
+    @Query("purchaseId") purchaseId?: string,
+    @Query("includeAdjustments") includeAdjustments?: string,
+  ) {
+    return this.reportsService.getLotProfitReport(startDate, endDate, {
+      channel,
+      warehouseId,
+      productId,
+      purchaseId,
+      includeAdjustments,
     });
   }
 }

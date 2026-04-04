@@ -47,6 +47,11 @@ export const appRoutes: Routes = [
             { path: 'product-categories', loadComponent: () => import('./app/pages/product-categories/product-categories').then((m) => m.ProductCategories), canActivate: [permissionGuard(['products.manage'])] },
             { path: 'measurement-units', loadComponent: () => import('./app/pages/measurement-units/measurement-units').then((m) => m.MeasurementUnits), canActivate: [permissionGuard(['products.manage'])] },
             { path: 'warehouses', loadComponent: () => import('./app/pages/warehouses/warehouses').then((m) => m.Warehouses), canActivate: [permissionGuard(['warehouses.view'])] },
+            {
+                path: 'warehouses/stock-bulk-update',
+                loadComponent: () => import('./app/pages/warehouses/warehouse-stock-bulk-update').then((m) => m.WarehouseStockBulkUpdate),
+                canActivate: [permissionGuard(['stock-movements.manage', 'warehouses.manage'])]
+            },
             { path: 'tpv', loadComponent: () => import('./app/pages/tpv/tpv').then((m) => m.Tpv), canActivate: [permissionGuard(['sales.tpv'])] },
             { path: 'tpv-management', loadComponent: () => import('./app/pages/tpv-management/tpv-management').then((m) => m.TpvManagement), canActivate: [permissionGuard(['sales.tpv', 'tpv.manage'])] },
             { path: 'direct-sales', loadComponent: () => import('./app/pages/direct-sales/direct-sales').then((m) => m.DirectSales), canActivate: [permissionGuard(['sales.direct'])] },
@@ -96,6 +101,11 @@ export const appRoutes: Routes = [
             { path: 'denominations', loadComponent: () => import('./app/pages/denominations/denominations').then((m) => m.Denominations), canActivate: [permissionGuard(['tpv.manage'])] },
             { path: 'reports', loadComponent: () => import('./app/pages/reports/reports').then((m) => m.Reports), canActivate: [permissionGuard(['reports.view'])] },
             { path: 'inventory-reports', loadComponent: () => import('./app/pages/inventory-reports/inventory-reports').then((m) => m.InventoryReportsComponent), canActivate: [permissionGuard(['reports.view'])] },
+            {
+                path: 'inventory-reports/manual-editor',
+                loadComponent: () => import('./app/pages/inventory-reports/manual-ipv-editor').then((m) => m.ManualIvpEditorComponent),
+                canActivate: [permissionGuard(['tpv.manage'])]
+            },
             { path: 'pages', loadChildren: () => import('./app/pages/pages.routes'), canActivate: [permissionGuard(['dashboard.view'])] }
         ]
     },
