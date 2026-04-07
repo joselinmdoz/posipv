@@ -13,10 +13,12 @@ exports.StockMovementsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const accounting_service_1 = require("../accounting/accounting.service");
+const inventory_costing_service_1 = require("../inventory-costing/inventory-costing.service");
 let StockMovementsService = class StockMovementsService {
-    constructor(prisma, accountingService) {
+    constructor(prisma, accountingService, inventoryCostingService) {
         this.prisma = prisma;
         this.accountingService = accountingService;
+        this.inventoryCostingService = inventoryCostingService;
     }
     list(params) {
         const where = {};
@@ -115,7 +117,7 @@ let StockMovementsService = class StockMovementsService {
         }
         const product = await this.prisma.product.findUnique({
             where: { id: productId },
-            select: { id: true, active: true, allowFractionalQty: true },
+            select: { id: true, active: true, allowFractionalQty: true, cost: true },
         });
         if (!product || !product.active) {
             throw new common_1.NotFoundException("Producto no existe o está inactivo.");
@@ -154,12 +156,28 @@ let StockMovementsService = class StockMovementsService {
                 if (!toWarehouseId)
                     throw new common_1.BadRequestException("toWarehouseId requerido para IN.");
                 await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
+                await this.inventoryCostingService.createAdjustmentLot(tx, {
+                    warehouseId: toWarehouseId,
+                    productId,
+                    qty: normalized.qty,
+                    unitCost: product.cost || 0,
+                    reference: `MOVIMIENTO:${movement.id}:IN`,
+                    receivedAt: movement.createdAt,
+                });
             }
             else if (normalized.type === "OUT") {
                 const fromWarehouseId = normalized.fromWarehouseId;
                 if (!fromWarehouseId)
                     throw new common_1.BadRequestException("fromWarehouseId requerido para OUT.");
                 await this.adjustStock(tx, fromWarehouseId, productId, -normalized.qty);
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId: fromWarehouseId,
+                    productId,
+                    qty: normalized.qty,
+                    fallbackUnitCost: product.cost || 0,
+                    reference: `MOVIMIENTO:${movement.id}:OUT`,
+                    receivedAt: movement.createdAt,
+                });
             }
             else if (normalized.type === "TRANSFER") {
                 const fromWarehouseId = normalized.fromWarehouseId;
@@ -167,8 +185,24 @@ let StockMovementsService = class StockMovementsService {
                 if (!fromWarehouseId || !toWarehouseId) {
                     throw new common_1.BadRequestException("fromWarehouseId y toWarehouseId requeridos para TRANSFER.");
                 }
+                const consumed = await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId: fromWarehouseId,
+                    productId,
+                    qty: normalized.qty,
+                    fallbackUnitCost: product.cost || 0,
+                    reference: `MOVIMIENTO:${movement.id}:TRANSFER_OUT`,
+                    receivedAt: movement.createdAt,
+                });
                 await this.adjustStock(tx, fromWarehouseId, productId, -normalized.qty);
                 await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
+                await this.inventoryCostingService.createAdjustmentLot(tx, {
+                    warehouseId: toWarehouseId,
+                    productId,
+                    qty: normalized.qty,
+                    unitCost: consumed.averageUnitCost || Number(product.cost || 0),
+                    reference: `MOVIMIENTO:${movement.id}:TRANSFER_IN`,
+                    receivedAt: movement.createdAt,
+                });
             }
             await this.accountingService.postAutomatedStockMovementEntry(tx, movement.id, createdByUserId);
             return movement;
@@ -189,17 +223,36 @@ let StockMovementsService = class StockMovementsService {
             throw new common_1.BadRequestException("No se puede eliminar un movimiento generado automáticamente por ventas o procesos del sistema.");
         }
         return this.prisma.$transaction(async (tx) => {
+            const product = await tx.product.findUnique({
+                where: { id: movement.productId },
+                select: { id: true, cost: true },
+            });
+            const fallbackCost = Number(product?.cost || 0);
             if (movement.type === "IN") {
                 if (!movement.toWarehouseId) {
                     throw new common_1.BadRequestException("Movimiento IN inválido: no tiene almacén de destino.");
                 }
                 await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId: movement.toWarehouseId,
+                    productId: movement.productId,
+                    qty: Number(movement.qty),
+                    fallbackUnitCost: fallbackCost,
+                    reference: `REVERSA_MOVIMIENTO:${movement.id}:IN`,
+                });
             }
             else if (movement.type === "OUT") {
                 if (!movement.fromWarehouseId) {
                     throw new common_1.BadRequestException("Movimiento OUT inválido: no tiene almacén de origen.");
                 }
                 await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
+                await this.inventoryCostingService.createAdjustmentLot(tx, {
+                    warehouseId: movement.fromWarehouseId,
+                    productId: movement.productId,
+                    qty: Number(movement.qty),
+                    unitCost: fallbackCost,
+                    reference: `REVERSA_MOVIMIENTO:${movement.id}:OUT`,
+                });
             }
             else if (movement.type === "TRANSFER") {
                 if (!movement.fromWarehouseId || !movement.toWarehouseId) {
@@ -207,6 +260,20 @@ let StockMovementsService = class StockMovementsService {
                 }
                 await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
                 await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+                await this.inventoryCostingService.createAdjustmentLot(tx, {
+                    warehouseId: movement.fromWarehouseId,
+                    productId: movement.productId,
+                    qty: Number(movement.qty),
+                    unitCost: fallbackCost,
+                    reference: `REVERSA_MOVIMIENTO:${movement.id}:TRANSFER_OUT`,
+                });
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId: movement.toWarehouseId,
+                    productId: movement.productId,
+                    qty: Number(movement.qty),
+                    fallbackUnitCost: fallbackCost,
+                    reference: `REVERSA_MOVIMIENTO:${movement.id}:TRANSFER_IN`,
+                });
             }
             await this.accountingService.voidAutomatedStockMovementEntry(tx, movement.id, `ELIMINACION_MOVIMIENTO:${movement.id}:${deletedByUserId}`);
             await tx.stockMovement.delete({ where: { id: movement.id } });
@@ -248,6 +315,7 @@ let StockMovementsService = class StockMovementsService {
         return (value === "VENTA" ||
             value === "VENTA_DIRECTA" ||
             value.startsWith("ELIMINACION_VENTA:") ||
+            value.startsWith("MANUAL_IPV_") ||
             value.startsWith("RESET_STOCK:") ||
             value.startsWith("COMPRA:") ||
             value.startsWith("ANULACION_COMPRA:"));
@@ -257,6 +325,7 @@ exports.StockMovementsService = StockMovementsService;
 exports.StockMovementsService = StockMovementsService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        accounting_service_1.AccountingService])
+        accounting_service_1.AccountingService,
+        inventory_costing_service_1.InventoryCostingService])
 ], StockMovementsService);
 //# sourceMappingURL=stock-movements.service.js.map

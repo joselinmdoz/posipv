@@ -30,6 +30,7 @@ export interface PurchaseSummary {
     id: string;
     email: string;
   };
+  totalQty: number;
 }
 
 export interface PurchaseItemDetail {
@@ -66,11 +67,13 @@ export interface PurchaseDetail extends PurchaseSummary {
 export interface PurchaseItemInput {
   productId: string;
   qty: number;
-  cost: number;
+  cost?: number;
+  total?: number;
 }
 
 export interface CreatePurchaseDto {
   warehouseId: string;
+  purchaseDate?: string;
   supplierName?: string;
   supplierDocument?: string;
   documentNumber?: string;
@@ -82,6 +85,7 @@ export interface CreatePurchaseDto {
 
 export interface UpdatePurchaseDto {
   warehouseId?: string;
+  purchaseDate?: string;
   supplierName?: string;
   supplierDocument?: string;
   documentNumber?: string;
@@ -141,4 +145,3 @@ export class PurchasesService {
     return this.http.delete<{ ok: boolean; id: string }>(`${this.API_URL}/${id}`);
   }
 }
-

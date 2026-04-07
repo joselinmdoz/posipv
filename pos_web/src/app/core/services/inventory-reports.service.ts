@@ -133,6 +133,7 @@ export interface ManualIvpLine {
   currency?: string;
   allowFractionalQty?: boolean;
   price: number;
+  cost?: number;
   initial: number;
   entries: number;
   outs: number;
@@ -296,5 +297,23 @@ export class InventoryReportsService {
 
   updateManual(id: string, payload: SaveManualIvpPayload): Observable<ManualIvpReport> {
     return this.http.put<ManualIvpReport>(`${this.baseUrl}/manual/${id}`, payload);
+  }
+
+  listManual(params?: {
+    registerId?: string;
+    warehouseId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Observable<ManualIvpReport[]> {
+    let httpParams = new HttpParams();
+    if (params?.registerId) httpParams = httpParams.set('registerId', params.registerId);
+    if (params?.warehouseId) httpParams = httpParams.set('warehouseId', params.warehouseId);
+    if (params?.startDate) httpParams = httpParams.set('startDate', params.startDate);
+    if (params?.endDate) httpParams = httpParams.set('endDate', params.endDate);
+    return this.http.get<ManualIvpReport[]>(`${this.baseUrl}/manual`, { params: httpParams });
+  }
+
+  deleteManual(id: string): Observable<{ ok: boolean; deletedReportId: string }> {
+    return this.http.delete<{ ok: boolean; deletedReportId: string }>(`${this.baseUrl}/manual/${id}`);
   }
 }

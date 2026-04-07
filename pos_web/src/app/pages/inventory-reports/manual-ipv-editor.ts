@@ -27,6 +27,8 @@ type EditableManualLine = ManualIvpLine & {
     entries: number;
     outs: number;
     sales: number;
+    cost: number;
+    computedGain: number;
 };
 
 @Component({
@@ -87,7 +89,7 @@ type EditableManualLine = ManualIvpLine & {
                         <label>Fecha del IPV *</label>
                         <p-datepicker
                             [(ngModel)]="selectedReportDate"
-                            dateFormat="yy-mm-dd"
+                            dateFormat="dd-mm-yy"
                             [showIcon]="true"
                             [maxDate]="today"
                             (onSelect)="onHeaderFiltersChanged()"
@@ -125,6 +127,7 @@ type EditableManualLine = ManualIvpLine & {
                                 <label>{{ method.name }}</label>
                                 <p-inputnumber
                                     [(ngModel)]="paymentBreakdown[method.code]"
+                                    (ngModelChange)="onPaymentBreakdownChange()"
                                     [min]="0"
                                     [minFractionDigits]="0"
                                     [maxFractionDigits]="2"
@@ -184,6 +187,8 @@ type EditableManualLine = ManualIvpLine & {
                             <th class="text-right" style="width: 120px;">Final</th>
                             <th class="text-right" style="width: 120px;">Precio venta</th>
                             <th class="text-right" style="width: 130px;">Importe</th>
+                            <th class="text-right" style="width: 110px;">Ganancia (uds)</th>
+                            <th class="text-right" style="width: 130px;">Ganancia real</th>
                         </tr>
                     </ng-template>
                     <ng-template pTemplate="body" let-line>
@@ -244,21 +249,19 @@ type EditableManualLine = ManualIvpLine & {
                             <td class="text-right font-semibold">{{ formatQty(line.final, line.allowFractionalQty) }}</td>
                             <td class="text-right">{{ formatMoney(line.price, line.currency) }}</td>
                             <td class="text-right font-semibold">{{ formatMoney(line.amount, line.currency) }}</td>
+                            <td class="text-right">{{ line.gp ? formatMoney(line.gp, line.currency) : '-' }}</td>
+                            <td class="text-right font-semibold text-green-600">{{ formatMoney(line.computedGain, line.currency) }}</td>
                         </tr>
                     </ng-template>
                     <ng-template pTemplate="footer">
                         <tr>
-                            <td colspan="3" class="text-right font-bold">Totales</td>
-                            <td class="text-right font-bold">{{ formatQtyTotal(totalEntries()) }}</td>
-                            <td class="text-right font-bold">{{ formatQtyTotal(totalOuts()) }}</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
+                            <td colspan="10"></td>
                             <td class="text-right font-bold">{{ formatMoney(totalAmount(), totalsCurrency()) }}</td>
+                            <td></td>
                         </tr>
                     </ng-template>
                     <ng-template pTemplate="emptymessage">
-                        <tr><td colspan="9">No hay productos para mostrar.</td></tr>
+                        <tr><td colspan="11">No hay productos para mostrar.</td></tr>
                     </ng-template>
                 </p-table>
             </p-card>
@@ -315,6 +318,7 @@ export class ManualIvpEditorComponent implements OnInit {
     selectedReportDate: Date | null = new Date();
     selectedEmployeeIds: string[] = [];
     paymentBreakdown: Record<string, number> = {};
+    private readonly paymentBreakdownChanged = signal(0);
     note = '';
     showAddProductDialog = false;
     selectedProductToAddId: string | null = null;
@@ -347,8 +351,12 @@ export class ManualIvpEditorComponent implements OnInit {
     readonly totalEntries = computed(() => Number(this.lines().reduce((acc, line) => acc + Number(line.entries || 0), 0).toFixed(2)));
     readonly totalOuts = computed(() => Number(this.lines().reduce((acc, line) => acc + Number(line.outs || 0), 0).toFixed(2)));
     readonly totalAmount = computed(() => Number(this.lines().reduce((acc, line) => acc + Number(line.amount || 0), 0).toFixed(2)));
+    readonly totalComputedGain = computed(() => Number(this.lines().reduce((acc, line) => acc + Number(line.computedGain || 0), 0).toFixed(2)));
     readonly totalsCurrency = computed(() => this.getSummaryCurrency());
-    readonly paymentEnteredTotal = computed(() => this.getPaymentBreakdownTotal());
+    readonly paymentEnteredTotal = computed(() => {
+        this.paymentBreakdownChanged();
+        return this.getPaymentBreakdownTotal();
+    });
     readonly paymentDifference = computed(() => Number((this.paymentEnteredTotal() - this.totalAmount()).toFixed(2)));
 
     ngOnInit(): void {
@@ -363,6 +371,10 @@ export class ManualIvpEditorComponent implements OnInit {
     onHeaderFiltersChanged() {
         if (!this.selectedRegisterId) return;
         this.loadBootstrap();
+    }
+
+    onPaymentBreakdownChange() {
+        this.paymentBreakdownChanged.update((v) => v + 1);
     }
 
     openAddProductDialog() {
@@ -404,6 +416,7 @@ export class ManualIvpEditorComponent implements OnInit {
             currency: product.currency || 'CUP',
             allowFractionalQty: product.allowFractionalQty === true,
             price: Number(product.price || 0),
+            cost: product.cost != null ? Number(product.cost) : null as any,
             initial: 0,
             entries: 0,
             outs: 0,
@@ -414,7 +427,8 @@ export class ManualIvpEditorComponent implements OnInit {
             gp: product.cost !== undefined && product.cost !== null
                 ? Number((Number(product.price || 0) - Number(product.cost || 0)).toFixed(2))
                 : undefined,
-            gain: 0
+            gain: 0,
+            computedGain: 0
         });
 
         this.lines.update((rows) => [...rows, newLine].sort((a, b) => this.compareLinesByCodeAndName(a, b)));
@@ -531,12 +545,15 @@ export class ManualIvpEditorComponent implements OnInit {
                 this.note = saved.note || '';
                 this.selectedEmployeeIds = [...(saved.employeeIds || [])];
                 this.paymentBreakdown = { ...(saved.paymentBreakdown || {}) };
+                this.onPaymentBreakdownChange();
                 this.lines.set(
                     (saved.lines || []).map((line) => ({
                         ...line,
                         entries: Number(line.entries || 0),
                         outs: Number(line.outs || 0),
-                        sales: Number(line.sales || 0)
+                        sales: Number(line.sales || 0),
+                        cost: line.cost != null ? Number(line.cost) : null as any,
+                        computedGain: 0
                     })).map((line) => this.recalculateLine(line))
                 );
                 this.loadBootstrap();
@@ -606,12 +623,15 @@ export class ManualIvpEditorComponent implements OnInit {
                 this.selectedEmployeeIds = [...(bootstrap.selectedEmployeeIds || [])];
                 this.paymentBreakdown = { ...(bootstrap.paymentBreakdown || {}) };
                 this.note = bootstrap.note || '';
+                this.onPaymentBreakdownChange();
                 this.lines.set(
                     (bootstrap.lines || []).map((line) => ({
                         ...line,
                         entries: Number(line.entries || 0),
                         outs: Number(line.outs || 0),
-                        sales: Number(line.sales || 0)
+                        sales: Number(line.sales || 0),
+                        cost: line.cost != null ? Number(line.cost) : null as any,
+                        computedGain: 0
                     })).map((line) => this.recalculateLine(line))
                 );
             },
@@ -665,7 +685,19 @@ export class ManualIvpEditorComponent implements OnInit {
         line.total = this.calcTotal(line);
         line.final = this.calcFinal(line);
         line.amount = this.calcAmount(line);
+        // Recalcular gp (ganancia por unidad) PRIMERO, con chequeo nulo correcto
+        if (line.cost != null && Number(line.price || 0) > 0) {
+            line.gp = Number((Number(line.price) - Number(line.cost)).toFixed(2));
+        }
+        // Calcular computedGain usando el gp ya actualizado
+        line.computedGain = this.calcComputedGain(line);
         return line;
+    }
+
+    private calcComputedGain(line: EditableManualLine): number {
+        const salesQty = Number(line.sales || 0);
+        const gp = Number(line.gp ?? 0);
+        return Number((salesQty * gp).toFixed(2));
     }
 
     private compareLinesByCodeAndName(a: EditableManualLine, b: EditableManualLine) {

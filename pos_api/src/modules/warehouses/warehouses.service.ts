@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { CashSessionStatus, StockMovementType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { InventoryCostingService } from "../inventory-costing/inventory-costing.service";
 
 @Injectable()
 export class WarehousesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly inventoryCostingService: InventoryCostingService,
+  ) {}
 
   list() {
     return this.prisma.warehouse.findMany({
@@ -96,6 +100,11 @@ export class WarehousesService {
         id: true,
         productId: true,
         qty: true,
+        product: {
+          select: {
+            cost: true,
+          },
+        },
       },
     });
 
@@ -107,7 +116,7 @@ export class WarehousesService {
 
     return this.prisma.$transaction(async (tx) => {
       for (const row of rows) {
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
           data: {
             type: StockMovementType.OUT,
             productId: row.productId,
@@ -115,6 +124,14 @@ export class WarehousesService {
             fromWarehouseId: id,
             reason: `RESET_STOCK:${safeReason}`,
           },
+        });
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: id,
+          productId: row.productId,
+          qty: Number(row.qty),
+          fallbackUnitCost: Number(row.product?.cost || 0),
+          reference: `RESET_STOCK:${movement.id}`,
+          receivedAt: movement.createdAt,
         });
       }
 
@@ -151,7 +168,7 @@ export class WarehousesService {
       }),
       this.prisma.product.findUnique({
         where: { id: productId },
-        select: { id: true, active: true, allowFractionalQty: true },
+        select: { id: true, active: true, allowFractionalQty: true, cost: true },
       }),
       this.prisma.stock.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
@@ -197,7 +214,7 @@ export class WarehousesService {
 
     return this.prisma.$transaction(async (tx) => {
       if (delta > 0) {
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
           data: {
             type: StockMovementType.IN,
             productId,
@@ -206,8 +223,16 @@ export class WarehousesService {
             reason: movementReason,
           },
         });
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId,
+          productId,
+          qty: delta,
+          unitCost: Number(product.cost || 0),
+          reference: `AJUSTE_STOCK:${movement.id}:IN`,
+          receivedAt: movement.createdAt,
+        });
       } else {
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
           data: {
             type: StockMovementType.OUT,
             productId,
@@ -215,6 +240,14 @@ export class WarehousesService {
             fromWarehouseId: warehouseId,
             reason: movementReason,
           },
+        });
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId,
+          productId,
+          qty: Math.abs(delta),
+          fallbackUnitCost: Number(product.cost || 0),
+          reference: `AJUSTE_STOCK:${movement.id}:OUT`,
+          receivedAt: movement.createdAt,
         });
       }
 
@@ -258,7 +291,7 @@ export class WarehousesService {
 
     return this.prisma.$transaction(async (tx) => {
       if (removedQty > 0) {
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
           data: {
             type: StockMovementType.OUT,
             productId,
@@ -266,6 +299,18 @@ export class WarehousesService {
             fromWarehouseId: warehouseId,
             reason: movementReason,
           },
+        });
+        const product = await tx.product.findUnique({
+          where: { id: productId },
+          select: { cost: true },
+        });
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId,
+          productId,
+          qty: removedQty,
+          fallbackUnitCost: Number(product?.cost || 0),
+          reference: `ELIMINAR_STOCK:${movement.id}:OUT`,
+          receivedAt: movement.createdAt,
         });
       }
 

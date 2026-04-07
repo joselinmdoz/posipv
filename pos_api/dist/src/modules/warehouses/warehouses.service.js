@@ -13,9 +13,11 @@ exports.WarehousesService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const inventory_costing_service_1 = require("../inventory-costing/inventory-costing.service");
 let WarehousesService = class WarehousesService {
-    constructor(prisma) {
+    constructor(prisma, inventoryCostingService) {
         this.prisma = prisma;
+        this.inventoryCostingService = inventoryCostingService;
     }
     list() {
         return this.prisma.warehouse.findMany({
@@ -102,6 +104,11 @@ let WarehousesService = class WarehousesService {
                 id: true,
                 productId: true,
                 qty: true,
+                product: {
+                    select: {
+                        cost: true,
+                    },
+                },
             },
         });
         if (rows.length === 0) {
@@ -110,7 +117,7 @@ let WarehousesService = class WarehousesService {
         const safeReason = (reason || "Reinicio manual").trim();
         return this.prisma.$transaction(async (tx) => {
             for (const row of rows) {
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         type: client_1.StockMovementType.OUT,
                         productId: row.productId,
@@ -118,6 +125,14 @@ let WarehousesService = class WarehousesService {
                         fromWarehouseId: id,
                         reason: `RESET_STOCK:${safeReason}`,
                     },
+                });
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId: id,
+                    productId: row.productId,
+                    qty: Number(row.qty),
+                    fallbackUnitCost: Number(row.product?.cost || 0),
+                    reference: `RESET_STOCK:${movement.id}`,
+                    receivedAt: movement.createdAt,
                 });
             }
             await tx.stock.updateMany({
@@ -150,7 +165,7 @@ let WarehousesService = class WarehousesService {
             }),
             this.prisma.product.findUnique({
                 where: { id: productId },
-                select: { id: true, active: true, allowFractionalQty: true },
+                select: { id: true, active: true, allowFractionalQty: true, cost: true },
             }),
             this.prisma.stock.findUnique({
                 where: { warehouseId_productId: { warehouseId, productId } },
@@ -191,7 +206,7 @@ let WarehousesService = class WarehousesService {
         const movementReason = `AJUSTE_STOCK:${(reason || "Ajuste manual de stock").trim()}`;
         return this.prisma.$transaction(async (tx) => {
             if (delta > 0) {
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         type: client_1.StockMovementType.IN,
                         productId,
@@ -200,9 +215,17 @@ let WarehousesService = class WarehousesService {
                         reason: movementReason,
                     },
                 });
+                await this.inventoryCostingService.createAdjustmentLot(tx, {
+                    warehouseId,
+                    productId,
+                    qty: delta,
+                    unitCost: Number(product.cost || 0),
+                    reference: `AJUSTE_STOCK:${movement.id}:IN`,
+                    receivedAt: movement.createdAt,
+                });
             }
             else {
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         type: client_1.StockMovementType.OUT,
                         productId,
@@ -210,6 +233,14 @@ let WarehousesService = class WarehousesService {
                         fromWarehouseId: warehouseId,
                         reason: movementReason,
                     },
+                });
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId,
+                    productId,
+                    qty: Math.abs(delta),
+                    fallbackUnitCost: Number(product.cost || 0),
+                    reference: `AJUSTE_STOCK:${movement.id}:OUT`,
+                    receivedAt: movement.createdAt,
                 });
             }
             return tx.stock.update({
@@ -248,7 +279,7 @@ let WarehousesService = class WarehousesService {
         const movementReason = `ELIMINAR_STOCK:${(reason || "Eliminación manual desde stock").trim()}`;
         return this.prisma.$transaction(async (tx) => {
             if (removedQty > 0) {
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         type: client_1.StockMovementType.OUT,
                         productId,
@@ -256,6 +287,18 @@ let WarehousesService = class WarehousesService {
                         fromWarehouseId: warehouseId,
                         reason: movementReason,
                     },
+                });
+                const product = await tx.product.findUnique({
+                    where: { id: productId },
+                    select: { cost: true },
+                });
+                await this.inventoryCostingService.consumeStockWithFifo(tx, {
+                    warehouseId,
+                    productId,
+                    qty: removedQty,
+                    fallbackUnitCost: Number(product?.cost || 0),
+                    reference: `ELIMINAR_STOCK:${movement.id}:OUT`,
+                    receivedAt: movement.createdAt,
                 });
             }
             await tx.stock.delete({
@@ -273,6 +316,7 @@ let WarehousesService = class WarehousesService {
 exports.WarehousesService = WarehousesService;
 exports.WarehousesService = WarehousesService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        inventory_costing_service_1.InventoryCostingService])
 ], WarehousesService);
 //# sourceMappingURL=warehouses.service.js.map

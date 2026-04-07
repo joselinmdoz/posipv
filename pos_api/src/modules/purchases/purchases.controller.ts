@@ -17,9 +17,16 @@ class PurchaseItemDto {
   qty!: number;
 
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(0.000001)
-  cost!: number;
+  cost?: number;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0.000001)
+  total?: number;
 }
 
 class CreatePurchaseDto {
@@ -65,6 +72,10 @@ class UpdatePurchaseDto {
   @IsOptional()
   @IsString()
   warehouseId?: string;
+
+  @IsOptional()
+  @IsString()
+  purchaseDate?: string;
 
   @IsOptional()
   @IsString()

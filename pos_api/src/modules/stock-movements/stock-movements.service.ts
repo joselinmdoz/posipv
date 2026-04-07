@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AccountingService } from "../accounting/accounting.service";
+import { InventoryCostingService } from "../inventory-costing/inventory-costing.service";
 
 @Injectable()
 export class StockMovementsService {
   constructor(
     private prisma: PrismaService,
     private accountingService: AccountingService,
+    private inventoryCostingService: InventoryCostingService,
   ) {}
 
   list(params?: { warehouseId?: string; from?: string; to?: string; type?: "IN" | "OUT" | "TRANSFER"; reason?: string }) {
@@ -127,7 +129,7 @@ export class StockMovementsService {
 
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, active: true, allowFractionalQty: true },
+      select: { id: true, active: true, allowFractionalQty: true, cost: true },
     });
     if (!product || !product.active) {
       throw new NotFoundException("Producto no existe o está inactivo.");
@@ -170,18 +172,50 @@ export class StockMovementsService {
         const toWarehouseId = normalized.toWarehouseId;
         if (!toWarehouseId) throw new BadRequestException("toWarehouseId requerido para IN.");
         await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId: toWarehouseId,
+          productId,
+          qty: normalized.qty,
+          unitCost: product.cost || 0,
+          reference: `MOVIMIENTO:${movement.id}:IN`,
+          receivedAt: movement.createdAt,
+        });
       } else if (normalized.type === "OUT") {
         const fromWarehouseId = normalized.fromWarehouseId;
         if (!fromWarehouseId) throw new BadRequestException("fromWarehouseId requerido para OUT.");
         await this.adjustStock(tx, fromWarehouseId, productId, -normalized.qty);
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: fromWarehouseId,
+          productId,
+          qty: normalized.qty,
+          fallbackUnitCost: product.cost || 0,
+          reference: `MOVIMIENTO:${movement.id}:OUT`,
+          receivedAt: movement.createdAt,
+        });
       } else if (normalized.type === "TRANSFER") {
         const fromWarehouseId = normalized.fromWarehouseId;
         const toWarehouseId = normalized.toWarehouseId;
         if (!fromWarehouseId || !toWarehouseId) {
           throw new BadRequestException("fromWarehouseId y toWarehouseId requeridos para TRANSFER.");
         }
+        const consumed = await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: fromWarehouseId,
+          productId,
+          qty: normalized.qty,
+          fallbackUnitCost: product.cost || 0,
+          reference: `MOVIMIENTO:${movement.id}:TRANSFER_OUT`,
+          receivedAt: movement.createdAt,
+        });
         await this.adjustStock(tx, fromWarehouseId, productId, -normalized.qty);
         await this.adjustStock(tx, toWarehouseId, productId, normalized.qty);
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId: toWarehouseId,
+          productId,
+          qty: normalized.qty,
+          unitCost: consumed.averageUnitCost || Number(product.cost || 0),
+          reference: `MOVIMIENTO:${movement.id}:TRANSFER_IN`,
+          receivedAt: movement.createdAt,
+        });
       }
 
       await this.accountingService.postAutomatedStockMovementEntry(
@@ -212,22 +246,56 @@ export class StockMovementsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: movement.productId },
+        select: { id: true, cost: true },
+      });
+      const fallbackCost = Number(product?.cost || 0);
+
       if (movement.type === "IN") {
         if (!movement.toWarehouseId) {
           throw new BadRequestException("Movimiento IN inválido: no tiene almacén de destino.");
         }
         await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: movement.toWarehouseId,
+          productId: movement.productId,
+          qty: Number(movement.qty),
+          fallbackUnitCost: fallbackCost,
+          reference: `REVERSA_MOVIMIENTO:${movement.id}:IN`,
+        });
       } else if (movement.type === "OUT") {
         if (!movement.fromWarehouseId) {
           throw new BadRequestException("Movimiento OUT inválido: no tiene almacén de origen.");
         }
         await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId: movement.fromWarehouseId,
+          productId: movement.productId,
+          qty: Number(movement.qty),
+          unitCost: fallbackCost,
+          reference: `REVERSA_MOVIMIENTO:${movement.id}:OUT`,
+        });
       } else if (movement.type === "TRANSFER") {
         if (!movement.fromWarehouseId || !movement.toWarehouseId) {
           throw new BadRequestException("Movimiento TRANSFER inválido: faltan almacenes.");
         }
         await this.adjustStock(tx, movement.fromWarehouseId, movement.productId, Number(movement.qty));
         await this.adjustStock(tx, movement.toWarehouseId, movement.productId, -Number(movement.qty));
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId: movement.fromWarehouseId,
+          productId: movement.productId,
+          qty: Number(movement.qty),
+          unitCost: fallbackCost,
+          reference: `REVERSA_MOVIMIENTO:${movement.id}:TRANSFER_OUT`,
+        });
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: movement.toWarehouseId,
+          productId: movement.productId,
+          qty: Number(movement.qty),
+          fallbackUnitCost: fallbackCost,
+          reference: `REVERSA_MOVIMIENTO:${movement.id}:TRANSFER_IN`,
+        });
       }
 
       await this.accountingService.voidAutomatedStockMovementEntry(
@@ -278,6 +346,7 @@ export class StockMovementsService {
       value === "VENTA" ||
       value === "VENTA_DIRECTA" ||
       value.startsWith("ELIMINACION_VENTA:") ||
+      value.startsWith("MANUAL_IPV_") ||
       value.startsWith("RESET_STOCK:") ||
       value.startsWith("COMPRA:") ||
       value.startsWith("ANULACION_COMPRA:")

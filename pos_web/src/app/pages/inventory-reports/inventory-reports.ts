@@ -15,12 +15,15 @@ import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
 import { catchError, forkJoin, of } from 'rxjs';
 import { CashSession, CashSessionsService } from '@/app/core/services/cash-sessions.service';
-import { InventoryReportsService, SessionIvpReport } from '@/app/core/services/inventory-reports.service';
+import { InventoryReportsService, SessionIvpReport, ManualIvpReport } from '@/app/core/services/inventory-reports.service';
+
+type ReportRow = (SessionIvpReport & { type: 'AUTO' }) | (ManualIvpReport & { type: 'MANUAL'; cashSessionId?: string; status: 'OPEN' | 'CLOSED'; closed: boolean; paymentTotals: { CASH: number; CARD: number; TRANSFER: number; OTHER: number } });
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
 import { AuthService } from '@/app/core/services/auth.service';
 import { SettingsService } from '@/app/core/services/settings.service';
 
 type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
+type ReportTypeFilter = 'AUTO' | 'MANUAL';
 
 @Component({
     selector: 'app-inventory-reports',
@@ -47,7 +50,7 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
 
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 class="text-2xl font-bold m-0">Informes de Inventario (IPV)</h1>
+                    <h3 class="text-2xl font-bold m-0">Informes de Inventario (IPV)</h3>
                     <p class="text-sm text-gray-600 mt-1 mb-0">
                         Un IPV por sesión de TPV. Consulta y filtra por sesión, estado, almacén y fecha.
                     </p>
@@ -65,7 +68,22 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                     <div class="p-3 bg-primary text-white font-bold">Filtros de búsqueda</div>
                 </ng-template>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div class="flex flex-col gap-2">
+                        <label>Tipo de reporte</label>
+                        <p-select
+                            [options]="[
+                                { label: 'Automático', value: 'AUTO' },
+                                { label: 'Manual', value: 'MANUAL' }
+                            ]"
+                            [(ngModel)]="selectedType"
+                            optionLabel="label"
+                            optionValue="value"
+                            class="w-full"
+                            (onChange)="onTypeChange()"
+                        />
+                    </div>
+
                     <div class="flex flex-col gap-2">
                         <label>Estado de sesión</label>
                         <p-select
@@ -194,54 +212,56 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                         [sortOrder]="-1"
                         styleClass="p-datatable-sm"
                     >
-                        <ng-template pTemplate="header">
-                            <tr>
-                                <th>TPV</th>
-                                <th>Sesión</th>
-                                <th>Apertura</th>
-                                <th>Cierre</th>
-                                <th>Estado</th>
-                                <th class="text-right">Ventas (tickets)</th>
-                                <th class="text-right">Entradas</th>
-                                <th class="text-right">Salidas</th>
-                                <th class="text-right">Importe</th>
-                                <th class="text-center">Acciones</th>
-                            </tr>
-                        </ng-template>
+                         <ng-template pTemplate="header">
+                             <tr>
+                                 <th>Tipo</th>
+                                 <th>TPV</th>
+                                 <th>ID / Sesión</th>
+                                 <th>Apertura</th>
+                                 <th>Cierre</th>
+                                 <th>Estado</th>
+                                 <th class="text-right">Ventas (tickets)</th>
+                                 <th class="text-right">Entradas</th>
+                                 <th class="text-right">Salidas</th>
+                                 <th class="text-right">Importe</th>
+                                 <th class="text-center">Acciones</th>
+                             </tr>
+                         </ng-template>
 
-                        <ng-template pTemplate="body" let-report>
-                            <tr>
+                         <ng-template pTemplate="body" let-report>
+                             <tr>
+                                 <td>{{ report.type === 'MANUAL' ? 'Manual' : 'Automático' }}</td>
                                 <td>{{ report.register.name }}</td>
-                                <td><code class="text-xs">{{ report.cashSessionId.substring(0, 8) }}</code></td>
-                                <td>{{ report.openedAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                                <td><code class="text-xs">{{ getReportId(report) }}</code></td>
+                                <td>{{ getReportDate(report) | date:'dd/MM/yyyy HH:mm' }}</td>
                                 <td>{{ report.closedAt ? (report.closedAt | date:'dd/MM/yyyy HH:mm') : 'En curso' }}</td>
-                                <td>
-                                    <p-tag [value]="report.closed ? 'Cerrada' : 'Abierta'" [severity]="report.closed ? 'info' : 'success'" />
-                                </td>
-                                <td class="text-right">{{ report.totals.salesCount ?? report.totals.sales }}</td>
-                                <td class="text-right">{{ report.totals.entriesCount ?? report.totals.entries }}</td>
-                                <td class="text-right">{{ report.totals.outsCount ?? report.totals.outs }}</td>
-                                <td class="text-right font-semibold">{{ formatMoney(report.totals.amount, getReportDisplayCurrency(report)) }}</td>
-                                <td class="text-center">
-                                    <p-button
-                                        icon="pi pi-eye"
-                                        [rounded]="true"
-                                        [text]="true"
-                                        severity="secondary"
-                                        (onClick)="viewReport(report)"
-                                    />
-                                    @if (canDeleteIpvReports()) {
-                                        <p-button
-                                            icon="pi pi-trash"
-                                            [rounded]="true"
-                                            [text]="true"
-                                            severity="danger"
-                                            (onClick)="deleteReport(report)"
-                                        />
-                                    }
-                                </td>
-                            </tr>
-                        </ng-template>
+                                 <td>
+                                     <p-tag [value]="report.closed ? 'Cerrada' : 'Abierta'" [severity]="report.closed ? 'info' : 'success'" />
+                                 </td>
+                    <td class="text-right">{{ getTotalSales(report) }}</td>
+                    <td class="text-right">{{ getTotalEntries(report) }}</td>
+                    <td class="text-right">{{ getTotalOuts(report) }}</td>
+                                 <td class="text-right font-semibold">{{ formatMoney(report.totals.amount, getReportDisplayCurrency(report)) }}</td>
+                                 <td class="text-center">
+                                     <p-button
+                                         icon="pi pi-eye"
+                                         [rounded]="true"
+                                         [text]="true"
+                                         severity="secondary"
+                                         (onClick)="viewReport(report)"
+                                     />
+                                     @if ((report.type === 'AUTO' ? canDeleteIpvReports() : canDeleteManualReports())) {
+                                         <p-button
+                                             icon="pi pi-trash"
+                                             [rounded]="true"
+                                             [text]="true"
+                                             severity="danger"
+                                             (onClick)="deleteReport(report)"
+                                         />
+                                     }
+                                 </td>
+                             </tr>
+                         </ng-template>
                     </p-table>
                 }
             </p-card>
@@ -262,45 +282,36 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                         <p>Cargando reporte IPV...</p>
                     </div>
                 } @else if (selectedReport()) {
-                    <div class="tpv-ipv-toolbar">
-                        <div class="tpv-ipv-session-meta">
-                            <div>
-                                TPV:
-                                <strong>{{ selectedReport()!.register.name }}</strong>
-                            </div>
-                            <div>
-                                Apertura:
-                                <strong>{{ selectedReport()!.openedAt | date:'dd/MM/yyyy HH:mm' }}</strong>
-                            </div>
-                            <div>
-                                Empleado:
-                                <strong>{{ getSessionResponsibleLabel(selectedReport()!) }}</strong>
-                            </div>
+                    <div class="tpv-ipv-content">
+                        <div>
+                            TPV:
+                            <strong>{{ selectedReport()!.register.name }}</strong>
                         </div>
-                        <div class="tpv-ipv-toolbar-actions">
-                            <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="refreshSelectedReport()" />
-                            <p-button icon="pi pi-file-pdf" label="Exportar PDF" severity="secondary" (onClick)="exportSelectedReportAsPdf()" />
-                            @if (canViewAdminProfitInfo()) {
-                                <p-button icon="pi pi-chart-bar" label="Exportar PDF Admin" severity="contrast" [outlined]="true" (onClick)="exportSelectedReportAsAdminPdf()" />
-                            }
-                            @if (canDeleteIpvReports()) {
-                                <p-button icon="pi pi-trash" label="Eliminar IPV" severity="danger" [outlined]="true" (onClick)="deleteReport(selectedReport()!)" />
-                            }
+                        <div>
+                            Fecha:
+                            <strong>{{ getReportDate(selectedReport()!) | date:'dd/MM/yyyy' }}</strong>
                         </div>
-                    </div>
+                        <div>
+                            Empleado:
+                            <strong>{{ getSessionResponsibleLabel(selectedReport()!) }}</strong>
+                        </div>
+                        <p-button icon="pi pi-refresh" label="Actualizar" severity="secondary" [outlined]="true" (onClick)="refreshSelectedReport()" [disabled]="selectedReport()!.type !== 'AUTO'" />
+                        <p-button icon="pi pi-file-pdf" label="Exportar PDF" severity="secondary" (onClick)="exportSelectedReportAsPdf()" />
+                        <p-button *ngIf="canViewAdminProfitInfo()" icon="pi pi-chart-bar" label="Exportar PDF Admin" severity="contrast" [outlined]="true" (onClick)="exportSelectedReportAsAdminPdf()" />
+                        <p-button icon="pi pi-trash" label="Eliminar IPV" severity="danger" [outlined]="true" (onClick)="deleteReport(selectedReport()!)" [disabled]="!(selectedReport()!.type === 'AUTO' ? canDeleteIpvReports() : canDeleteManualReports())" />
 
-                    <div class="tpv-ipv-summary">
+                        <div class="tpv-ipv-summary">
                         <div class="tpv-ipv-summary-item">
                             <span>Total de ventas</span>
-                            <strong>{{ selectedReport()!.totals.salesCount ?? selectedReport()!.totals.sales }}</strong>
+                            <strong>{{ getTotalSales(selectedReport()!) }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de entradas</span>
-                            <strong>{{ selectedReport()!.totals.entriesCount ?? selectedReport()!.totals.entries }}</strong>
+                            <strong>{{ getTotalEntries(selectedReport()!) }}</strong>
                         </div>
                         <div class="tpv-ipv-summary-item">
                             <span>Total de salidas</span>
-                            <strong>{{ selectedReport()!.totals.outsCount ?? selectedReport()!.totals.outs }}</strong>
+                            <strong>{{ getTotalOuts(selectedReport()!) }}</strong>
                         </div>
                         @for (paymentRow of selectedReportPaymentRows(); track paymentRow.code) {
                             <div class="tpv-ipv-summary-item">
@@ -373,6 +384,7 @@ type SessionStatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
                                 }
                             </tfoot>
                         </table>
+                        </div>
                     </div>
                 } @else {
                     <div class="tpv-ipv-empty">
@@ -399,17 +411,18 @@ export class InventoryReportsComponent implements OnInit {
 
     readonly sessions = signal<CashSession[]>([]);
     readonly warehouses = signal<Warehouse[]>([]);
-    readonly reports = signal<SessionIvpReport[]>([]);
+    readonly reports = signal<ReportRow[]>([]);
     readonly loading = signal<boolean>(false);
     readonly detailLoading = signal<boolean>(false);
     readonly searchExecuted = signal<boolean>(false);
-    readonly selectedReport = signal<SessionIvpReport | null>(null);
+    readonly selectedReport = signal<ReportRow | null>(null);
     readonly selectedReportPaymentRows = signal<Array<{ code: string; label: string; amount: number }>>([]);
     readonly selectedReportCurrency = signal<string>('CUP');
 
     showDetail = false;
 
     selectedStatus: SessionStatusFilter = 'ALL';
+    selectedType: ReportTypeFilter = 'AUTO';
     selectedWarehouseId: string | null = null;
     sessionQuery = '';
     keyword = '';
@@ -519,6 +532,14 @@ export class InventoryReportsComponent implements OnInit {
         this.searchExecuted.set(true);
         this.loading.set(true);
 
+        if (this.selectedType === 'AUTO') {
+            this.searchAutoReports();
+        } else {
+            this.searchManualReports();
+        }
+    }
+
+    private searchAutoReports() {
         const candidates = this.filterSessions(this.sessions());
         if (candidates.length === 0) {
             this.reports.set([]);
@@ -532,8 +553,8 @@ export class InventoryReportsComponent implements OnInit {
 
         forkJoin(requests).subscribe({
             next: (responses) => {
-                const reports = responses.filter((report): report is SessionIvpReport => !!report);
-                reports.sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+                const reports: ReportRow[] = responses.filter((report): report is SessionIvpReport => !!report).map((r) => ({ ...r, type: 'AUTO' as const }));
+                reports.sort((a, b) => new Date((b as any).openedAt).getTime() - new Date((a as any).openedAt).getTime());
                 this.reports.set(reports);
                 this.loading.set(false);
             },
@@ -545,7 +566,57 @@ export class InventoryReportsComponent implements OnInit {
         });
     }
 
+    private searchManualReports() {
+        const params: any = {};
+        if (this.selectedWarehouseId) params.warehouseId = this.selectedWarehouseId;
+        if (this.startDate) params.startDate = this.formatDateAsYmd(this.startDate);
+        if (this.endDate) params.endDate = this.formatDateAsYmd(this.endDate);
+
+        this.ipvService.listManual(params).subscribe({
+            next: (manualReports) => {
+                let reports: ReportRow[] = (manualReports || []).map((r) => ({
+                    ...r,
+                    type: 'MANUAL' as const,
+                    cashSessionId: undefined,
+                    openedAt: (r as any).reportDate,
+                    closedAt: null,
+                    status: 'CLOSED' as const,
+                    closed: true,
+                    paymentTotals: r.paymentBreakdown as any // Assuming structure matches
+                }));
+
+                if (this.selectedStatus === 'OPEN') {
+                    reports = [];
+                }
+
+                const query = this.sessionQuery.trim().toLowerCase();
+                if (query) {
+                    reports = reports.filter((report) => String((report as any).id || '').toLowerCase().includes(query));
+                }
+
+                const keyword = this.keyword.trim().toLowerCase();
+                if (keyword) {
+                    reports = reports.filter((report) => {
+                        const registerName = String(report.register?.name || '').toLowerCase();
+                        const warehouseName = String(report.warehouse?.name || '').toLowerCase();
+                        return registerName.includes(keyword) || warehouseName.includes(keyword);
+                    });
+                }
+
+                reports.sort((a, b) => new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime());
+                this.reports.set(reports);
+                this.loading.set(false);
+            },
+            error: () => {
+                this.reports.set([]);
+                this.loading.set(false);
+                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron consultar los IPV manuales' });
+            }
+        });
+    }
+
     clearFilters() {
+        this.selectedType = 'AUTO';
         this.selectedStatus = 'ALL';
         this.selectedWarehouseId = null;
         this.sessionQuery = '';
@@ -562,15 +633,33 @@ export class InventoryReportsComponent implements OnInit {
         this.endDate = end;
     }
 
-    viewReport(report: SessionIvpReport) {
+    onTypeChange() {
+        this.searchReports();
+    }
+
+    viewReport(report: ReportRow) {
         this.selectedReport.set(report);
         this.selectedReportCurrency.set((report.lines[0]?.currency || 'CUP') as string);
-        this.loadSelectedReportPaymentRows(report);
+        if (report.type === 'AUTO') {
+            this.loadSelectedReportPaymentRows(report);
+        } else {
+            // For manual, payment rows are already in paymentTotals
+            this.selectedReportPaymentRows.set([
+                { code: 'CASH', label: 'Efectivo', amount: report.paymentTotals.CASH || 0 },
+                { code: 'CARD', label: 'Tarjeta', amount: report.paymentTotals.CARD || 0 },
+                { code: 'TRANSFER', label: 'Transferencia', amount: report.paymentTotals.TRANSFER || 0 },
+                { code: 'OTHER', label: 'Otro', amount: report.paymentTotals.OTHER || 0 }
+            ].filter(row => row.amount > 0));
+        }
         this.showDetail = true;
     }
 
     canDeleteIpvReports() {
         return this.authService.hasPermission('inventory-reports.delete');
+    }
+
+    canDeleteManualReports() {
+        return this.authService.hasPermission('inventory-reports.delete'); // Assuming same permission
     }
 
     canViewAdminProfitInfo() {
@@ -597,8 +686,9 @@ export class InventoryReportsComponent implements OnInit {
         );
     }
 
-    deleteReport(report: SessionIvpReport) {
-        if (!this.canDeleteIpvReports()) {
+    deleteReport(report: ReportRow) {
+        const canDelete = report.type === 'AUTO' ? this.canDeleteIpvReports() : this.canDeleteManualReports();
+        if (!canDelete) {
             this.messageService.add({
                 severity: 'warn',
                 summary: 'Sin permisos',
@@ -607,19 +697,29 @@ export class InventoryReportsComponent implements OnInit {
             return;
         }
 
+        const message = report.type === 'AUTO'
+            ? 'Se eliminará el reporte IPV de la sesión seleccionada. ¿Desea continuar?'
+            : 'Se eliminará el reporte IPV manual. ¿Desea continuar?';
+
         this.confirmationService.confirm({
             header: 'Eliminar IPV',
             icon: 'pi pi-exclamation-triangle',
-            message: 'Se eliminará el reporte IPV de la sesión seleccionada. ¿Desea continuar?',
+            message,
             acceptLabel: 'Eliminar',
             rejectLabel: 'Cancelar',
             acceptButtonStyleClass: 'p-button-danger',
             rejectButtonStyleClass: 'p-button-outlined p-button-secondary',
             accept: () => {
-                this.ipvService.deleteSessionReport(report.cashSessionId).subscribe({
+                const deleteObs = report.type === 'AUTO'
+                    ? this.ipvService.deleteSessionReport((report as any).cashSessionId!)
+                    : (this.ipvService as any).deleteManual((report as any).id);
+
+                deleteObs.subscribe({
                     next: () => {
-                        this.reports.update((rows) => rows.filter((row) => row.cashSessionId !== report.cashSessionId));
-                        if (this.selectedReport()?.cashSessionId === report.cashSessionId) {
+                        this.reports.update((rows) => rows.filter((row) =>
+                            row.type === 'AUTO' ? (row as any).cashSessionId !== (report as any).cashSessionId : (row as any).id !== (report as any).id
+                        ));
+                        if (this.selectedReport() === report) {
                             this.selectedReport.set(null);
                             this.showDetail = false;
                         }
@@ -629,7 +729,7 @@ export class InventoryReportsComponent implements OnInit {
                             detail: 'El reporte IPV fue eliminado correctamente.'
                         });
                     },
-                    error: (err) => {
+                    error: (err: any) => {
                         this.messageService.add({
                             severity: 'error',
                             summary: 'Error',
@@ -646,24 +746,30 @@ export class InventoryReportsComponent implements OnInit {
         if (!current) return;
 
         this.detailLoading.set(true);
-        this.ipvService.getSessionIpv(current.cashSessionId).subscribe({
-            next: (report) => {
-                this.selectedReport.set(report);
-                this.reports.update((rows) => rows.map((row) => (row.cashSessionId === report.cashSessionId ? report : row)));
-                this.selectedReportCurrency.set((report.lines[0]?.currency || 'CUP') as string);
-                this.loadSelectedReportPaymentRows(report);
-                this.detailLoading.set(false);
-            },
-            error: () => {
-                this.detailLoading.set(false);
-                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el detalle del IPV' });
-            }
-        });
+        if (current.type === 'AUTO') {
+            this.ipvService.getSessionIpv(current.cashSessionId!).subscribe({
+                next: (report) => {
+                    const updated: ReportRow = { ...report, type: 'AUTO' };
+                    this.selectedReport.set(updated);
+                        this.reports.update((rows) => rows.map((row) => ((row as any).cashSessionId === (updated as any).cashSessionId! ? updated : row)));
+                    this.selectedReportCurrency.set((report.lines[0]?.currency || 'CUP') as string);
+                    this.loadSelectedReportPaymentRows(report as any);
+                    this.detailLoading.set(false);
+                },
+                error: () => {
+                    this.detailLoading.set(false);
+                    this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el detalle del IPV' });
+                }
+            });
+        } else {
+            // For manual, no refresh needed as they don't change
+            this.detailLoading.set(false);
+        }
     }
 
-    getReportDisplayCurrency(report: SessionIvpReport): string {
+    getReportDisplayCurrency(report: ReportRow): string {
         const lineCurrency = report.lines.find((line) => !!line.currency)?.currency;
-        return this.normalizeCurrencyCode(lineCurrency || 'CUP');
+        return this.normalizeCurrencyCode(lineCurrency || (report as any).currency || 'CUP');
     }
 
     summaryCurrencyLabel(): string {
@@ -673,6 +779,30 @@ export class InventoryReportsComponent implements OnInit {
         return 'VARIOS';
     }
 
+    getReportId(report: ReportRow): string {
+        if (report.type === 'MANUAL') {
+            return (report as any).id?.substring(0, 8) || 'N/A';
+        } else {
+            return (report as any).cashSessionId?.substring(0, 8) || 'N/A';
+        }
+    }
+
+    getReportDate(report: ReportRow): string {
+        return (report as any).openedAt || (report as any).reportDate || '';
+    }
+
+    getTotalSales(report: ReportRow): number {
+        return (report.totals as any).salesCount ?? report.totals.sales;
+    }
+
+    getTotalEntries(report: ReportRow): number {
+        return (report.totals as any).entriesCount ?? report.totals.entries;
+    }
+
+    getTotalOuts(report: ReportRow): number {
+        return (report.totals as any).outsCount ?? report.totals.outs;
+    }
+
     formatMoney(value: unknown, currencyInput?: string | null): string {
         const amount = this.roundMoney(value);
         const currency = this.normalizeCurrencyCode(currencyInput || 'CUP');
@@ -680,7 +810,13 @@ export class InventoryReportsComponent implements OnInit {
         return `${currency} ${amountText}`;
     }
 
-    getSessionResponsibleLabel(report: SessionIvpReport): string {
+    getSessionResponsibleLabel(report: ReportRow): string {
+        if (report.type === 'MANUAL') {
+            // For manual reports, show employees
+            const employees = (report as ManualIvpReport).employees?.map(e => e.fullName || `${e.firstName} ${e.lastName}`.trim()).filter(Boolean).join(', ');
+            return employees || 'Empleados no disponibles';
+        }
+
         const reportEmployeeName = String(report.responsible?.employeeName || '').trim();
         if (reportEmployeeName) return reportEmployeeName;
 
@@ -702,23 +838,22 @@ export class InventoryReportsComponent implements OnInit {
             this.messageService.add({ severity: 'warn', summary: 'Advertencia', detail: 'No hay reporte IPV para exportar' });
             return;
         }
-
         const employeeLabel = this.getSessionResponsibleLabel(report);
         this.settingsService
             .getRegisterSettings(report.register.id)
             .pipe(catchError(() => of(null)))
             .subscribe({
                 next: (settings) => {
-                    const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report, settings?.paymentMethods || null);
-                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel, false);
+                    const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report as any, settings?.paymentMethods || null);
+                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report as any, paymentRows, employeeLabel, false);
                     this.downloadBlob(
                         pdfBlob,
                         `ipv-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
                     );
                 },
                 error: () => {
-                    const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report, null);
-                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report, paymentRows, employeeLabel, false);
+                    const paymentRows = this.buildSessionIpvPaymentSummaryRowsFromReport(report as any, null);
+                    const pdfBlob = this.buildSessionIpvProfessionalPdfBlob(report as any, paymentRows, employeeLabel, false);
                     this.downloadBlob(
                         pdfBlob,
                         `ipv-${report.register.code || 'tpv'}-${this.formatFileDate(new Date())}.pdf`
@@ -759,7 +894,12 @@ export class InventoryReportsComponent implements OnInit {
             });
     }
 
-    private loadSelectedReportPaymentRows(report: SessionIvpReport) {
+    private loadSelectedReportPaymentRows(report: ReportRow) {
+        if (report.type === 'MANUAL') {
+            // Already handled in viewReport
+            return;
+        }
+
         this.settingsService
             .getRegisterSettings(report.register.id)
             .pipe(catchError(() => of(null)))
@@ -780,7 +920,7 @@ export class InventoryReportsComponent implements OnInit {
     }
 
     private buildSessionIpvPaymentSummaryRowsFromReport(
-        report: SessionIvpReport,
+        report: ReportRow,
         paymentMethods: Array<{ code: string; name: string; enabled: boolean }> | null
     ) {
         if (paymentMethods) {
@@ -813,7 +953,7 @@ export class InventoryReportsComponent implements OnInit {
     }
 
     private buildSessionIpvProfessionalPdfBlob(
-        report: SessionIvpReport,
+        report: ReportRow,
         paymentRows: Array<{ code: string; label: string; amount: number }>,
         employeeLabel: string,
         includeProfitColumns = false
@@ -823,8 +963,10 @@ export class InventoryReportsComponent implements OnInit {
         let forceTotalsPage = false;
 
         while (rowIndex < report.lines.length || forceTotalsPage || pages.length === 0) {
-            const page = this.buildSessionIpvProfessionalPdfPage({
-                report,
+            // @ts-ignore
+        // @ts-ignore
+        const page = this.buildSessionIpvProfessionalPdfPage({
+                report: report as any,
                 paymentRows,
                 employeeLabel,
                 rowIndex,
@@ -847,7 +989,7 @@ export class InventoryReportsComponent implements OnInit {
     }
 
     private buildSessionIpvProfessionalPdfPage(params: {
-        report: SessionIvpReport;
+        report: ReportRow;
         paymentRows: Array<{ code: string; label: string; amount: number }>;
         employeeLabel: string;
         rowIndex: number;
@@ -968,7 +1110,9 @@ export class InventoryReportsComponent implements OnInit {
 
         if (isFirstPage) {
             drawRect(marginX, topCursor, contentWidth, 58, [245, 248, 252], [214, 221, 229]);
+            // @ts-ignore
             drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 20, { font: 'F2', size: 10 });
+            // @ts-ignore
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 34, { size: 10, color: [68, 84, 106] });
             drawText(`Responsable: ${employeeLabel}`, marginX + 12, topCursor + 48, { size: 10, color: [68, 84, 106] });
             topCursor += 86;
@@ -977,8 +1121,11 @@ export class InventoryReportsComponent implements OnInit {
             topCursor += 20;
 
             const summaryRows = [
+                // @ts-ignore
                 { label: 'Total de ventas', value: String(report.totals.salesCount ?? report.totals.sales) },
+                // @ts-ignore
                 { label: 'Total de entradas', value: String(report.totals.entriesCount ?? report.totals.entries) },
+                // @ts-ignore
                 { label: 'Total de salidas', value: String(report.totals.outsCount ?? report.totals.outs) },
                 ...paymentRows.map((row) => ({ label: `Total ${row.label.toLowerCase()}`, value: this.roundMoney(row.amount).toFixed(2) })),
                 { label: 'Importe total', value: this.roundMoney(report.totals.amount).toFixed(2) }
@@ -1005,7 +1152,9 @@ export class InventoryReportsComponent implements OnInit {
             topCursor += boxHeight + 22;
         } else {
             drawRect(marginX, topCursor, contentWidth, 46, [247, 250, 254], [220, 228, 236]);
+            // @ts-ignore
             drawText(`TPV: ${report.register.name}`, marginX + 12, topCursor + 16, { font: 'F2', size: 9 });
+            // @ts-ignore
             drawText(`Apertura: ${this.formatDateTime(report.openedAt)}`, marginX + 12, topCursor + 28, { size: 9, color: [68, 84, 106] });
             drawText(`Responsable: ${employeeLabel}`, marginX + 12, topCursor + 40, { size: 9, color: [68, 84, 106] });
             topCursor += 58;
@@ -1117,7 +1266,7 @@ export class InventoryReportsComponent implements OnInit {
 
         drawLine(marginX, footerTop - 10, pageWidth - marginX, footerTop - 10, [208, 216, 228], 0.7);
         drawText(
-            `Reporte IPV | ${report.register.name} | Sesion ${report.cashSessionId.slice(0, 8)} | Estado ${report.status}`,
+            `Reporte IPV | ${report.register.name} | ${report.cashSessionId ? 'Sesion ' + report.cashSessionId.slice(0, 8) : 'Manual'} | Estado ${report.status}`,
             marginX,
             footerTop + 4,
             { size: 8, color: [93, 109, 130], maxChars: 95 }
@@ -1243,32 +1392,36 @@ export class InventoryReportsComponent implements OnInit {
     }
 
     private filterSessions(sessions: CashSession[]): CashSession[] {
-        const sessionSearch = this.sessionQuery.trim().toLowerCase();
-        const keywordSearch = this.keyword.trim().toLowerCase();
-        const start = this.startDate ? this.getStartOfDay(this.startDate) : null;
-        const end = this.endDate ? this.getEndOfDay(this.endDate) : null;
-
-        const warehousesMap = new Map(this.warehouses().map((warehouse) => [warehouse.id, warehouse.name]));
-
         return sessions.filter((session) => {
-            if (this.selectedStatus !== 'ALL' && session.status !== this.selectedStatus) return false;
-            if (this.selectedWarehouseId && session.warehouseId !== this.selectedWarehouseId) return false;
-            if (sessionSearch && !session.id.toLowerCase().includes(sessionSearch)) return false;
+            if (this.selectedType !== 'AUTO') return false; // Only for auto reports
 
-            if (keywordSearch) {
-                const warehouseName = session.warehouseId ? warehousesMap.get(session.warehouseId) || '' : '';
-                const haystack = [
-                    session.id,
-                    session.register?.name || '',
-                    warehouseName,
-                ].join(' ').toLowerCase();
-                if (!haystack.includes(keywordSearch)) return false;
+            if (this.selectedStatus === 'OPEN' && session.closedAt) return false;
+            if (this.selectedStatus === 'CLOSED' && !session.closedAt) return false;
+
+            if (this.selectedWarehouseId && session.warehouseId !== this.selectedWarehouseId) return false;
+
+            const sessionId = session.id.toLowerCase();
+            if (this.sessionQuery.trim() && !sessionId.includes(this.sessionQuery.toLowerCase().trim())) return false;
+
+            if (this.keyword.trim()) {
+                const keyword = this.keyword.toLowerCase().trim();
+                const registerName = (session.register?.name || '').toLowerCase();
+                const warehouseName = (this.warehouses().find(w => w.id === session.warehouseId)?.name || '').toLowerCase();
+                if (!registerName.includes(keyword) && !warehouseName.includes(keyword)) return false;
             }
 
-            const openedAt = new Date(session.openedAt).getTime();
-            if (Number.isNaN(openedAt)) return false;
-            if (start && openedAt < start.getTime()) return false;
-            if (end && openedAt > end.getTime()) return false;
+            if (this.startDate) {
+                const sessionDate = new Date(session.openedAt);
+                if (sessionDate < this.startDate) return false;
+            }
+
+            if (this.endDate) {
+                const sessionDate = new Date(session.openedAt);
+                const endOfDay = new Date(this.endDate);
+                endOfDay.setHours(23, 59, 59, 999);
+                if (sessionDate > endOfDay) return false;
+            }
+
             return true;
         });
     }
@@ -1313,5 +1466,12 @@ export class InventoryReportsComponent implements OnInit {
 
     private getEndOfDay(date: Date): Date {
         return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    }
+
+    private formatDateAsYmd(date: Date): string {
+        const year = date.getFullYear();
+        const month = `${date.getMonth() + 1}`.padStart(2, '0');
+        const day = `${date.getDate()}`.padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 }

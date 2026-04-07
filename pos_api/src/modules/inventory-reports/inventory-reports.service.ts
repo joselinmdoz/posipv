@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CashSessionStatus, IPVType, InventoryReport, PaymentMethod, SaleStatus } from '@prisma/client';
+import { CashSessionStatus, IPVType, InventoryReport, PaymentMethod, Prisma, SaleStatus } from '@prisma/client';
 import { dec } from '../../common/decimal';
+import { InventoryCostingService } from '../inventory-costing/inventory-costing.service';
 
 type ManualIvpLineInput = {
   productId: string;
@@ -24,7 +25,10 @@ type SaveManualIvpInput = {
 
 @Injectable()
 export class InventoryReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly inventoryCostingService: InventoryCostingService,
+  ) {}
 
   async createInitial(cashSessionId: string, warehouseId: string) {
     const session = await this.requireSessionWithWarehouse(cashSessionId);
@@ -93,6 +97,162 @@ export class InventoryReportsService {
           },
         },
       },
+    });
+  }
+
+  async listManualReports(filters: {
+    registerId?: string;
+    warehouseId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }) {
+    const where: any = {};
+    if (filters.registerId) where.registerId = filters.registerId;
+    if (filters.warehouseId) where.warehouseId = filters.warehouseId;
+    if (filters.startDate || filters.endDate) {
+      where.reportDate = {};
+      if (filters.startDate) where.reportDate.gte = filters.startDate;
+      if (filters.endDate) where.reportDate.lte = filters.endDate;
+    }
+
+    const reports = await this.prisma.manualIvpReport.findMany({
+      where,
+      include: {
+        register: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        lines: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                codigo: true,
+                currency: true,
+                cost: true,
+                allowFractionalQty: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { reportDate: 'desc' },
+    });
+
+    return reports.map((report) => {
+      const lines = report.lines.map((line) => ({
+        productId: line.productId,
+        codigo: line.product?.codigo || '',
+        name: line.product?.name || `Producto ${line.productId.slice(0, 8)}`,
+        currency: line.product?.currency || 'CUP',
+        allowFractionalQty: line.product?.allowFractionalQty === true,
+        price: Number(line.price || 0),
+        initial: Number(line.initialQty || 0),
+        entries: Number(line.entriesQty || 0),
+        outs: Number(line.outsQty || 0),
+        sales: Number(line.salesQty || 0),
+        total: Number(line.totalQty || 0),
+        final: Number(line.finalQty || 0),
+        amount: Number(line.amount || 0),
+        gp: Number(line.gp || 0),
+        gain: Number(line.gain || 0),
+      }));
+
+      const totals = this.sumManualLineTotals(lines);
+
+      return {
+        id: report.id,
+        register: report.register,
+        warehouse: report.warehouse,
+        reportDate: report.reportDate,
+        note: report.note || '',
+        employeeIds: report.employeeIds || [],
+        employees: [],
+        paymentMethods: [],
+        paymentBreakdown: this.normalizePaymentBreakdownFromRaw(report.paymentBreakdown),
+        lines,
+        totals,
+        createdAt: report.createdAt,
+        updatedAt: report.updatedAt,
+      };
+    });
+  }
+
+  async deleteManual(id: string) {
+    const report = await this.prisma.manualIvpReport.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        warehouseId: true,
+        reportDate: true,
+        lines: {
+          select: {
+            productId: true,
+            entriesQty: true,
+            outsQty: true,
+            salesQty: true,
+          },
+        },
+      },
+    });
+    if (!report) throw new NotFoundException("Reporte IPV manual no encontrado.");
+
+    return this.prisma.$transaction(async (tx) => {
+      const reasonPrefix = `MANUAL_IPV_${id}`;
+      const hasStockSyncV2 = await tx.stockMovement.findFirst({
+        where: {
+          reason: {
+            startsWith: reasonPrefix,
+            contains: '[SYNC_V2]',
+          },
+        },
+        select: { id: true },
+      });
+
+      if (hasStockSyncV2 && report.lines.length > 0) {
+        const productIds = Array.from(new Set(report.lines.map((line) => line.productId)));
+        const products = await tx.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, cost: true },
+        });
+        const productCostById = new Map(products.map((product) => [product.id, Number(product.cost || 0)]));
+
+        await this.syncManualIvpStockAndLots(tx, {
+          warehouseId: report.warehouseId,
+          reportDate: report.reportDate,
+          reasonPrefix,
+          mode: 'REVERT',
+          lines: report.lines.map((line) => ({
+            productId: line.productId,
+            entriesQty: Number(line.entriesQty || 0),
+            outsQty: Number(line.outsQty || 0),
+            salesQty: Number(line.salesQty || 0),
+            fallbackCost: Number(productCostById.get(line.productId) || 0),
+          })),
+        });
+      }
+
+      await tx.stockMovement.deleteMany({
+        where: { reason: { startsWith: reasonPrefix } },
+      });
+      await tx.manualIvpReportLine.deleteMany({
+        where: { reportId: id },
+      });
+      await tx.manualIvpReport.delete({
+        where: { id },
+      });
+      return { ok: true, deletedReportId: id };
     });
   }
 
@@ -592,6 +752,7 @@ export class InventoryReportsService {
           currency: product.currency,
           allowFractionalQty: product.allowFractionalQty === true,
           price: currentPrice,
+          cost: currentCost,
           initial,
           entries,
           outs,
@@ -772,6 +933,14 @@ export class InventoryReportsService {
     const paymentMethods = await this.resolveManualPaymentMethods(register.settings?.paymentMethods || []);
     const paymentBreakdown = this.normalizePaymentBreakdown(paymentMethods, input.paymentBreakdown);
     const note = String(input.note || '').trim() || null;
+    const previousManualReport = await this.prisma.manualIvpReport.findFirst({
+      where: {
+        registerId,
+        reportDate: { lt: reportDate },
+      },
+      select: { reportDate: true },
+      orderBy: { reportDate: 'desc' },
+    });
 
     const lines = normalizedLines.map((line) => {
       const productId = String(line.productId || '').trim();
@@ -790,8 +959,6 @@ export class InventoryReportsService {
       const total = Number((initial + entries - outs).toFixed(3));
       const final = Number((total - sales).toFixed(3));
       const amount = Number((sales * price).toFixed(2));
-      const gp = Number((price - cost).toFixed(2));
-      const gain = Number((gp * sales).toFixed(2));
 
       return {
         productId,
@@ -803,43 +970,101 @@ export class InventoryReportsService {
         finalQty: final,
         price,
         amount,
-        gp,
-        gain,
+        // gp/gain se recalculan con FIFO usando purchase lots.
+        gp: 0,
+        gain: 0,
+        fallbackCost: cost,
       };
     });
 
+    // Recalcular gp/gain con costo histórico de ventas del período del IPV.
+    const warehouseId = register.warehouse!.id;
+    const productIdsWithSales = Array.from(
+      new Set(lines.filter((l) => Number(l.salesQty || 0) > 0).map((l) => l.productId)),
+    );
+
+    const historicalCostsByProduct = await this.buildHistoricalSalesCostByProduct({
+      warehouseId,
+      productIds: productIdsWithSales,
+      fromExclusive: previousManualReport?.reportDate || null,
+      toInclusive: this.endOfDay(reportDate),
+    });
+
+    for (const line of lines) {
+      if (!line.salesQty || Number(line.salesQty) <= 0) continue;
+      const salesQty = dec(line.salesQty);
+      const fallbackUnitCost = dec(line.fallbackCost || 0);
+      const historical = historicalCostsByProduct.get(line.productId);
+      const historicalQty = dec(historical?.qty || 0);
+      const historicalCost = dec(historical?.totalCost || 0);
+      const avgUnitCostSold = historical && historicalQty.gt(0)
+        ? dec(historicalCost.div(historicalQty).toFixed(2))
+        : fallbackUnitCost;
+
+      const gpUnit = dec(Number(line.price || 0)).sub(avgUnitCostSold);
+      line.gp = Number(gpUnit.toFixed(2));
+      line.gain = Number(gpUnit.mul(salesQty).toFixed(2));
+    }
+
     const reportId = await this.prisma.$transaction(async (tx) => {
-      let targetId: string | null = null;
+      let existingReport: {
+        id: string;
+        registerId: string;
+        lines: Array<{
+          productId: string;
+          entriesQty: Prisma.Decimal;
+          outsQty: Prisma.Decimal;
+          salesQty: Prisma.Decimal;
+        }>;
+      } | null = null;
 
       if (input.id) {
-        const current = await tx.manualIvpReport.findUnique({
+        existingReport = await tx.manualIvpReport.findUnique({
           where: { id: input.id },
-          select: { id: true, registerId: true },
+          select: {
+            id: true,
+            registerId: true,
+            lines: {
+              select: {
+                productId: true,
+                entriesQty: true,
+                outsQty: true,
+                salesQty: true,
+              },
+            },
+          },
         });
-        if (!current) throw new NotFoundException('IPV manual no encontrado.');
-        if (current.registerId !== registerId) {
+        if (!existingReport) throw new NotFoundException('IPV manual no encontrado.');
+        if (existingReport.registerId !== registerId) {
           throw new BadRequestException('El IPV manual no corresponde con el TPV seleccionado.');
         }
-        targetId = current.id;
       } else {
-        const existingByDate = await tx.manualIvpReport.findUnique({
+        existingReport = await tx.manualIvpReport.findUnique({
           where: {
             registerId_reportDate: {
               registerId,
               reportDate,
             },
           },
-          select: { id: true },
+          select: {
+            id: true,
+            registerId: true,
+            lines: {
+              select: {
+                productId: true,
+                entriesQty: true,
+                outsQty: true,
+                salesQty: true,
+              },
+            },
+          },
         });
-        if (existingByDate) {
-          targetId = existingByDate.id;
-        }
       }
 
-      if (targetId) {
-        await tx.manualIvpReport.update({
-          where: { id: targetId },
+      const reportId = existingReport?.id || (
+        await tx.manualIvpReport.create({
           data: {
+            registerId,
             warehouseId: register.warehouse!.id,
             reportDate,
             note,
@@ -847,60 +1072,363 @@ export class InventoryReportsService {
             paymentBreakdown: paymentBreakdown as any,
             createdById: input.createdById || undefined,
           },
-        });
-        await tx.manualIvpReportLine.deleteMany({ where: { reportId: targetId } });
-        if (lines.length > 0) {
-          await tx.manualIvpReportLine.createMany({
-            data: lines.map((line) => ({
-              reportId: targetId!,
-              productId: line.productId,
-              initialQty: dec(line.initialQty.toString()) as any,
-              entriesQty: dec(line.entriesQty.toString()) as any,
-              outsQty: dec(line.outsQty.toString()) as any,
-              salesQty: dec(line.salesQty.toString()) as any,
-              totalQty: dec(line.totalQty.toString()) as any,
-              finalQty: dec(line.finalQty.toString()) as any,
-              price: dec(line.price.toString()) as any,
-              amount: dec(line.amount.toString()) as any,
-              gp: dec(line.gp.toString()) as any,
-              gain: dec(line.gain.toString()) as any,
-            })),
-          });
-        }
-        return targetId;
-      }
+          select: { id: true },
+        })
+      ).id;
 
-      const created = await tx.manualIvpReport.create({
+      await tx.manualIvpReport.update({
+        where: { id: reportId },
         data: {
-          registerId,
           warehouseId: register.warehouse!.id,
           reportDate,
           note,
           employeeIds,
           paymentBreakdown: paymentBreakdown as any,
           createdById: input.createdById || undefined,
-          lines: {
-            create: lines.map((line) => ({
-              productId: line.productId,
-              initialQty: dec(line.initialQty.toString()) as any,
-              entriesQty: dec(line.entriesQty.toString()) as any,
-              outsQty: dec(line.outsQty.toString()) as any,
-              salesQty: dec(line.salesQty.toString()) as any,
-              totalQty: dec(line.totalQty.toString()) as any,
-              finalQty: dec(line.finalQty.toString()) as any,
-              price: dec(line.price.toString()) as any,
-              amount: dec(line.amount.toString()) as any,
-              gp: dec(line.gp.toString()) as any,
-              gain: dec(line.gain.toString()) as any,
-            })),
+        },
+      });
+
+      const previousLineSnapshot = (existingReport?.lines || []).map((line) => ({
+        productId: line.productId,
+        entriesQty: Number(line.entriesQty || 0),
+        outsQty: Number(line.outsQty || 0),
+        salesQty: Number(line.salesQty || 0),
+        fallbackCost: Number(productById.get(line.productId)?.cost || 0),
+      }));
+
+      if (previousLineSnapshot.length > 0) {
+        const previousMissing = previousLineSnapshot
+          .map((line) => line.productId)
+          .filter((id) => !productById.has(id));
+        if (previousMissing.length > 0) {
+          const previousProducts = await tx.product.findMany({
+            where: { id: { in: previousMissing } },
+            select: { id: true, cost: true },
+          });
+          const previousCostById = new Map(previousProducts.map((product) => [product.id, Number(product.cost || 0)]));
+          for (const line of previousLineSnapshot) {
+            if (!line.fallbackCost && previousCostById.has(line.productId)) {
+              line.fallbackCost = Number(previousCostById.get(line.productId) || 0);
+            }
+          }
+        }
+      }
+
+      await tx.manualIvpReportLine.deleteMany({ where: { reportId } });
+      if (lines.length > 0) {
+        await tx.manualIvpReportLine.createMany({
+          data: lines.map((line) => ({
+            reportId,
+            productId: line.productId,
+            initialQty: dec(line.initialQty.toString()) as any,
+            entriesQty: dec(line.entriesQty.toString()) as any,
+            outsQty: dec(line.outsQty.toString()) as any,
+            salesQty: dec(line.salesQty.toString()) as any,
+            totalQty: dec(line.totalQty.toString()) as any,
+            finalQty: dec(line.finalQty.toString()) as any,
+            price: dec(line.price.toString()) as any,
+            amount: dec(line.amount.toString()) as any,
+            gp: dec(line.gp.toString()) as any,
+            gain: dec(line.gain.toString()) as any,
+          })),
+        });
+      }
+
+      const reasonPrefix = `MANUAL_IPV_${reportId}`;
+      const hasStockSyncV2 = await tx.stockMovement.findFirst({
+        where: {
+          reason: {
+            startsWith: reasonPrefix,
+            contains: '[SYNC_V2]',
           },
         },
         select: { id: true },
       });
-      return created.id;
+      await tx.stockMovement.deleteMany({
+        where: { reason: { startsWith: reasonPrefix } },
+      });
+
+      if (previousLineSnapshot.length > 0 && !!hasStockSyncV2) {
+        await this.syncManualIvpStockAndLots(tx, {
+          warehouseId: register.warehouse!.id,
+          reportDate,
+          reasonPrefix,
+          lines: previousLineSnapshot,
+          mode: 'REVERT',
+        });
+      }
+
+      await this.syncManualIvpStockAndLots(tx, {
+        warehouseId: register.warehouse!.id,
+        reportDate,
+        reasonPrefix,
+        lines: lines.map((line) => ({
+          productId: line.productId,
+          entriesQty: Number(line.entriesQty || 0),
+          outsQty: Number(line.outsQty || 0),
+          salesQty: Number(line.salesQty || 0),
+          fallbackCost: Number(line.fallbackCost || 0),
+        })),
+        mode: 'APPLY',
+      });
+
+      return reportId;
     });
 
     return this.findManualById(reportId);
+  }
+
+  private async buildHistoricalSalesCostByProduct(input: {
+    warehouseId: string;
+    productIds: string[];
+    fromExclusive: Date | null;
+    toInclusive: Date;
+  }) {
+    const productIds = Array.from(new Set(input.productIds.filter(Boolean)));
+    const result = new Map<string, { qty: number; totalCost: number }>();
+    if (!productIds.length) return result;
+
+    const where: any = {
+      saleItem: {
+        productId: { in: productIds },
+        sale: {
+          warehouseId: input.warehouseId,
+          status: SaleStatus.PAID,
+          createdAt: {
+            lte: input.toInclusive,
+            ...(input.fromExclusive ? { gt: input.fromExclusive } : {}),
+          },
+        },
+      },
+    };
+
+    const consumptions = await this.prisma.saleItemLotConsumption.findMany({
+      where,
+      select: {
+        qty: true,
+        lineCost: true,
+        saleItem: {
+          select: {
+            productId: true,
+          },
+        },
+      },
+    });
+
+    for (const row of consumptions) {
+      const productId = row.saleItem.productId;
+      const current = result.get(productId) || { qty: 0, totalCost: 0 };
+      result.set(productId, {
+        qty: Number((current.qty + Number(row.qty || 0)).toFixed(6)),
+        totalCost: Number((current.totalCost + Number(row.lineCost || 0)).toFixed(2)),
+      });
+    }
+
+    return result;
+  }
+
+  private async syncManualIvpStockAndLots(
+    tx: Prisma.TransactionClient,
+    input: {
+      warehouseId: string;
+      reportDate: Date;
+      reasonPrefix: string;
+      lines: Array<{
+        productId: string;
+        entriesQty: number;
+        outsQty: number;
+        salesQty: number;
+        fallbackCost: number;
+      }>;
+      mode: 'APPLY' | 'REVERT';
+    },
+  ) {
+    const deltasByProduct = new Map<string, { entries: number; out: number; fallbackCost: number }>();
+    for (const line of input.lines) {
+      const productId = String(line.productId || '').trim();
+      if (!productId) continue;
+      const current = deltasByProduct.get(productId) || { entries: 0, out: 0, fallbackCost: 0 };
+      current.entries = Number((current.entries + Number(line.entriesQty || 0)).toFixed(3));
+      current.out = Number((current.out + Number(line.outsQty || 0) + Number(line.salesQty || 0)).toFixed(3));
+      current.fallbackCost = Number(line.fallbackCost || current.fallbackCost || 0);
+      deltasByProduct.set(productId, current);
+    }
+
+    for (const [productId, delta] of deltasByProduct.entries()) {
+      const entriesQty = Number(delta.entries || 0);
+      const outQty = Number(delta.out || 0);
+      const fallbackCost = Number(delta.fallbackCost || 0);
+
+      if (input.mode === 'REVERT') {
+        if (entriesQty > 0) {
+          const updated = await tx.stock.updateMany({
+            where: {
+              warehouseId: input.warehouseId,
+              productId,
+              qty: { gte: entriesQty },
+            },
+            data: {
+              qty: { decrement: entriesQty },
+            },
+          });
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              'No se puede recalcular el IPV manual porque el stock actual no permite revertir entradas previas.',
+            );
+          }
+          await this.inventoryCostingService.consumeStockWithFifo(tx, {
+            warehouseId: input.warehouseId,
+            productId,
+            qty: entriesQty,
+            fallbackUnitCost: fallbackCost,
+            reference: `${input.reasonPrefix}:REVERSA_ENTRADA`,
+            receivedAt: input.reportDate,
+          });
+        }
+
+        if (outQty > 0) {
+          await tx.stock.upsert({
+            where: {
+              warehouseId_productId: {
+                warehouseId: input.warehouseId,
+                productId,
+              },
+            },
+            create: {
+              warehouseId: input.warehouseId,
+              productId,
+              qty: outQty,
+            },
+            update: {
+              qty: { increment: outQty },
+            },
+          });
+          await this.inventoryCostingService.createAdjustmentLot(tx, {
+            warehouseId: input.warehouseId,
+            productId,
+            qty: outQty,
+            unitCost: fallbackCost,
+            reference: `${input.reasonPrefix}:REVERSA_SALIDA`,
+            receivedAt: input.reportDate,
+          });
+        }
+        continue;
+      }
+
+      if (entriesQty > 0) {
+        await tx.stock.upsert({
+          where: {
+            warehouseId_productId: {
+              warehouseId: input.warehouseId,
+              productId,
+            },
+          },
+          create: {
+            warehouseId: input.warehouseId,
+            productId,
+            qty: entriesQty,
+          },
+          update: {
+            qty: { increment: entriesQty },
+          },
+        });
+        await this.inventoryCostingService.createAdjustmentLot(tx, {
+          warehouseId: input.warehouseId,
+          productId,
+          qty: entriesQty,
+          unitCost: fallbackCost,
+          reference: `${input.reasonPrefix}:ENTRADA`,
+          receivedAt: input.reportDate,
+        });
+      }
+
+      if (outQty > 0) {
+        const updated = await tx.stock.updateMany({
+          where: {
+            warehouseId: input.warehouseId,
+            productId,
+            qty: { gte: outQty },
+          },
+          data: {
+            qty: { decrement: outQty },
+          },
+        });
+        if (updated.count === 0) {
+          throw new BadRequestException(
+            'Stock insuficiente para aplicar salidas/ventas del IPV manual.',
+          );
+        }
+        await this.inventoryCostingService.consumeStockWithFifo(tx, {
+          warehouseId: input.warehouseId,
+          productId,
+          qty: outQty,
+          fallbackUnitCost: fallbackCost,
+          reference: `${input.reasonPrefix}:SALIDA`,
+          receivedAt: input.reportDate,
+        });
+      }
+    }
+
+    if (input.mode === 'APPLY') {
+      const movementRows: Array<{
+        type: 'IN' | 'OUT';
+        productId: string;
+        qty: number;
+        fromWarehouseId?: string;
+        toWarehouseId?: string;
+        reason: string;
+        createdAt: Date;
+      }> = [];
+
+      for (const line of input.lines) {
+        if (line.entriesQty > 0) {
+          movementRows.push({
+            type: 'IN',
+            productId: line.productId,
+            qty: line.entriesQty,
+            toWarehouseId: input.warehouseId,
+            reason: `${input.reasonPrefix} [SYNC_V2] - ENTRADA`,
+            createdAt: input.reportDate,
+          });
+        }
+        if (line.outsQty > 0) {
+          movementRows.push({
+            type: 'OUT',
+            productId: line.productId,
+            qty: line.outsQty,
+            fromWarehouseId: input.warehouseId,
+            reason: `${input.reasonPrefix} [SYNC_V2] - SALIDA`,
+            createdAt: input.reportDate,
+          });
+        }
+        if (line.salesQty > 0) {
+          movementRows.push({
+            type: 'OUT',
+            productId: line.productId,
+            qty: line.salesQty,
+            fromWarehouseId: input.warehouseId,
+            reason: `${input.reasonPrefix} [SYNC_V2] - VENTA`,
+            createdAt: input.reportDate,
+          });
+        }
+      }
+
+      for (const movement of movementRows) {
+        await tx.stockMovement.create({ data: movement as any });
+      }
+    }
+  }
+
+  private endOfDay(value: Date) {
+    return new Date(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
   }
 
   private async resolveManualEmployees(sellerEmployeeIds: string[]) {
@@ -1033,6 +1561,25 @@ export class InventoryReportsService {
       const value = Number(source[code] || 0);
       normalized[code] = Number.isFinite(value) && value > 0 ? Number(value.toFixed(2)) : 0;
     }
+    return normalized;
+  }
+
+  private normalizePaymentBreakdownFromRaw(raw: unknown): Record<string, number> {
+    const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const normalized: Record<'CASH' | 'CARD' | 'TRANSFER' | 'OTHER', number> = {
+      CASH: 0,
+      CARD: 0,
+      TRANSFER: 0,
+      OTHER: 0,
+    };
+
+    for (const [rawKey, rawValue] of Object.entries(source)) {
+      const code = this.normalizePaymentMethodCode(rawKey);
+      const value = Number(rawValue || 0);
+      const fixed = Number.isFinite(value) && value > 0 ? Number(value.toFixed(2)) : 0;
+      (normalized as any)[code] = fixed;
+    }
+
     return normalized;
   }
 

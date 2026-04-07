@@ -92,18 +92,38 @@ export class InventoryReportsController {
     );
   }
 
-  @Get(':id')
-  @Roles('ADMIN', 'CASHIER')
-  async findOne(@Param('id') id: string) {
-    return this.inventoryReportsService.findOne(id);
-  }
-
   @Delete('session/:cashSessionId')
   @UseGuards(PermissionsGuard)
   @Roles('ADMIN', 'CASHIER')
   @Permissions('inventory-reports.delete')
   async removeBySession(@Param('cashSessionId') cashSessionId: string) {
     return this.inventoryReportsService.deleteBySession(cashSessionId);
+  }
+
+  @Get('manual')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('reports.view', 'tpv.manage')
+  async listManual(
+    @Query('registerId') registerId?: string,
+    @Query('warehouseId') warehouseId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.inventoryReportsService.listManualReports({
+      registerId,
+      warehouseId,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+  }
+
+  @Delete('manual/:id')
+  @UseGuards(PermissionsGuard)
+  @Roles('ADMIN', 'CASHIER')
+  @Permissions('inventory-reports.delete')
+  async removeManual(@Param('id') id: string) {
+    return this.inventoryReportsService.deleteManual(id);
   }
 
   @Delete(':id')
@@ -162,5 +182,12 @@ export class InventoryReportsController {
       id,
       createdById: req.user?.userId || undefined,
     });
+  }
+
+  // Debe declararse al final para evitar que esta ruta genérica capture paths como "/manual".
+  @Get(':id')
+  @Roles('ADMIN', 'CASHIER')
+  async findOne(@Param('id') id: string) {
+    return this.inventoryReportsService.findOne(id);
   }
 }

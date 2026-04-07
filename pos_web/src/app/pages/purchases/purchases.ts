@@ -20,7 +20,8 @@ import {
     PurchaseItemInput,
     PurchaseStatus,
     PurchaseSummary,
-    PurchasesService
+    PurchasesService,
+    UpdatePurchaseDto
 } from '@/app/core/services/purchases.service';
 import { SettingsService, SystemCurrencyCode } from '@/app/core/services/settings.service';
 import { Warehouse, WarehousesService } from '@/app/core/services/warehouses.service';
@@ -30,6 +31,7 @@ interface PurchaseFormLine {
     productId: string;
     qty: number | null;
     cost: number | null;
+    total: number | null;
 }
 
 @Component({
@@ -116,6 +118,7 @@ interface PurchaseFormLine {
                         <th>Proveedor</th>
                         <th>Almacén</th>
                         <th>Estado</th>
+                        <th class="text-right">Cant.</th>
                         <th class="text-right">Total</th>
                         <th>Creador</th>
                         <th class="text-center">Acciones</th>
@@ -129,15 +132,23 @@ interface PurchaseFormLine {
                             <div>{{ row.supplierName || '-' }}</div>
                             <div class="text-xs text-gray-500">{{ row.supplierDocument || '' }}</div>
                         </td>
-                        <td>{{ row.warehouse?.name || '-' }}</td>
-                        <td><p-tag [value]="statusLabel(row.status)" [severity]="statusSeverity(row.status)" /></td>
-                        <td class="text-right whitespace-nowrap">{{ formatMoney(row.total, row.currency) }}</td>
+                         <td>{{ row.warehouse?.name || '-' }}</td>
+                         <td><p-tag [value]="statusLabel(row.status)" [severity]="statusSeverity(row.status)" /></td>
+                         <td class="text-right">{{ row.totalQty || 0 }}</td>
+                         <td class="text-right whitespace-nowrap">{{ formatMoney(row.total, row.currency) }}</td>
                         <td>{{ row.createdBy?.email || '-' }}</td>
                         <td class="text-center">
                             <div class="flex justify-center gap-1">
                                 <p-button icon="pi pi-eye" [rounded]="true" [text]="true" severity="secondary" (onClick)="openDetail(row)" />
+                                <p-button
+                                    icon="pi pi-pencil"
+                                    [rounded]="true"
+                                    [text]="true"
+                                    severity="help"
+                                    [disabled]="row.status === 'VOID'"
+                                    (onClick)="editPurchase(row, $event)"
+                                />
                                 @if (row.status === 'DRAFT') {
-                                    <p-button icon="pi pi-pencil" [rounded]="true" [text]="true" severity="help" (onClick)="editPurchase(row)" />
                                     <p-button icon="pi pi-check" [rounded]="true" [text]="true" severity="success" (onClick)="confirmPurchase(row)" />
                                     <p-button icon="pi pi-trash" [rounded]="true" [text]="true" severity="danger" (onClick)="deletePurchase(row)" />
                                 } @else if (row.status === 'CONFIRMED') {
@@ -147,16 +158,16 @@ interface PurchaseFormLine {
                         </td>
                     </tr>
                 </ng-template>
-                <ng-template #emptymessage>
-                    <tr>
-                        <td colspan="8" class="text-center py-4 text-gray-500">No hay compras registradas.</td>
-                    </tr>
-                </ng-template>
+                 <ng-template #emptymessage>
+                     <tr>
+                         <td colspan="9" class="text-center py-4 text-gray-500">No hay compras registradas.</td>
+                     </tr>
+                 </ng-template>
             </p-table>
         </div>
 
         <p-dialog
-            [header]="editingPurchaseId ? 'Editar compra (borrador)' : 'Nueva compra'"
+            [header]="editingPurchaseId ? 'Editar compra' : 'Nueva compra'"
             [(visible)]="purchaseDialog"
             [modal]="true"
             [style]="{ width: '1100px' }"
@@ -164,7 +175,17 @@ interface PurchaseFormLine {
             [draggable]="false"
             [resizable]="false"
         >
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+            @if (editPurchaseLoading) {
+                <div class="flex flex-col items-center justify-center py-10 gap-3">
+                    <i class="pi pi-spin pi-spinner text-4xl text-primary"></i>
+                    <span class="text-sm text-gray-600">Cargando compra…</span>
+                </div>
+            } @else {
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-3">
+                <div>
+                    <label class="block mb-2">Fecha *</label>
+                    <input pInputText type="date" [(ngModel)]="form.purchaseDate" class="w-full" />
+                </div>
                 <div>
                     <label class="block mb-2">Almacén *</label>
                     <p-select
@@ -215,8 +236,8 @@ interface PurchaseFormLine {
                         <tr>
                             <th>Producto</th>
                             <th class="text-right">Cantidad</th>
-                            <th class="text-right">Costo</th>
-                            <th class="text-right">Subtotal</th>
+                            <th class="text-right">Costo unitario</th>
+                            <th class="text-right">Importe</th>
                             <th class="text-center">Acción</th>
                         </tr>
                     </ng-template>
@@ -238,10 +259,11 @@ interface PurchaseFormLine {
                             <td class="text-right">
                                 <p-inputnumber
                                     [(ngModel)]="line.qty"
-                                    [min]="1"
-                                    [maxFractionDigits]="0"
+                                    [min]="lineMaxFractionDigits(line) > 0 ? 0.001 : 1"
+                                    [maxFractionDigits]="lineMaxFractionDigits(line)"
                                     mode="decimal"
                                     inputStyleClass="w-full text-right"
+                                    (ngModelChange)="onLineQtyChange(i, $event)"
                                 />
                             </td>
                             <td class="text-right">
@@ -251,9 +273,19 @@ interface PurchaseFormLine {
                                     [maxFractionDigits]="2"
                                     mode="decimal"
                                     inputStyleClass="w-full text-right"
+                                    (ngModelChange)="onLineCostChange(i, $event)"
                                 />
                             </td>
-                            <td class="text-right whitespace-nowrap">{{ formatMoney(lineSubtotal(line), form.currency) }}</td>
+                            <td class="text-right">
+                                <p-inputnumber
+                                    [(ngModel)]="line.total"
+                                    [min]="0.01"
+                                    [maxFractionDigits]="2"
+                                    mode="decimal"
+                                    inputStyleClass="w-full text-right"
+                                    (ngModelChange)="onLineTotalChange(i, $event)"
+                                />
+                            </td>
                             <td class="text-center">
                                 <p-button icon="pi pi-trash" [text]="true" severity="danger" [disabled]="form.lines.length <= 1" (onClick)="removeLine(i)" />
                             </td>
@@ -265,11 +297,21 @@ interface PurchaseFormLine {
             <div class="flex justify-end mt-3 text-lg">
                 <span>Total: <strong>{{ formatMoney(formTotal(), form.currency) }}</strong></span>
             </div>
+            }
 
             <ng-template #footer>
                 <p-button label="Cancelar" icon="pi pi-times" text (onClick)="hidePurchaseDialog()" />
-                <p-button label="Guardar borrador" icon="pi pi-save" severity="secondary" [outlined]="true" [loading]="saving" (onClick)="savePurchase('DRAFT')" />
-                <p-button label="Guardar y confirmar" icon="pi pi-check" [loading]="saving" (onClick)="savePurchase('CONFIRMED')" />
+                @if (!editPurchaseLoading && editingPurchaseId && editingPurchaseStatus === 'CONFIRMED') {
+                    <p-button label="Guardar cambios" icon="pi pi-save" [loading]="saving" (onClick)="savePurchase('CONFIRMED')" />
+                }
+                @if (!editPurchaseLoading && editingPurchaseId && editingPurchaseStatus !== 'CONFIRMED') {
+                    <p-button label="Guardar borrador" icon="pi pi-save" severity="secondary" [outlined]="true" [loading]="saving" (onClick)="savePurchase('DRAFT')" />
+                    <p-button label="Guardar y confirmar" icon="pi pi-check" [loading]="saving" (onClick)="savePurchase('CONFIRMED')" />
+                }
+                @if (!editPurchaseLoading && !editingPurchaseId) {
+                    <p-button label="Guardar borrador" icon="pi pi-save" severity="secondary" [outlined]="true" [loading]="saving" (onClick)="savePurchase('DRAFT')" />
+                    <p-button label="Guardar y confirmar" icon="pi pi-check" [loading]="saving" (onClick)="savePurchase('CONFIRMED')" />
+                }
             </ng-template>
         </p-dialog>
 
@@ -334,8 +376,11 @@ export class Purchases implements OnInit {
     purchaseDialog = false;
     detailDialog = false;
     editingPurchaseId: string | null = null;
+    editingPurchaseStatus: PurchaseStatus | null = null;
+    editPurchaseLoading = false;
     selectedDetail: PurchaseDetail | null = null;
     private lineSeed = 1;
+    private lineSyncing = false;
 
     readonly currencyOptions = [
         { label: 'CUP', value: 'CUP' as SystemCurrencyCode },
@@ -365,6 +410,7 @@ export class Purchases implements OnInit {
 
     form: {
         warehouseId: string;
+        purchaseDate: string;
         supplierName: string;
         supplierDocument: string;
         documentNumber: string;
@@ -457,7 +503,10 @@ export class Purchases implements OnInit {
 
     openNewPurchase() {
         this.editingPurchaseId = null;
+        this.editingPurchaseStatus = null;
+        this.editPurchaseLoading = false;
         this.form = this.buildEmptyForm();
+        this.form.purchaseDate = new Date().toISOString().split('T')[0];
         if (!this.form.warehouseId) {
             this.form.warehouseId = this.warehouses()[0]?.id || '';
         }
@@ -468,11 +517,13 @@ export class Purchases implements OnInit {
     hidePurchaseDialog() {
         this.purchaseDialog = false;
         this.editingPurchaseId = null;
+        this.editingPurchaseStatus = null;
+        this.editPurchaseLoading = false;
         this.saving = false;
     }
 
     addLine() {
-        this.form.lines.push({ rowId: this.lineSeed++, productId: '', qty: 1, cost: null });
+        this.form.lines.push({ rowId: this.lineSeed++, productId: '', qty: 1, cost: null, total: null });
     }
 
     removeLine(index: number) {
@@ -488,12 +539,42 @@ export class Purchases implements OnInit {
         if (!line.cost || line.cost <= 0) {
             line.cost = Number(product.cost ?? product.price ?? 0);
         }
+        this.syncLineTotalFromCost(line);
+    }
+
+    lineMaxFractionDigits(line: PurchaseFormLine) {
+        const product = this.products().find((p) => p.id === line.productId);
+        return product?.allowFractionalQty ? 3 : 0;
+    }
+
+    onLineQtyChange(index: number, _value: number | null) {
+        const line = this.form.lines[index];
+        if (!line || this.lineSyncing) return;
+        if (line.total && line.total > 0 && (!line.cost || line.cost <= 0)) {
+            this.syncLineCostFromTotal(line);
+            return;
+        }
+        this.syncLineTotalFromCost(line);
+    }
+
+    onLineCostChange(index: number, _value: number | null) {
+        const line = this.form.lines[index];
+        if (!line || this.lineSyncing) return;
+        this.syncLineTotalFromCost(line);
+    }
+
+    onLineTotalChange(index: number, _value: number | null) {
+        const line = this.form.lines[index];
+        if (!line || this.lineSyncing) return;
+        this.syncLineCostFromTotal(line);
     }
 
     lineSubtotal(line: PurchaseFormLine) {
+        const total = Number(line.total || 0);
+        if (total > 0) return Number(total.toFixed(2));
         const qty = Number(line.qty || 0);
         const cost = Number(line.cost || 0);
-        return qty * cost;
+        return Number((qty * cost).toFixed(2));
     }
 
     formTotal() {
@@ -501,31 +582,38 @@ export class Purchases implements OnInit {
     }
 
     savePurchase(status: PurchaseStatus) {
-        const payload = this.buildPayload(status);
-        if (!payload) return;
-        this.saving = true;
-
         if (this.editingPurchaseId) {
+            const payload = this.buildUpdatePayload();
+            if (!payload) return;
+            this.saving = true;
+            const wasDraft = this.editingPurchaseStatus === 'DRAFT';
             this.purchasesService
                 .update(this.editingPurchaseId, payload)
                 .subscribe({
                     next: () => {
-                        if (status === 'CONFIRMED') {
+                        if (status === 'CONFIRMED' && wasDraft) {
                             this.purchasesService.confirm(this.editingPurchaseId!).subscribe({
                                 next: () => this.onSaveSuccess('Compra confirmada correctamente'),
                                 error: (e) => this.onSaveError(e?.error?.message || 'No se pudo confirmar la compra')
                             });
                             return;
                         }
-                        this.onSaveSuccess('Borrador de compra actualizado');
+                        if (wasDraft) {
+                            this.onSaveSuccess('Borrador de compra actualizado');
+                        } else {
+                            this.onSaveSuccess('Compra actualizada');
+                        }
                     },
                     error: (e) => this.onSaveError(e?.error?.message || 'No se pudo actualizar la compra')
                 });
             return;
         }
 
+        const payload = this.buildCreatePayload(status);
+        if (!payload) return;
+        this.saving = true;
         this.purchasesService
-            .create({ ...payload, status })
+            .create(payload)
             .subscribe({
                 next: () => this.onSaveSuccess(status === 'CONFIRMED' ? 'Compra registrada y confirmada' : 'Compra guardada como borrador'),
                 error: (e) => this.onSaveError(e?.error?.message || 'No se pudo registrar la compra')
@@ -544,43 +632,53 @@ export class Purchases implements OnInit {
         this.messageService.add({ severity: 'error', summary: 'Error', detail });
     }
 
-    private buildPayload(status: PurchaseStatus): CreatePurchaseDto | null {
+    private buildUpdatePayload(): UpdatePurchaseDto | null {
         if (!this.form.warehouseId) {
             this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'Seleccione un almacén.' });
             return null;
         }
 
-        const items: PurchaseItemInput[] = [];
-        const repeated = new Set<string>();
-        for (const line of this.form.lines) {
-            if (!line.productId) {
-                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'Todas las líneas deben tener producto.' });
-                return null;
-            }
-            const qty = Number(line.qty || 0);
-            const cost = Number(line.cost || 0);
-            if (!Number.isInteger(qty) || qty <= 0) {
-                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'La cantidad debe ser un entero mayor que 0.' });
-                return null;
-            }
-            if (!Number.isFinite(cost) || cost <= 0) {
-                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'El costo debe ser mayor que 0.' });
-                return null;
-            }
-            if (repeated.has(line.productId)) {
-                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'No repita el mismo producto en varias líneas.' });
-                return null;
-            }
-            repeated.add(line.productId);
-            items.push({
-                productId: line.productId,
-                qty,
-                cost
-            });
+        // Forzar formato ISO completo para evitar desfases de zona horaria
+        let purchaseDate = this.form.purchaseDate;
+        if (purchaseDate && !purchaseDate.includes('T')) {
+            purchaseDate = purchaseDate + 'T00:00:00Z';
         }
+        const basePayload: UpdatePurchaseDto = {
+            warehouseId: this.form.warehouseId,
+            purchaseDate,
+            supplierName: this.form.supplierName?.trim() || undefined,
+            supplierDocument: this.form.supplierDocument?.trim() || undefined,
+            documentNumber: this.form.documentNumber?.trim() || undefined,
+            note: this.form.note?.trim() || undefined,
+            currency: this.form.currency
+        };
+
+        const items = this.validateAndBuildItems();
+        if (!items) return null;
 
         return {
+            ...basePayload,
+            items
+        };
+    }
+
+    private buildCreatePayload(status: PurchaseStatus): CreatePurchaseDto | null {
+        if (!this.form.warehouseId) {
+            this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'Seleccione un almacén.' });
+            return null;
+        }
+
+        const items = this.validateAndBuildItems();
+        if (!items) return null;
+
+        // Forzar formato ISO completo para evitar desfases de zona horaria
+        let purchaseDate = this.form.purchaseDate;
+        if (purchaseDate && !purchaseDate.includes('T')) {
+            purchaseDate = purchaseDate + 'T00:00:00Z';
+        }
+        return {
             warehouseId: this.form.warehouseId,
+            purchaseDate,
             supplierName: this.form.supplierName?.trim() || undefined,
             supplierDocument: this.form.supplierDocument?.trim() || undefined,
             documentNumber: this.form.documentNumber?.trim() || undefined,
@@ -591,17 +689,83 @@ export class Purchases implements OnInit {
         };
     }
 
-    editPurchase(row: PurchaseSummary) {
-        if (row.status !== 'DRAFT') {
-            this.messageService.add({ severity: 'warn', summary: 'No permitido', detail: 'Solo se pueden editar compras en borrador.' });
+    private validateAndBuildItems(): PurchaseItemInput[] | null {
+        const items: PurchaseItemInput[] = [];
+        const repeated = new Set<string>();
+
+        for (const line of this.form.lines) {
+            if (!line.productId) {
+                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'Todas las líneas deben tener producto.' });
+                return null;
+            }
+            const qty = Number(line.qty || 0);
+            const product = this.products().find((p) => p.id === line.productId);
+            if (!product) {
+                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'Producto inválido en una línea.' });
+                return null;
+            }
+            if (!Number.isFinite(qty) || qty <= 0) {
+                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'La cantidad debe ser mayor que 0.' });
+                return null;
+            }
+            if (!product.allowFractionalQty && !Number.isInteger(qty)) {
+                this.messageService.add({
+                    severity: 'warn',
+                    summary: 'Validación',
+                    detail: `El producto "${product.name}" solo admite cantidades enteras.`
+                });
+                return null;
+            }
+
+            const cost = Number(line.cost || 0);
+            const total = Number(line.total || 0);
+            if ((!Number.isFinite(cost) || cost <= 0) && (!Number.isFinite(total) || total <= 0)) {
+                this.messageService.add({
+                    severity: 'warn',
+                    summary: 'Validación',
+                    detail: 'Debe indicar costo unitario o importe total para cada línea.'
+                });
+                return null;
+            }
+            if (repeated.has(line.productId)) {
+                this.messageService.add({ severity: 'warn', summary: 'Validación', detail: 'No repita el mismo producto en varias líneas.' });
+                return null;
+            }
+            repeated.add(line.productId);
+            const safeTotal = total > 0 ? total : Number((qty * cost).toFixed(2));
+            const safeCost = cost > 0 ? cost : Number((safeTotal / qty).toFixed(2));
+            items.push({
+                productId: line.productId,
+                qty,
+                cost: Number(safeCost.toFixed(2)),
+                total: Number(safeTotal.toFixed(2)),
+            });
+        }
+        return items;
+    }
+
+    editPurchase(row: PurchaseSummary, event?: Event) {
+        event?.stopPropagation();
+        event?.preventDefault();
+
+        if (row.status !== 'DRAFT' && row.status !== 'CONFIRMED') {
+            this.messageService.add({ severity: 'warn', summary: 'No permitido', detail: 'Solo se pueden editar compras en borrador o confirmadas.' });
             return;
         }
 
+        this.editPurchaseLoading = true;
+        this.editingPurchaseId = row.id;
+        this.editingPurchaseStatus = row.status;
+        this.purchaseDialog = true;
+
         this.purchasesService.findOne(row.id).subscribe({
             next: (detail) => {
+                this.editPurchaseLoading = false;
                 this.editingPurchaseId = detail.id;
+                this.editingPurchaseStatus = detail.status;
                 this.form = {
                     warehouseId: detail.warehouseId,
+                    purchaseDate: detail.createdAt.split('T')[0],
                     supplierName: detail.supplierName || '',
                     supplierDocument: detail.supplierDocument || '',
                     documentNumber: detail.documentNumber || '',
@@ -611,18 +775,21 @@ export class Purchases implements OnInit {
                         rowId: this.lineSeed++,
                         productId: item.productId,
                         qty: item.qty,
-                        cost: Number(item.cost)
+                        cost: Number(item.cost),
+                        total: Number(item.total)
                     }))
                 };
                 if (!this.form.lines.length) this.addLine();
-                this.purchaseDialog = true;
             },
-            error: () =>
+            error: () => {
+                this.editPurchaseLoading = false;
                 this.messageService.add({
                     severity: 'error',
                     summary: 'Error',
                     detail: 'No se pudo cargar la compra para edición.'
-                })
+                });
+                this.hidePurchaseDialog();
+            }
         });
     }
 
@@ -747,12 +914,31 @@ export class Purchases implements OnInit {
     private buildEmptyForm() {
         return {
             warehouseId: '',
+            purchaseDate: '',
             supplierName: '',
             supplierDocument: '',
             documentNumber: '',
             note: '',
             currency: this.defaultCurrency,
-            lines: [{ rowId: this.lineSeed++, productId: '', qty: 1, cost: null }]
+            lines: [{ rowId: this.lineSeed++, productId: '', qty: 1, cost: null, total: null }]
         };
+    }
+
+    private syncLineTotalFromCost(line: PurchaseFormLine) {
+        const qty = Number(line.qty || 0);
+        const cost = Number(line.cost || 0);
+        if (qty <= 0 || cost <= 0) return;
+        this.lineSyncing = true;
+        line.total = Number((qty * cost).toFixed(2));
+        this.lineSyncing = false;
+    }
+
+    private syncLineCostFromTotal(line: PurchaseFormLine) {
+        const qty = Number(line.qty || 0);
+        const total = Number(line.total || 0);
+        if (qty <= 0 || total <= 0) return;
+        this.lineSyncing = true;
+        line.cost = Number((total / qty).toFixed(2));
+        this.lineSyncing = false;
     }
 }

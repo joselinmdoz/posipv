@@ -23,6 +23,24 @@ type SaleItemFifoInput = {
   fallbackUnitCost?: number | Prisma.Decimal | null;
 };
 
+type AdjustmentLotInput = {
+  warehouseId: string;
+  productId: string;
+  qty: number | Prisma.Decimal;
+  unitCost?: number | Prisma.Decimal | null;
+  reference?: string | null;
+  receivedAt?: Date;
+};
+
+type ConsumeStockInput = {
+  warehouseId: string;
+  productId: string;
+  qty: number | Prisma.Decimal;
+  fallbackUnitCost?: number | Prisma.Decimal | null;
+  reference?: string | null;
+  receivedAt?: Date;
+};
+
 @Injectable()
 export class InventoryCostingService {
   async createPurchaseLots(
@@ -233,6 +251,122 @@ export class InventoryCostingService {
         },
       });
     }
+  }
+
+  async createAdjustmentLot(
+    tx: Prisma.TransactionClient,
+    input: AdjustmentLotInput,
+  ) {
+    const qty = this.parseQty(input.qty);
+    const unitCost = this.parseMoney(input.unitCost ?? 0);
+    if (qty <= 0) return null;
+
+    return tx.purchaseLot.create({
+      data: {
+        source: PurchaseLotSource.ADJUSTMENT,
+        warehouseId: input.warehouseId,
+        productId: input.productId,
+        reference: input.reference || null,
+        initialQty: dec(qty.toFixed(3)),
+        remainingQty: dec(qty.toFixed(3)),
+        unitCost: dec(unitCost.toFixed(2)),
+        receivedAt: input.receivedAt || new Date(),
+      },
+      select: {
+        id: true,
+        remainingQty: true,
+        unitCost: true,
+      },
+    });
+  }
+
+  async consumeStockWithFifo(
+    tx: Prisma.TransactionClient,
+    input: ConsumeStockInput,
+  ) {
+    let pendingQty = dec(this.parseQty(input.qty));
+    const fallbackUnitCost = dec(this.parseMoney(input.fallbackUnitCost ?? 0));
+    let totalCost = dec(0);
+    const requestedQty = dec(pendingQty.toFixed(3));
+
+    const lots = await tx.purchaseLot.findMany({
+      where: {
+        warehouseId: input.warehouseId,
+        productId: input.productId,
+        remainingQty: { gt: 0 },
+      },
+      select: {
+        id: true,
+        remainingQty: true,
+        unitCost: true,
+      },
+      orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    });
+
+    const queue: Array<{ id: string; remainingQty: Prisma.Decimal; unitCost: Prisma.Decimal }> = lots.map((lot) => ({
+      id: lot.id,
+      remainingQty: dec(lot.remainingQty),
+      unitCost: dec(lot.unitCost),
+    }));
+
+    while (pendingQty.gt(0)) {
+      let head = queue.find((lot) => lot.remainingQty.gt(0));
+
+      if (!head) {
+        const created = await this.createAdjustmentLot(tx, {
+          warehouseId: input.warehouseId,
+          productId: input.productId,
+          qty: pendingQty,
+          unitCost: fallbackUnitCost,
+          reference: input.reference || null,
+          receivedAt: input.receivedAt,
+        });
+
+        if (!created) break;
+        head = {
+          id: created.id,
+          remainingQty: dec(created.remainingQty),
+          unitCost: dec(created.unitCost),
+        };
+        queue.push(head);
+      }
+
+      const takeQty = head.remainingQty.greaterThan(pendingQty)
+        ? dec(pendingQty.toFixed(3))
+        : dec(head.remainingQty.toFixed(3));
+      if (takeQty.lte(0)) break;
+
+      const updated = await tx.purchaseLot.updateMany({
+        where: {
+          id: head.id,
+          remainingQty: { gte: dec(takeQty.toFixed(3)) },
+        },
+        data: {
+          remainingQty: { decrement: dec(takeQty.toFixed(3)) },
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new BadRequestException(
+          "Conflicto de inventario al aplicar FIFO. Reintente la operación.",
+        );
+      }
+
+      head.remainingQty = dec(head.remainingQty.sub(takeQty).toFixed(3));
+      pendingQty = dec(pendingQty.sub(takeQty).toFixed(3));
+      totalCost = dec(totalCost.add(head.unitCost.mul(takeQty)).toFixed(2));
+    }
+
+    const consumedQty = dec(requestedQty.sub(pendingQty).toFixed(3));
+    const averageUnitCost = consumedQty.gt(0)
+      ? dec(totalCost.div(consumedQty).toFixed(2))
+      : dec(0);
+
+    return {
+      qty: Number(consumedQty.toFixed(3)),
+      totalCost: Number(totalCost.toFixed(2)),
+      averageUnitCost: Number(averageUnitCost.toFixed(2)),
+    };
   }
 
   private parseQty(value: number | Prisma.Decimal): number {

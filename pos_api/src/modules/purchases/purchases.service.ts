@@ -7,11 +7,13 @@ import { InventoryCostingService } from "../inventory-costing/inventory-costing.
 type PurchaseItemInput = {
   productId: string;
   qty: number;
-  cost: number;
+  cost?: number;
+  total?: number;
 };
 
 type CreatePurchaseInput = {
   warehouseId: string;
+  purchaseDate?: string;
   supplierName?: string;
   supplierDocument?: string;
   documentNumber?: string;
@@ -23,6 +25,7 @@ type CreatePurchaseInput = {
 
 type UpdatePurchaseInput = {
   warehouseId?: string;
+  purchaseDate?: string;
   supplierName?: string;
   supplierDocument?: string;
   documentNumber?: string;
@@ -57,37 +60,46 @@ export class PurchasesService {
       throw new BadRequestException("Rango de fechas inválido.");
     }
 
-    try {
-      return await this.prisma.purchase.findMany({
-        where: {
-          ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
-          ...(input.status ? { status: input.status } : {}),
-          ...(fromDate || toDate
-            ? {
-                createdAt: {
-                  ...(fromDate ? { gte: fromDate } : {}),
-                  ...(toDate ? { lte: toDate } : {}),
-                },
-              }
-            : {}),
-          ...(q
-            ? {
-                OR: [
-                  { supplierName: { contains: q, mode: "insensitive" } },
-                  { supplierDocument: { contains: q, mode: "insensitive" } },
-                  { documentNumber: { contains: q, mode: "insensitive" } },
-                  { note: { contains: q, mode: "insensitive" } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ createdAt: "desc" }],
-        take: limit,
-        include: {
-          warehouse: { select: { id: true, name: true, code: true } },
-          createdBy: { select: { id: true, email: true } },
-        },
-      });
+     try {
+       const purchases = await this.prisma.purchase.findMany({
+         where: {
+           ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
+           ...(input.status ? { status: input.status } : {}),
+           ...(fromDate || toDate
+             ? {
+               createdAt: {
+                 ...(fromDate ? { gte: fromDate } : {}),
+                 ...(toDate ? { lte: toDate } : {}),
+               },
+             }
+             : {}),
+           ...(q
+             ? {
+               OR: [
+                 { supplierName: { contains: q, mode: "insensitive" } },
+                 { supplierDocument: { contains: q, mode: "insensitive" } },
+                 { documentNumber: { contains: q, mode: "insensitive" } },
+                 { note: { contains: q, mode: "insensitive" } },
+               ],
+             }
+             : {}),
+         },
+         orderBy: [{ createdAt: "desc" }],
+         take: limit,
+         include: {
+           warehouse: { select: { id: true, name: true, code: true } },
+           createdBy: { select: { id: true, email: true } },
+           items: {
+             select: { qty: true }
+           }
+         },
+       });
+
+       // Compute total quantity for each purchase
+       return purchases.map(purchase => ({
+         ...purchase,
+         totalQty: purchase.items.reduce((sum, item) => sum + Number(item.qty), 0)
+       }));
     } catch (error) {
       this.handlePrismaStorageError(error);
     }
@@ -148,11 +160,22 @@ export class PurchasesService {
     const totals = this.computeTotals(normalizedItems);
     const status = this.normalizeInitialStatus(input.status);
     const documentNumber = await this.resolveDocumentNumber(input.documentNumber);
+    // Forzar fecha a medianoche UTC si viene en formato YYYY-MM-DD
+    let purchaseDate: Date;
+    if (input.purchaseDate) {
+      // Si ya incluye T, se respeta, si no, se fuerza a medianoche UTC
+      purchaseDate = input.purchaseDate.includes('T')
+        ? new Date(input.purchaseDate)
+        : new Date(input.purchaseDate + 'T00:00:00Z');
+    } else {
+      purchaseDate = new Date();
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.purchase.create({
         data: {
           warehouseId: warehouse.id,
+          createdAt: purchaseDate,
           createdById: userId,
           supplierName: this.optionalText(input.supplierName, 120),
           supplierDocument: this.optionalText(input.supplierDocument, 80),
@@ -162,7 +185,7 @@ export class PurchasesService {
           subtotal: dec(totals.subtotal.toFixed(2)),
           total: dec(totals.total.toFixed(2)),
           status,
-          confirmedAt: status === PurchaseStatus.CONFIRMED ? new Date() : null,
+          confirmedAt: status === PurchaseStatus.CONFIRMED ? purchaseDate : null,
           items: {
             create: normalizedItems.map((item) => ({
               productId: item.productId,
@@ -178,7 +201,7 @@ export class PurchasesService {
       });
 
       if (created.status === PurchaseStatus.CONFIRMED) {
-        await this.applyPurchaseStock(tx, created.id, created.warehouseId, created.items);
+        await this.applyPurchaseStock(tx, created.id, created.warehouseId, created.items, purchaseDate);
       }
 
       return this.findOneTx(tx, created.id);
@@ -187,55 +210,160 @@ export class PurchasesService {
 
   async update(purchaseId: string, input: UpdatePurchaseInput) {
     const purchase = await this.ensurePurchaseExists(purchaseId);
-    if (purchase.status !== PurchaseStatus.DRAFT) {
-      throw new BadRequestException("Solo se pueden editar compras en borrador.");
+    if (purchase.status === PurchaseStatus.VOID) {
+      throw new BadRequestException("No se puede editar una compra anulada.");
     }
 
+    const isDraft = purchase.status === PurchaseStatus.DRAFT;
+    const isConfirmed = purchase.status === PurchaseStatus.CONFIRMED;
     const warehouseId = input.warehouseId?.trim() || purchase.warehouseId;
     await this.requireWarehouse(warehouseId);
-    const existingItems = await this.prisma.purchaseItem.findMany({
-      where: { purchaseId },
-      select: { productId: true, qty: true, cost: true, total: true },
-    });
 
-    const normalizedItems =
-      input.items && input.items.length > 0
-        ? await this.normalizePurchaseItems(input.items)
-        : existingItems.map((row) => ({
-            productId: row.productId,
-            qty: Number(row.qty),
-            cost: Number(row.cost),
-            total: Number(row.total),
-          }));
-
-    const totals = this.computeTotals(normalizedItems);
     const documentNumber = this.normalize(input.documentNumber) ?? purchase.documentNumber ?? null;
     if (documentNumber && documentNumber !== purchase.documentNumber) {
       await this.ensureDocumentNumberAvailable(documentNumber);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.purchase.update({
-        where: { id: purchaseId },
-        data: {
-          warehouseId,
-          supplierName:
-            input.supplierName !== undefined
-              ? this.optionalText(input.supplierName, 120)
-              : purchase.supplierName,
-          supplierDocument:
-            input.supplierDocument !== undefined
-              ? this.optionalText(input.supplierDocument, 80)
-              : purchase.supplierDocument,
-          documentNumber,
-          note: input.note !== undefined ? this.optionalText(input.note, 600) : purchase.note,
-          currency: input.currency || purchase.currency,
-          subtotal: dec(totals.subtotal.toFixed(2)),
-          total: dec(totals.total.toFixed(2)),
-        },
+    const parsedPurchaseDate = input.purchaseDate ? this.parseOptionalDate(input.purchaseDate, "purchaseDate") : null;
+    const purchaseDate = parsedPurchaseDate || purchase.createdAt;
+
+    const wantsItemReplace = Array.isArray(input.items) && input.items.length > 0;
+    const confirmedItemReconcile = isConfirmed && wantsItemReplace;
+
+    if (confirmedItemReconcile) {
+      const normalizedItems = await this.normalizePurchaseItems(input.items!);
+      const totals = this.computeTotals(normalizedItems);
+
+      return this.prisma.$transaction(async (tx) => {
+        const oldItems = await tx.purchaseItem.findMany({ where: { purchaseId } });
+        const oldWarehouseId = purchase.warehouseId;
+
+        await this.inventoryCostingService.ensurePurchaseLotsCanBeVoided(tx, purchaseId);
+        await this.inventoryCostingService.deletePurchaseLots(tx, purchaseId);
+        await tx.stockMovement.deleteMany({ where: { reason: `COMPRA:${purchaseId}` } });
+
+        for (const item of oldItems) {
+          const qty = Number(item.qty);
+          const stock = await tx.stock.findUnique({
+            where: {
+              warehouseId_productId: {
+                warehouseId: oldWarehouseId,
+                productId: item.productId,
+              },
+            },
+          });
+          if (!stock || Number(stock.qty) < qty) {
+            throw new BadRequestException(
+              "No se puede editar la compra: el stock actual no permite revertir el ingreso anterior, o los lotes ya tienen consumos en ventas.",
+            );
+          }
+          await tx.stock.update({
+            where: {
+              warehouseId_productId: {
+                warehouseId: oldWarehouseId,
+                productId: item.productId,
+              },
+            },
+            data: { qty: { decrement: qty } },
+          });
+        }
+
+        await tx.purchaseItem.deleteMany({ where: { purchaseId } });
+
+        const createdRows: Array<{
+          id: string;
+          productId: string;
+          qty: number | Prisma.Decimal;
+          cost?: number | Prisma.Decimal;
+        }> = [];
+        for (const item of normalizedItems) {
+          const row = await tx.purchaseItem.create({
+            data: {
+              purchaseId,
+              productId: item.productId,
+              qty: item.qty,
+              cost: dec(item.cost.toFixed(2)),
+              total: dec(item.total.toFixed(2)),
+            },
+          });
+          createdRows.push(row);
+        }
+
+        await tx.purchase.update({
+          where: { id: purchaseId },
+          data: {
+            createdAt: purchaseDate,
+            warehouseId,
+            supplierName:
+              input.supplierName !== undefined
+                ? this.optionalText(input.supplierName, 120)
+                : purchase.supplierName,
+            supplierDocument:
+              input.supplierDocument !== undefined
+                ? this.optionalText(input.supplierDocument, 80)
+                : purchase.supplierDocument,
+            documentNumber,
+            note: input.note !== undefined ? this.optionalText(input.note, 600) : purchase.note,
+            currency: input.currency || purchase.currency,
+            subtotal: dec(totals.subtotal.toFixed(2)),
+            total: dec(totals.total.toFixed(2)),
+          },
+        });
+
+        await this.applyPurchaseStock(tx, purchaseId, warehouseId, createdRows, purchaseDate);
+
+        return this.findOneTx(tx, purchaseId);
+      });
+    }
+
+    let normalizedItems: any[] = [];
+    if (isDraft) {
+      const existingItems = await this.prisma.purchaseItem.findMany({
+        where: { purchaseId },
+        select: { productId: true, qty: true, cost: true, total: true },
       });
 
-      if (input.items) {
+      normalizedItems =
+        input.items && input.items.length > 0
+          ? await this.normalizePurchaseItems(input.items)
+          : existingItems.map((row) => ({
+              productId: row.productId,
+              qty: Number(row.qty),
+              cost: Number(row.cost),
+              total: Number(row.total),
+            }));
+    }
+
+    const totals = isDraft ? this.computeTotals(normalizedItems) : { subtotal: Number(purchase.subtotal), total: Number(purchase.total) };
+
+    return this.prisma.$transaction(async (tx) => {
+      const updateData: any = {
+        createdAt: purchaseDate,
+        warehouseId,
+        supplierName:
+          input.supplierName !== undefined
+            ? this.optionalText(input.supplierName, 120)
+            : purchase.supplierName,
+        supplierDocument:
+          input.supplierDocument !== undefined
+            ? this.optionalText(input.supplierDocument, 80)
+            : purchase.supplierDocument,
+        documentNumber,
+        note: input.note !== undefined ? this.optionalText(input.note, 600) : purchase.note,
+        currency: input.currency || purchase.currency,
+      };
+
+      if (isDraft) {
+        updateData.subtotal = dec(totals.subtotal.toFixed(2));
+        updateData.total = dec(totals.total.toFixed(2));
+      }
+
+      await tx.purchase.update({
+        where: { id: purchaseId },
+        data: updateData,
+      });
+
+      if (isDraft && input.items) {
         await tx.purchaseItem.deleteMany({ where: { purchaseId } });
         await tx.purchaseItem.createMany({
           data: normalizedItems.map((item) => ({
@@ -245,6 +373,13 @@ export class PurchasesService {
             cost: dec(item.cost.toFixed(2)),
             total: dec(item.total.toFixed(2)),
           })),
+        });
+      }
+
+      if (input.purchaseDate && isConfirmed) {
+        await tx.stockMovement.updateMany({
+          where: { reason: `COMPRA:${purchaseId}` },
+          data: { createdAt: purchaseDate },
         });
       }
 
@@ -322,18 +457,25 @@ export class PurchasesService {
       throw new BadRequestException("La compra debe contener al menos un producto.");
     }
 
-    const grouped = new Map<string, { qty: number; cost: number }>();
+    const grouped = new Map<string, { qty: number; total: number }>();
     for (const raw of items) {
       const productId = this.requiredText(raw.productId, "productId", 80);
       const qty = this.parsePositiveQty(raw.qty, "qty");
-      const cost = this.parsePositiveNumber(raw.cost, "cost");
+      const hasCost = raw.cost !== null && raw.cost !== undefined && Number(raw.cost) > 0;
+      const hasTotal = raw.total !== null && raw.total !== undefined && Number(raw.total) > 0;
+      if (!hasCost && !hasTotal) {
+        throw new BadRequestException("Cada línea debe incluir costo unitario o importe total.");
+      }
+      const lineTotal = hasTotal
+        ? this.parsePositiveNumber(Number(raw.total), "total")
+        : Number(dec(this.parsePositiveNumber(Number(raw.cost), "cost")).mul(qty).toFixed(2));
 
       const current = grouped.get(productId);
       if (!current) {
-        grouped.set(productId, { qty, cost });
+        grouped.set(productId, { qty, total: lineTotal });
       } else {
-        current.qty += qty;
-        current.cost = cost;
+        current.qty = Number((current.qty + qty).toFixed(3));
+        current.total = Number((current.total + lineTotal).toFixed(2));
       }
     }
 
@@ -358,11 +500,14 @@ export class PurchasesService {
       const product = productMap.get(productId);
       if (!product) throw new BadRequestException("Producto inválido en compra.");
       const groupedItem = grouped.get(productId)!;
-      const total = dec(groupedItem.cost).mul(groupedItem.qty);
+      const total = dec(groupedItem.total);
+      const unitCost = groupedItem.qty > 0
+        ? Number(total.div(groupedItem.qty).toFixed(2))
+        : 0;
       return {
         productId,
         qty: groupedItem.qty,
-        cost: Number(dec(groupedItem.cost).toFixed(2)),
+        cost: unitCost,
         total: Number(total.toFixed(2)),
       };
     });
@@ -383,7 +528,8 @@ export class PurchasesService {
     tx: Prisma.TransactionClient,
     purchaseId: string,
     warehouseId: string,
-    items: Array<{ id?: string; productId: string; qty: number | Prisma.Decimal; cost?: number | Prisma.Decimal }>
+    items: Array<{ id?: string; productId: string; qty: number | Prisma.Decimal; cost?: number | Prisma.Decimal }>,
+    movementAt?: Date,
   ) {
     const lotRows: Array<{
       purchaseId: string;
@@ -393,6 +539,7 @@ export class PurchasesService {
       qty: number;
       unitCost: number;
       reference: string;
+      receivedAt?: Date;
     }> = [];
 
     for (const item of items) {
@@ -435,6 +582,7 @@ export class PurchasesService {
           qty,
           toWarehouseId: warehouseId,
           reason: `COMPRA:${purchaseId}`,
+          ...(movementAt ? { createdAt: movementAt } : {}),
         },
       });
 
@@ -446,6 +594,7 @@ export class PurchasesService {
         qty,
         unitCost: Number(item.cost ?? 0),
         reference: `COMPRA:${purchaseId}`,
+        receivedAt: movementAt,
       });
     }
 
@@ -459,6 +608,7 @@ export class PurchasesService {
         qty: row.qty,
         unitCost: row.unitCost,
         reference: row.reference,
+        receivedAt: row.receivedAt,
       })),
     );
   }
